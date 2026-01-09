@@ -1,0 +1,5 @@
+Gooey>=1.0.8
+colorama>=0.4.6
+pyinstaller>=6.0.0
+six>=1.16.0
+colored==1.4.4
