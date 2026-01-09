@@ -6,6 +6,10 @@ on:
       - 'v*'  # 当推送 v 开头的 tag 时触发 (如 v1.0.0)
   workflow_dispatch:  # 支持手动触发
 
+# 添加权限声明，允许创建 Release
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -55,11 +59,24 @@ jobs:
       
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: 小雪工具箱_Windows_x64.zip
           generate_release_notes: true
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: "小雪工具箱 ${{ github.ref_name }}"
+          body: |
+            ## 小雪工具箱 ${{ github.ref_name }}
+            
+            一个简单的视频压制与检测工具。
+            
+            ### 📦 下载说明
+            - 下载 `小雪工具箱_Windows_x64.zip`
+            - 解压后运行 `小雪工具箱.exe` 即可
+            
+            ### ✨ 功能
+            - 视频压制 (H.264/H.265 + 字幕烧录)
+            - 音频替换 / 音频抽取
+            - 转封装 (MKV → MP4)
+            - 质量检测报告
