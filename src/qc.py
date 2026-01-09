@@ -124,7 +124,15 @@ def _parse_ffprobe_output(file_path: str, data: Dict[str, Any]) -> MediaInfo:
     return info
 
 
-def check_compatibility(info: MediaInfo, max_bitrate_kbps: int = 0, max_resolution: str = "") -> MediaInfo:
+def check_compatibility(
+    info: MediaInfo,
+    max_bitrate_kbps: int = 0,
+    max_resolution: str = "",
+    min_bitrate_kbps: int = 0,
+    min_resolution: str = "",
+    check_pr_video: bool = False,
+    check_pr_image: bool = False,
+) -> MediaInfo:
     """
     检查媒体文件的兼容性和阈值。
 
@@ -132,33 +140,64 @@ def check_compatibility(info: MediaInfo, max_bitrate_kbps: int = 0, max_resoluti
         info: MediaInfo 对象。
         max_bitrate_kbps: 最大码率阈值 (kbps), 0 表示不检查。
         max_resolution: 最大分辨率 (如 "1920x1080"), 空表示不检查。
+        min_bitrate_kbps: 最小码率阈值 (kbps), 0 表示不检查。
+        min_resolution: 最小分辨率 (如 "1920x1080"), 空表示不检查。
+        check_pr_video: 是否开启 PR 视频兼容性检查。
+        check_pr_image: 是否开启 PR 图片兼容性检查。
 
     Returns:
         更新后的 MediaInfo (添加 warnings/errors)。
     """
-    # 容器兼容性
-    if info.container in PR_INCOMPATIBLE_CONTAINERS:
-        info.warnings.append(f"容器格式 {info.container} 可能无法导入 Premiere Pro")
-
-    if info.container in PR_INCOMPATIBLE_IMAGE_FORMATS:
-        info.errors.append(f"图片格式 {info.container} 不被 Premiere Pro 支持")
-
-    # 编码兼容性
-    if info.video_codec.lower() in PR_INCOMPATIBLE_CODECS:
-        info.warnings.append(f"视频编码 {info.video_codec} 可能无法导入 Premiere Pro")
-
-    # 码率阈值
+    # ----------------------------------------
+    # 1. 基础阈值检查
+    # ----------------------------------------
+    
+    # 最大码率阈值
     if max_bitrate_kbps > 0 and info.bitrate_kbps > max_bitrate_kbps:
-        info.warnings.append(f"码率 {info.bitrate_kbps}kbps 超过阈值 {max_bitrate_kbps}kbps")
+        info.warnings.append(f"码率 {info.bitrate_kbps}kbps 超过最大阈值 {max_bitrate_kbps}kbps")
 
-    # 分辨率阈值
+    # 最小码率阈值
+    if min_bitrate_kbps > 0 and info.bitrate_kbps < min_bitrate_kbps:
+        info.warnings.append(f"码率 {info.bitrate_kbps}kbps 低于最小阈值 {min_bitrate_kbps}kbps")
+
+    # 最大分辨率阈值
     if max_resolution:
         try:
             max_w, max_h = map(int, max_resolution.split("x"))
             if info.width > max_w or info.height > max_h:
-                info.warnings.append(f"分辨率 {info.width}x{info.height} 超过阈值 {max_resolution}")
+                info.warnings.append(f"分辨率 {info.width}x{info.height} 超过最大阈值 {max_resolution}")
         except:
             pass
+            
+    # 最小分辨率阈值
+    if min_resolution:
+        try:
+            min_w, min_h = map(int, min_resolution.split("x"))
+            if info.width < min_w or info.height < min_h:
+                info.warnings.append(f"分辨率 {info.width}x{info.height} 低于最小阈值 {min_resolution}")
+        except:
+            pass
+
+    # ----------------------------------------
+    # 2. Premiere Pro 兼容性检查
+    # ----------------------------------------
+    
+    if check_pr_video:
+        # 容器格式
+        if info.container in PR_INCOMPATIBLE_CONTAINERS:
+            info.warnings.append(f"[PR兼容性] 容器 {info.container} 可能无法导入 Premiere Pro")
+        
+        # 视频编码
+        if info.video_codec.lower() in PR_INCOMPATIBLE_CODECS:
+            info.warnings.append(f"[PR兼容性] 编码 {info.video_codec} 可能无法导入 Premiere Pro")
+            
+        # 变帧率 (VFR) 疑似检查 (简单逻辑：如果 probing 出来的 FPS 是整数或标准的小数，通常是 CFR；如果很奇怪可能是 VFR，这里暂且不深究，主要检查容器)
+        if info.container == ".mkv":
+             info.warnings.append(f"[PR兼容性] MKV 封装通常对 PR 不友好，建议转码或封装为 MP4/MOV")
+
+    if check_pr_image:
+        if info.container in PR_INCOMPATIBLE_IMAGE_FORMATS:
+            info.errors.append(f"[PR兼容性] 图片格式 {info.container} 不被 Premiere Pro 支持")
 
     return info
 
@@ -168,15 +207,23 @@ def scan_directory(
     extensions: Optional[List[str]] = None,
     max_bitrate_kbps: int = 0,
     max_resolution: str = "",
+    min_bitrate_kbps: int = 0,
+    min_resolution: str = "",
+    check_pr_video: bool = False,
+    check_pr_image: bool = False,
 ) -> List[MediaInfo]:
     """
     递归扫描目录下的媒体文件。
 
     Args:
         directory: 目标目录。
-        extensions: 要扫描的扩展名列表 (如 [".mp4", ".mov"])，None 表示所有常见视频格式。
+        extensions: 要扫描的扩展名列表。
         max_bitrate_kbps: 最大码率阈值。
         max_resolution: 最大分辨率阈值。
+        min_bitrate_kbps: 最小码率阈值。
+        min_resolution: 最小分辨率阈值。
+        check_pr_video: 检查 PR 视频兼容性。
+        check_pr_image: 检查 PR 图片兼容性。
 
     Returns:
         MediaInfo 列表。
@@ -197,7 +244,15 @@ def scan_directory(
                 print(f"  扫描: {file_path}")
                 info = probe_media(file_path)
                 if info:
-                    info = check_compatibility(info, max_bitrate_kbps, max_resolution)
+                    info = check_compatibility(
+                        info, 
+                        max_bitrate_kbps=max_bitrate_kbps, 
+                        max_resolution=max_resolution,
+                        min_bitrate_kbps=min_bitrate_kbps,
+                        min_resolution=min_resolution,
+                        check_pr_video=check_pr_video,
+                        check_pr_image=check_pr_image
+                    )
                     results.append(info)
 
     print(f"{Fore.GREEN}[完成] 共扫描 {len(results)} 个文件{Style.RESET_ALL}")

@@ -87,3 +87,22 @@ def generate_output_path(input_path: str, encoder: str) -> str:
     # 简化编码器名称
     encoder_short = encoder.replace('lib', '').replace('_', '')
     return f"{base}_{encoder_short}{ext}"
+
+
+def auto_generate_output_path(input_path: str, suffix: str, extension: str = None) -> str:
+    """
+    通用自动输出路径生成。
+    
+    Args:
+        input_path: 输入文件路径
+        suffix: 追加的后缀 (如 "_remux")
+        extension: 输出扩展名 (包含点, 如 ".mp4")。如果为 None，则沿用输入文件的扩展名。
+    
+    Returns:
+        生成的输出路径
+    """
+    base, input_ext = os.path.splitext(input_path)
+    if extension is None:
+        extension = input_ext
+    
+    return f"{base}{suffix}{extension}"

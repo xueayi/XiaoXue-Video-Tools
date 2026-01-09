@@ -71,3 +71,15 @@ CPU_PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
 
 # NVENC 速度预设
 NVENC_PRESETS = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"]
+
+# 分辨率预设 (用于 QC 检测)
+RESOLUTION_PRESETS = {
+    "不限制": "",
+    "4K (3840x2160)": "3840x2160",
+    "2K (2560x1440)": "2560x1440",
+    "1080P (1920x1080)": "1920x1080",
+    "720P (1280x720)": "1280x720",
+    "480P (854x480)": "854x480",
+    "自定义": "custom"
+}
+

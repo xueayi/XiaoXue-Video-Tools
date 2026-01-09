@@ -35,8 +35,9 @@ from src.presets import (
     AUDIO_BITRATES,
     CPU_PRESETS,
     NVENC_PRESETS,
+    RESOLUTION_PRESETS,
 )
-from src.utils import get_base_dir, generate_output_path
+from src.utils import get_base_dir, generate_output_path, auto_generate_output_path
 
 
 # 获取图标路径 (可选)
@@ -230,11 +231,12 @@ def main():
     )
     audio_io.add_argument(
         "--audio-output",
-        metavar="输出路径",
-        required=True,
+        metavar="输出路径 (可选)",
+        required=False,
+        default="",
         widget="FileSaver",
         gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|所有文件 (*.*)|*.*"},
-        help="选择输出文件的保存位置",
+        help="留空则自动生成: [原视频名]_replaced.mp4",
     )
 
     audio_settings = audio_parser.add_argument_group("音频设置")
@@ -269,11 +271,12 @@ def main():
     )
     remux_io.add_argument(
         "--remux-output",
-        metavar="输出路径",
-        required=True,
+        metavar="输出路径 (可选)",
+        required=False,
+        default="",
         widget="FileSaver",
         gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|MKV 文件 (*.mkv)|*.mkv|MOV 文件 (*.mov)|*.mov|所有文件 (*.*)|*.*"},
-        help="选择输出文件 (通过扩展名决定容器格式)",
+        help="留空则自动生成: [原文件名]_remux.[ext]",
     )
 
     # ========================
@@ -291,11 +294,12 @@ def main():
     )
     qc_io.add_argument(
         "--report-output",
-        metavar="报告输出路径",
-        required=True,
+        metavar="报告输出路径 (可选)",
+        required=False,
+        default="",
         widget="FileSaver",
         gooey_options={"wildcard": "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*"},
-        help="选择报告保存位置",
+        help="留空则自动生成: [扫描目录内]/QC_报告.txt",
     )
 
     qc_thresholds = qc_parser.add_argument_group("阈值设置 (可选)")
@@ -307,10 +311,53 @@ def main():
         help="超过此码率将警告 (0 表示不检查)",
     )
     qc_thresholds.add_argument(
-        "--max-resolution",
-        metavar="最大分辨率",
+        "--min-bitrate",
+        metavar="最小码率 (kbps)",
+        type=int,
+        default=0,
+        help="低于此码率将警告 (0 表示不检查)",
+    )
+    qc_thresholds.add_argument(
+        "--max-res-preset",
+        metavar="最大分辨率 (预设)",
+        choices=list(RESOLUTION_PRESETS.keys()),
+        default="不限制",
+        help="选择最大分辨率预设，或选择 '自定义'",
+    )
+    qc_thresholds.add_argument(
+        "--max-res-custom",
+        metavar="最大分辨率 (自定义)",
         default="",
-        help="超过此分辨率将警告 (如 1920x1080, 留空不检查)",
+        help="如果上方选择 '自定义'，请在此输入 (如 1920x1080), 留空不检查",
+    )
+    qc_thresholds.add_argument(
+        "--min-res-preset",
+        metavar="最小分辨率 (预设)",
+        choices=list(RESOLUTION_PRESETS.keys()),
+        default="不限制",
+        help="选择最小分辨率预设，或选择 '自定义'",
+    )
+    qc_thresholds.add_argument(
+        "--min-res-custom",
+        metavar="最小分辨率 (自定义)",
+        default="",
+        help="如果上方选择 '自定义'，请在此输入 (如 1280x720), 留空不检查",
+    )
+    
+    qc_pr = qc_parser.add_argument_group("Premiere Pro 兼容性检测")
+    qc_pr.add_argument(
+        "--check-pr-video",
+        metavar="PR 视频兼容性",
+        action="store_true",
+        default=False,
+        help="检测可能会导致 PR 导入问题的视频格式 (如 MKV, VFR)",
+    )
+    qc_pr.add_argument(
+        "--check-pr-image",
+        metavar="PR 图片兼容性",
+        action="store_true",
+        default=False,
+        help="检测可能会导致 PR 导入问题的图片格式",
     )
 
     # ========================
@@ -329,11 +376,12 @@ def main():
     )
     extract_io.add_argument(
         "--extract-output",
-        metavar="输出音频",
-        required=True,
+        metavar="输出音频 (可选)",
+        required=False,
+        default="",
         widget="FileSaver",
         gooey_options={"wildcard": "MP3 文件 (*.mp3)|*.mp3|AAC 文件 (*.aac)|*.aac|WAV 文件 (*.wav)|*.wav|FLAC 文件 (*.flac)|*.flac|所有文件 (*.*)|*.*"},
-        help="选择音频输出路径 (通过扩展名决定格式)",
+        help="留空则自动生成: [原视频名]_extract.[ext]",
     )
 
     extract_settings = extract_parser.add_argument_group("音频设置")
@@ -421,10 +469,15 @@ def execute_replace_audio(args):
     print(f"{Fore.CYAN}[小雪工具箱] 音频替换任务开始{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
 
+    output_path = args.audio_output
+    if not output_path:
+        output_path = auto_generate_output_path(args.video_input, "_replaced")
+        print(f"[自动生成输出路径] {output_path}", flush=True)
+
     cmd = build_replace_audio_command(
         video_path=args.video_input,
         audio_path=args.audio_input,
-        output_path=args.audio_output,
+        output_path=output_path,
         audio_encoder=AUDIO_ENCODERS.get(args.audio_enc, "aac"),
         audio_bitrate=args.audio_br,
     )
@@ -438,9 +491,14 @@ def execute_remux(args):
     print(f"{Fore.CYAN}[小雪工具箱] 转封装任务开始{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
 
+    output_path = args.remux_output
+    if not output_path:
+        output_path = auto_generate_output_path(args.remux_input, "_remux")
+        print(f"[自动生成输出路径] {output_path}", flush=True)
+
     cmd = build_remux_command(
         input_path=args.remux_input,
-        output_path=args.remux_output,
+        output_path=output_path,
     )
 
     run_ffmpeg_command(cmd)
@@ -452,13 +510,35 @@ def execute_qc(args):
     print(f"{Fore.CYAN}[小雪工具箱] 质量检测任务开始{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
 
+    report_path = args.report_output
+    if not report_path:
+        # 如果是目录，则在目录下生成
+        if os.path.isdir(args.scan_dir):
+            report_path = os.path.join(args.scan_dir, "QC_报告.txt")
+        else:
+            report_path = auto_generate_output_path(args.scan_dir, "_QC_报告", ".txt")
+        print(f"[自动生成报告路径] {report_path}", flush=True)
+
+    # 处理分辨率预设
+    max_res = RESOLUTION_PRESETS.get(args.max_res_preset, "")
+    if max_res == "custom":
+        max_res = args.max_res_custom
+        
+    min_res = RESOLUTION_PRESETS.get(args.min_res_preset, "")
+    if min_res == "custom":
+        min_res = args.min_res_custom
+
     results = scan_directory(
         directory=args.scan_dir,
         max_bitrate_kbps=args.max_bitrate,
-        max_resolution=args.max_resolution,
+        max_resolution=max_res,
+        min_bitrate_kbps=args.min_bitrate,
+        min_resolution=min_res,
+        check_pr_video=args.check_pr_video,
+        check_pr_image=args.check_pr_image,
     )
 
-    report = generate_report(results, args.report_output)
+    report = generate_report(results, report_path)
 
     # 在终端显示报告预览
     print("\n" + "=" * 50)
@@ -473,9 +553,24 @@ def execute_extract_audio(args):
     print(f"{Fore.CYAN}[小雪工具箱] 音频抽取任务开始{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
 
+    output_path = args.extract_output
+    if not output_path:
+        # 简单推断扩展名
+        encoder_key = args.extract_encoder
+        ext = ".m4a"
+        if "MP3" in encoder_key:
+            ext = ".mp3"
+        elif "WAV" in encoder_key:
+            ext = ".wav"
+        elif "FLAC" in encoder_key:
+            ext = ".flac"
+        
+        output_path = auto_generate_output_path(args.extract_input, "_extract", ext)
+        print(f"[自动生成输出路径] {output_path}", flush=True)
+
     cmd = build_extract_audio_command(
         input_path=args.extract_input,
-        output_path=args.extract_output,
+        output_path=output_path,
         audio_encoder=AUDIO_ENCODERS.get(args.extract_encoder, "aac"),
         audio_bitrate=args.extract_bitrate,
     )
