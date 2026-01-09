@@ -206,31 +206,46 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None) -> int:
     Returns:
         进程返回码。
     """
-    print(f"{Fore.CYAN}[小雪工具箱] 执行命令:{Style.RESET_ALL}")
-    print(" ".join(cmd))
-    print("-" * 50)
+    print(f"{Fore.CYAN}[小雪工具箱] 执行命令:{Style.RESET_ALL}", flush=True)
+    print(" ".join(cmd), flush=True)
+    print("-" * 50, flush=True)
 
-    # 使用 Popen 以实时读取输出
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        universal_newlines=True,
-        encoding='utf-8',
-        errors='replace',
-        creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-    )
+    try:
+        # 使用 Popen 以实时读取输出
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            encoding='utf-8',
+            errors='replace',
+            bufsize=1,  # 行缓冲
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+        )
 
-    for line in process.stdout:
-        print(line, end='')
-        if progress_callback:
-            progress_callback(line)
+        # 实时读取输出
+        while True:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                print(line, end='', flush=True)
+                if progress_callback:
+                    progress_callback(line)
 
-    process.wait()
+        process.wait()
 
-    if process.returncode == 0:
-        print(f"\n{Fore.GREEN}[成功] 任务完成!{Style.RESET_ALL}")
-    else:
-        print(f"\n{Fore.RED}[失败] FFmpeg 返回错误 (code={process.returncode}){Style.RESET_ALL}")
+        if process.returncode == 0:
+            print(f"\n{Fore.GREEN}[成功] 任务完成!{Style.RESET_ALL}", flush=True)
+        else:
+            print(f"\n{Fore.RED}[失败] FFmpeg 返回错误 (code={process.returncode}){Style.RESET_ALL}", flush=True)
 
-    return process.returncode
+        return process.returncode
+
+    except FileNotFoundError as e:
+        print(f"\n{Fore.RED}[错误] 找不到 FFmpeg: {e}{Style.RESET_ALL}", flush=True)
+        print(f"请确保 bin 目录下有 ffmpeg.exe", flush=True)
+        return -1
+    except Exception as e:
+        print(f"\n{Fore.RED}[错误] 执行失败: {e}{Style.RESET_ALL}", flush=True)
+        return -1

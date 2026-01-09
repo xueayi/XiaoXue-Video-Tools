@@ -36,7 +36,7 @@ from src.presets import (
     CPU_PRESETS,
     NVENC_PRESETS,
 )
-from src.utils import get_base_dir
+from src.utils import get_base_dir, generate_output_path
 
 
 # 获取图标路径 (可选)
@@ -117,11 +117,12 @@ def main():
     )
     io_group.add_argument(
         "--output",
-        metavar="输出路径",
-        required=True,
+        metavar="输出路径 (可选)",
+        required=False,
+        default="",
         widget="FileSaver",
         gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|MKV 文件 (*.mkv)|*.mkv|所有文件 (*.*)|*.*"},
-        help="选择输出文件的保存位置",
+        help="留空则自动生成: 输入文件名_编码器.mp4",
     )
     io_group.add_argument(
         "--subtitle",
@@ -370,14 +371,35 @@ def main():
 
 def execute_encode(args):
     """执行视频压制任务。"""
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}[小雪工具箱] 视频压制任务开始{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}", flush=True)
+    print(f"{Fore.CYAN}[小雪工具箱] 视频压制任务开始{Style.RESET_ALL}", flush=True)
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}", flush=True)
+
+    # 获取实际使用的编码器
+    preset_name = args.preset
+    if preset_name and preset_name in QUALITY_PRESETS and preset_name != "自定义 (Custom)":
+        preset = QUALITY_PRESETS[preset_name]
+        actual_encoder = preset.get("encoder", "libx264")
+        print(f"[预设] {preset_name}", flush=True)
+        print(f"  编码器: {actual_encoder}", flush=True)
+        print(f"  CRF: {preset.get('crf', 'N/A')}", flush=True)
+        print(f"  速度: {preset.get('preset', 'N/A')}", flush=True)
+    else:
+        actual_encoder = ENCODERS.get(args.encoder, "libx264")
+        print(f"[自定义模式]", flush=True)
+        print(f"  编码器: {actual_encoder}", flush=True)
+        print(f"  CRF: {args.crf}", flush=True)
+
+    # 自动生成输出路径 (如果未指定或为空)
+    output_path = args.output
+    if not output_path or output_path.strip() == "":
+        output_path = generate_output_path(args.input, actual_encoder)
+        print(f"[自动生成输出路径] {output_path}", flush=True)
 
     # 构建命令
     cmd = build_encode_command(
         input_path=args.input,
-        output_path=args.output,
+        output_path=output_path,
         preset_name=args.preset,
         encoder=args.encoder,
         crf=args.crf if args.preset == "自定义 (Custom)" else None,

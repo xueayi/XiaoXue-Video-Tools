@@ -20,22 +20,70 @@ def get_base_dir() -> str:
         return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def get_internal_dir() -> str:
+    """
+    获取 PyInstaller 打包后的 _internal 目录。
+    - 打包后: _MEIPASS 或 exe 同级的 _internal 目录
+    - 开发模式: 项目根目录
+    """
+    if getattr(sys, 'frozen', False):
+        # PyInstaller >= 6.0 使用 _internal 目录
+        # 优先使用 _MEIPASS (onefile 模式)
+        if hasattr(sys, '_MEIPASS'):
+            return sys._MEIPASS
+        # onedir 模式: _internal 在 exe 同级
+        return os.path.join(os.path.dirname(sys.executable), '_internal')
+    else:
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
 def get_ffmpeg_path() -> str:
     """获取 ffmpeg.exe 的绝对路径。"""
-    return os.path.join(get_base_dir(), 'bin', 'ffmpeg.exe')
+    # 先检查 _internal/bin (打包后)
+    internal_path = os.path.join(get_internal_dir(), 'bin', 'ffmpeg.exe')
+    if os.path.exists(internal_path):
+        return internal_path
+    # 再检查项目根目录/bin (开发模式)
+    base_path = os.path.join(get_base_dir(), 'bin', 'ffmpeg.exe')
+    return base_path
 
 
 def get_ffprobe_path() -> str:
     """获取 ffprobe.exe 的绝对路径。"""
-    return os.path.join(get_base_dir(), 'bin', 'ffprobe.exe')
+    # 先检查 _internal/bin (打包后)
+    internal_path = os.path.join(get_internal_dir(), 'bin', 'ffprobe.exe')
+    if os.path.exists(internal_path):
+        return internal_path
+    # 再检查项目根目录/bin (开发模式)
+    base_path = os.path.join(get_base_dir(), 'bin', 'ffprobe.exe')
+    return base_path
 
 
 def escape_path_for_ffmpeg(path: str) -> str:
     """
     对路径进行转义，以便在 FFmpeg 的 -vf subtitles 等滤镜中使用。
     Windows 路径中的反斜杠和冒号需要特殊处理。
+    
+    FFmpeg subtitles 滤镜需要:
+    1. 反斜杠转为正斜杠
+    2. 冒号转义为 \\:
+    3. 单引号需要额外处理
     """
-    # 替换反斜杠为正斜杠，再转义冒号
+    # 替换反斜杠为正斜杠
     path = path.replace('\\', '/')
-    path = path.replace(':', r'\\:')
+    # 转义冒号 (FFmpeg 滤镜语法要求)
+    path = path.replace(':', '\\:')
+    # 转义单引号
+    path = path.replace("'", "'\\''")
     return path
+
+
+def generate_output_path(input_path: str, encoder: str) -> str:
+    """
+    根据输入路径和编码器生成输出路径。
+    例如: input.mp4 + libx264 -> input_libx264.mp4
+    """
+    base, ext = os.path.splitext(input_path)
+    # 简化编码器名称
+    encoder_short = encoder.replace('lib', '').replace('_', '')
+    return f"{base}_{encoder_short}{ext}"

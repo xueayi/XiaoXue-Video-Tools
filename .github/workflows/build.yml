@@ -44,24 +44,24 @@ jobs:
       
       - name: Build with PyInstaller
         run: |
-          pyinstaller --name "小雪工具箱" --windowed --add-data "bin;bin" --noconfirm main.py
+          pyinstaller --name "XiaoXue" --windowed --add-data "bin;bin" --noconfirm main.py
       
       - name: Create release package
         run: |
-          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "小雪工具箱_Windows_x64.zip"
+          Compress-Archive -Path "dist\XiaoXue\*" -DestinationPath "XiaoXue_Windows_x64.zip"
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: XiaoXue-Video-Tools
-          path: 小雪工具箱_Windows_x64.zip
+          path: XiaoXue_Windows_x64.zip
           retention-days: 30
       
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: 小雪工具箱_Windows_x64.zip
+          files: XiaoXue_Windows_x64.zip
           generate_release_notes: true
           draft: false
           prerelease: false
@@ -72,8 +72,8 @@ jobs:
             一个简单的视频压制与检测工具。
             
             ### 📦 下载说明
-            - 下载 `小雪工具箱_Windows_x64.zip`
-            - 解压后运行 `小雪工具箱.exe` 即可
+            - 下载 `XiaoXue_Windows_x64.zip`
+            - 解压后运行 `XiaoXue.exe` 即可
             
             ### ✨ 功能
             - 视频压制 (H.264/H.265 + 字幕烧录)
