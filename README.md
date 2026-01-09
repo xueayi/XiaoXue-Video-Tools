@@ -1,6 +1,6 @@
 # 小雪工具箱 (XiaoXue Video Toolbox)
 
-专为 **Bilibili UP 主**打造的视频压制与素材质量检测工具。基于 Python + Gooey 图形界面，内置 FFmpeg，开箱即用。
+一个简单的的视频压制与素材质量检测工具。基于 Python + Gooey 图形界面，内置 FFmpeg，开箱即用。
 
 ## ✨ 功能一览
 
@@ -12,7 +12,11 @@
 | **质量检测** | 递归扫描文件夹，检测 PR 不兼容格式、码率/分辨率阈值，输出报告 |
 | **音频抽取** | 从视频中提取音频轨道，支持 MP3/AAC/WAV/FLAC 格式 |
 
-## 🚀 快速开始
+## 从发布包运行
+
+在release页下载打包好的exe文件，直接运行即可。
+
+## 🚀 从源代码运行
 
 ### 方式一：直接运行 (需要 Python 环境)
 
@@ -24,7 +28,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-### 方式二：打包为独立 EXE (推荐分发)
+### 方式二：打包为独立 EXE 
 
 ```bash
 # 安装 PyInstaller
@@ -36,7 +40,7 @@ pyinstaller --name "小雪工具箱" --windowed --add-data "bin;bin" main.py
 # 产物在 dist/小雪工具箱/ 目录下
 ```
 
-> 📦 打包后直接发送整个文件夹给朋友即可，无需安装 Python！
+> 📦 打包后直接使用exe运行即可
 
 ## 🎛️ 编码器支持
 
