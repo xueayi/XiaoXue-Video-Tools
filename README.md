@@ -98,6 +98,7 @@ pyinstaller --name "小雪工具箱" --windowed --add-data "bin;bin" main.py
 1. **中文路径**：已适配，但建议避免过长或特殊字符
 2. **字幕编码**：烧录字幕建议使用 UTF-8 编码的 SRT/ASS 文件
 3. **硬件加速**：如选择 NVENC/QSV/AMF 但设备不支持，FFmpeg 会报错
+4. **自动化发布**：`git tag v*` 和 `git push origin v*` 可以自动触发 CI/CD 发布
 
 ## 📝 许可证
 
