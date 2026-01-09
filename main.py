@@ -6,12 +6,12 @@
 import os
 import sys
 
-# PyInstaller 无窗口模式 (--windowed) 下 stdout/stderr 为 None
-# 需要重定向以避免 colored 库报错
-if sys.stdout is None:
-    sys.stdout = open(os.devnull, 'w', encoding='utf-8')
-if sys.stderr is None:
-    sys.stderr = open(os.devnull, 'w', encoding='utf-8')
+import os
+import sys
+
+# 初始化日志系统 (包含 IO 修复)
+from src.log_utils import setup_logging
+logger = setup_logging()
 
 from gooey import Gooey, GooeyParser
 from colorama import init as colorama_init, Fore, Style
