@@ -18,10 +18,30 @@
 
 ## 🚀 从源代码运行
 
-### 方式一：直接运行 (需要 Python 环境)
+### 前置条件：下载 FFmpeg
+
+源代码仓库不包含 FFmpeg 二进制文件，需要手动下载放入 `bin/` 目录。
+
+**方式一：下载 LGPL 精简版 (推荐，约 80MB)**
+```powershell
+# Windows PowerShell
+Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip" -OutFile "ffmpeg.zip"
+Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
+New-Item -ItemType Directory -Force -Path "bin"
+Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-lgpl\bin\ffmpeg.exe" -Destination "bin\"
+Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-lgpl\bin\ffprobe.exe" -Destination "bin\"
+Remove-Item -Recurse -Force "ffmpeg_temp", "ffmpeg.zip"
+```
+
+**方式二：下载 GPL 完整版 (约 200MB，含更多编码器)**
+- 下载地址：[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases)
+- 选择 `ffmpeg-master-latest-win64-gpl.zip`
+- 解压后将 `bin/ffmpeg.exe` 和 `bin/ffprobe.exe` 复制到项目 `bin/` 目录
+
+### 安装依赖并运行
 
 ```bash
-# 1. 安装依赖
+# 1. 安装 Python 依赖
 pip install -r requirements.txt
 
 # 2. 运行程序
