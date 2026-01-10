@@ -217,7 +217,7 @@ GOOEY_CONFIG = {
                     "menuTitle": "关于小雪工具箱",
                     "name": "小雪工具箱",
                     "description": "一个简单的视频压制与检测工具",
-                    "version": "1.2.0",
+                    "version": "1.2.3",
                     "developer": "雪阿宜",
                     "website": "https://github.com/xueayi/XiaoXue-Video-Tools",
                 },
@@ -348,45 +348,46 @@ def execute_encode(args):
             print(f"  视频码率: {video_bitrate}", flush=True)
 
     # 2-Pass 编码模式 - 使用真正的两遍编码
-    if rc_mode == "2pass" and video_bitrate:
+    # 严格模式: 只有在自定义模式下，且选择了 2-pass 且设置了码率时才启用
+    if is_custom and rc_mode == "2pass" and video_bitrate:
         print(f"{Fore.CYAN}[2-Pass 模式] 将执行真正的两遍编码{Style.RESET_ALL}", flush=True)
         
         pass1_cmd, pass2_cmd = build_2pass_commands(
             input_path=args.input,
             output_path=output_path,
             preset_name=args.preset,
-            encoder=args.encoder if is_custom else None,  # 非自定义模式不传入编码器
+            encoder=args.encoder if is_custom else None,
             bitrate=video_bitrate,
             speed_preset=getattr(args, 'speed_preset', None) if is_custom else None,
-            resolution=args.resolution if args.resolution else None,
-            fps=args.fps if args.fps > 0 else None,
-            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac"),
-            audio_bitrate=args.audio_bitrate,
+            resolution=args.resolution if args.resolution and is_custom else None,
+            fps=args.fps if args.fps > 0 and is_custom else None,
+            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac") if is_custom else "aac",
+            audio_bitrate=args.audio_bitrate if is_custom else None,
             subtitle_path=args.subtitle if args.subtitle else None,
             extra_args=args.extra_args if args.extra_args else None,
         )
         
-        run_2pass_encode(pass1_cmd, pass2_cmd)
+        run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=args.debug_mode)
     else:
         # 普通编码模式
         cmd = build_encode_command(
             input_path=args.input,
             output_path=output_path,
             preset_name=args.preset,
-            encoder=args.encoder if is_custom else None,  # 非自定义模式不传入编码器，使用预设值
+            encoder=args.encoder if is_custom else None,
             crf=args.crf if is_custom else None,
-            bitrate=video_bitrate if video_bitrate else None,
+            bitrate=video_bitrate if (is_custom and video_bitrate) else None,
             speed_preset=getattr(args, 'speed_preset', None) if is_custom else None,
-            resolution=args.resolution if args.resolution else None,
-            fps=args.fps if args.fps > 0 else None,
-            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac"),
-            audio_bitrate=args.audio_bitrate,
+            resolution=args.resolution if args.resolution and is_custom else None,
+            fps=args.fps if args.fps > 0 and is_custom else None,
+            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac") if is_custom else "aac",
+            audio_bitrate=args.audio_bitrate if is_custom else None,
             subtitle_path=args.subtitle if args.subtitle else None,
             extra_args=args.extra_args if args.extra_args else None,
-            rc_mode=rc_mode if rc_mode != "crf" else None,
+            rc_mode=rc_mode if (is_custom and rc_mode != "crf") else None,
         )
 
-        run_ffmpeg_command(cmd)
+        run_ffmpeg_command(cmd, dry_run=args.debug_mode)
 
 
 def execute_replace_audio(args):

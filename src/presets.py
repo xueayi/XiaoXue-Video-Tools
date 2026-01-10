@@ -43,7 +43,19 @@ QUALITY_PRESETS = {
         "resolution": None,
         "fps": None,
         "audio_bitrate": "192k",
+        "extra_args": "-rc vbr -b:v 0 -maxrate 20M",
         "description": "利用 NVIDIA 显卡快速编码，适合赶稿。"
+    },
+    "【画质优先】NVIDIA 显卡加速 (HQ)": {
+        "encoder": "h264_nvenc",
+        "crf": None,
+        "cq": 19,
+        "preset": "p7",
+        "resolution": None,
+        "fps": None,
+        "audio_bitrate": "320k",
+        "extra_args": "-rc vbr -b:v 0 -maxrate 20M",
+        "description": "N 卡高质量导出，使用动态码率 (VBR) 和 p7 预设。"
     },
     "自定义 (Custom)": {
         "encoder": None,

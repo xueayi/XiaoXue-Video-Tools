@@ -184,6 +184,13 @@ def register_encode_tab(subs) -> None:
         default="",
         help="多个参数用空格分隔，会追加到命令末尾",
     )
+    extra_group.add_argument(
+        "--debug_mode",
+        metavar="Debug 模式",
+        help="勾选后仅打印 FFmpeg 命令，不执行实际编码。",
+        action="store_true",
+        default=False
+    )
 
 
 def register_replace_audio_tab(subs) -> None:

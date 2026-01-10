@@ -12,6 +12,10 @@ from colorama import Fore, Style
 from .utils import get_ffmpeg_path, escape_path_for_ffmpeg
 from .presets import QUALITY_PRESETS, ENCODERS
 
+# 初始化 Logger
+import logging
+logger = logging.getLogger(__name__)
+
 
 def build_encode_command(
     input_path: str,
@@ -58,14 +62,25 @@ def build_encode_command(
     if preset_name and preset_name in QUALITY_PRESETS and preset_name != "自定义 (Custom)":
         preset = QUALITY_PRESETS[preset_name]
         encoder = encoder or preset.get("encoder")
-        crf = crf if crf is not None else preset.get("crf")
+        
+        # 修复: 正确读取 cq 值 (如果预设中有 cq，则覆盖 crf)
+        if "cq" in preset and preset["cq"] is not None:
+            crf = preset["cq"]
+        else:
+            crf = crf if crf is not None else preset.get("crf")
+            
         speed_preset = speed_preset or preset.get("preset")
         resolution = resolution or preset.get("resolution")
         fps = fps if fps is not None else preset.get("fps")
         audio_bitrate = audio_bitrate or preset.get("audio_bitrate", "192k")
-        # NVENC 使用 cq 而非 crf
-        if "cq" in preset and preset["cq"] is not None:
-            crf = None  # 禁用 crf
+        
+        # 支持预设中的额外参数
+        if preset.get("extra_args"):
+            preset_extra = preset.get("extra_args")
+            if extra_args:
+                extra_args = f"{preset_extra} {extra_args}"
+            else:
+                extra_args = preset_extra
 
     # 视频滤镜链
     vf_filters = []
@@ -275,20 +290,30 @@ def build_extract_audio_command(
     return cmd
 
 
-def run_ffmpeg_command(cmd: List[str], progress_callback=None) -> int:
+def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = False) -> int:
     """
     执行 FFmpeg 命令，实时打印输出。
 
     Args:
         cmd: 命令列表。
         progress_callback: 可选的进度回调函数。
+        dry_run: 若为 True，仅打印命令不执行。
 
     Returns:
         进程返回码。
     """
+    cmd_str = " ".join(cmd)
+    
+    # 记录到日志文件
+    logger.info(f"Executing command: {cmd_str}")
+    
     print(f"{Fore.CYAN}[小雪工具箱] 执行命令:{Style.RESET_ALL}", flush=True)
-    print(" ".join(cmd), flush=True)
+    print(cmd_str, flush=True)
     print("-" * 50, flush=True)
+
+    if dry_run:
+        print(f"{Fore.YELLOW}[Debug 模式] 仅输出命令，不执行。{Style.RESET_ALL}", flush=True)
+        return 0
 
     # 收集输出用于错误分析
     output_lines = []
@@ -560,22 +585,37 @@ def build_2pass_commands(
     return pass1_cmd, pass2_cmd
 
 
-def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str]) -> int:
+def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool = False) -> int:
     """
     执行真正的两遍编码。
 
     Args:
         pass1_cmd: 第一遍命令。
         pass2_cmd: 第二遍命令。
+        dry_run: 若为 True，仅打印命令不执行。
 
     Returns:
         最终返回码 (0 表示成功)。
     """
+    if dry_run:
+        logger.info(f"[2-Pass] Dry Run")
+        logger.info(f"Pass 1: {' '.join(pass1_cmd)}")
+        logger.info(f"Pass 2: {' '.join(pass2_cmd)}")
+        
+        print(f"{Fore.CYAN}[小雪工具箱] 执行命令 (2-Pass):{Style.RESET_ALL}", flush=True)
+        print(f"Pass 1: {' '.join(pass1_cmd)}", flush=True)
+        print(f"Pass 2: {' '.join(pass2_cmd)}", flush=True)
+        print(f"{Fore.YELLOW}[Debug 模式] 仅输出命令，不执行。{Style.RESET_ALL}", flush=True)
+        return 0
     print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}[Pass 1/2] 分析视频...{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
 
-    result1 = run_ffmpeg_command(pass1_cmd)
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[Pass 1/2] 分析视频...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+
+    result1 = run_ffmpeg_command(pass1_cmd, dry_run=False)
     
     if result1 != 0:
         print(f"\n{Fore.RED}[错误] Pass 1 失败，终止编码{Style.RESET_ALL}")
@@ -585,7 +625,11 @@ def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str]) -> int:
     print(f"{Fore.CYAN}[Pass 2/2] 正式编码...{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
 
-    result2 = run_ffmpeg_command(pass2_cmd)
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[Pass 2/2] 正式编码...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+
+    result2 = run_ffmpeg_command(pass2_cmd, dry_run=False)
 
     # 清理 2-pass 临时文件
     for ext in [".log", ".log.mbtree", "-0.log", "-0.log.mbtree"]:
