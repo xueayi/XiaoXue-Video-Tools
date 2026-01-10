@@ -20,7 +20,7 @@ PR_INCOMPATIBLE_CONTAINERS = {".mkv", ".webm", ".ogv", ".ogg", ".flv"}
 PR_INCOMPATIBLE_CODECS = {"vp8", "vp9", "av1", "theora"}
 
 # 不兼容的图片格式 (作为视频序列导入时可能有问题)
-PR_INCOMPATIBLE_IMAGE_FORMATS = {".webp"}
+PR_INCOMPATIBLE_IMAGE_FORMATS = {".webp", ".heic", ".avif"}
 
 
 @dataclass
@@ -130,8 +130,11 @@ def check_compatibility(
     max_resolution: str = "",
     min_bitrate_kbps: int = 0,
     min_resolution: str = "",
-    check_pr_video: bool = False,
-    check_pr_image: bool = False,
+    check_pr_video: bool = True,
+    check_pr_image: bool = True,
+    incompatible_containers: Optional[set] = None,
+    incompatible_codecs: Optional[set] = None,
+    incompatible_images: Optional[set] = None,
 ) -> MediaInfo:
     """
     检查媒体文件的兼容性和阈值。
@@ -144,10 +147,18 @@ def check_compatibility(
         min_resolution: 最小分辨率 (如 "1920x1080"), 空表示不检查。
         check_pr_video: 是否开启 PR 视频兼容性检查。
         check_pr_image: 是否开启 PR 图片兼容性检查。
+        incompatible_containers: 自定义不兼容容器集合 (如 {".mkv", ".webm"})。
+        incompatible_codecs: 自定义不兼容编码集合 (如 {"vp9", "av1"})。
+        incompatible_images: 自定义不兼容图片格式集合 (如 {".webp"})。
 
     Returns:
         更新后的 MediaInfo (添加 warnings/errors)。
     """
+    # 使用用户自定义规则或默认规则
+    containers_to_check = incompatible_containers if incompatible_containers else PR_INCOMPATIBLE_CONTAINERS
+    codecs_to_check = incompatible_codecs if incompatible_codecs else PR_INCOMPATIBLE_CODECS
+    images_to_check = incompatible_images if incompatible_images else PR_INCOMPATIBLE_IMAGE_FORMATS
+    
     # ----------------------------------------
     # 1. 基础阈值检查
     # ----------------------------------------
@@ -179,25 +190,25 @@ def check_compatibility(
             pass
 
     # ----------------------------------------
-    # 2. Premiere Pro 兼容性检查
+    # 2. 兼容性检查 (使用自定义或默认规则)
     # ----------------------------------------
     
     if check_pr_video:
         # 容器格式
-        if info.container in PR_INCOMPATIBLE_CONTAINERS:
-            info.warnings.append(f"[PR兼容性] 容器 {info.container} 可能无法导入 Premiere Pro")
+        if info.container in containers_to_check:
+            info.warnings.append(f"[兼容性] 容器 {info.container} 可能导致兼容性问题")
         
         # 视频编码
-        if info.video_codec.lower() in PR_INCOMPATIBLE_CODECS:
-            info.warnings.append(f"[PR兼容性] 编码 {info.video_codec} 可能无法导入 Premiere Pro")
+        if info.video_codec.lower() in codecs_to_check:
+            info.warnings.append(f"[兼容性] 编码 {info.video_codec} 可能导致兼容性问题")
             
-        # 变帧率 (VFR) 疑似检查 (简单逻辑：如果 probing 出来的 FPS 是整数或标准的小数，通常是 CFR；如果很奇怪可能是 VFR，这里暂且不深究，主要检查容器)
+        # MKV 封装额外提示
         if info.container == ".mkv":
-             info.warnings.append(f"[PR兼容性] MKV 封装通常对 PR 不友好，建议转码或封装为 MP4/MOV")
+             info.warnings.append(f"[兼容性] MKV 封装对某些软件不友好，建议转封装为 MP4/MOV")
 
     if check_pr_image:
-        if info.container in PR_INCOMPATIBLE_IMAGE_FORMATS:
-            info.errors.append(f"[PR兼容性] 图片格式 {info.container} 不被 Premiere Pro 支持")
+        if info.container in images_to_check:
+            info.errors.append(f"[兼容性] 图片格式 {info.container} 可能不被支持")
 
     return info
 
@@ -211,6 +222,9 @@ def scan_directory(
     min_resolution: str = "",
     check_pr_video: bool = False,
     check_pr_image: bool = False,
+    incompatible_containers: Optional[set] = None,
+    incompatible_codecs: Optional[set] = None,
+    incompatible_images: Optional[set] = None,
 ) -> List[MediaInfo]:
     """
     递归扫描目录下的媒体文件。
@@ -224,6 +238,9 @@ def scan_directory(
         min_resolution: 最小分辨率阈值。
         check_pr_video: 检查 PR 视频兼容性。
         check_pr_image: 检查 PR 图片兼容性。
+        incompatible_containers: 自定义不兼容容器集合。
+        incompatible_codecs: 自定义不兼容编码集合。
+        incompatible_images: 自定义不兼容图片格式集合。
 
     Returns:
         MediaInfo 列表。
@@ -231,6 +248,9 @@ def scan_directory(
     if extensions is None:
         extensions = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".ts", ".mts", ".m2ts"]
 
+    # 使用自定义或默认的图片格式集合
+    image_formats = incompatible_images if incompatible_images else PR_INCOMPATIBLE_IMAGE_FORMATS
+    
     extensions = [ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in extensions]
     results = []
 
@@ -239,7 +259,7 @@ def scan_directory(
     for root, dirs, files in os.walk(directory):
         for filename in files:
             ext = os.path.splitext(filename)[1].lower()
-            if ext in extensions or ext in PR_INCOMPATIBLE_IMAGE_FORMATS:
+            if ext in extensions or ext in image_formats:
                 file_path = os.path.join(root, filename)
                 print(f"  扫描: {file_path}")
                 info = probe_media(file_path)
@@ -251,7 +271,10 @@ def scan_directory(
                         min_bitrate_kbps=min_bitrate_kbps,
                         min_resolution=min_resolution,
                         check_pr_video=check_pr_video,
-                        check_pr_image=check_pr_image
+                        check_pr_image=check_pr_image,
+                        incompatible_containers=incompatible_containers,
+                        incompatible_codecs=incompatible_codecs,
+                        incompatible_images=incompatible_images,
                     )
                     results.append(info)
 

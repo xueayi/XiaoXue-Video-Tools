@@ -4,6 +4,7 @@
 """
 import os
 import sys
+import shutil
 
 
 def get_base_dir() -> str:
@@ -38,25 +39,63 @@ def get_internal_dir() -> str:
 
 
 def get_ffmpeg_path() -> str:
-    """获取 ffmpeg.exe 的绝对路径。"""
-    # 先检查 _internal/bin (打包后)
-    internal_path = os.path.join(get_internal_dir(), 'bin', 'ffmpeg.exe')
+    """
+    获取 ffmpeg 可执行文件的路径。
+    查找顺序：
+    1. _internal/bin (PyInstaller 打包环境)
+    2. 项目根目录/bin (开发环境)
+    3. 系统 PATH 环境变量
+    4. 回退到 'ffmpeg' (让命令执行时报错)
+    """
+    exe_name = 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg'
+    
+    # 1. 检查 _internal/bin (打包环境)
+    internal_path = os.path.join(get_internal_dir(), 'bin', exe_name)
     if os.path.exists(internal_path):
         return internal_path
-    # 再检查项目根目录/bin (开发模式)
-    base_path = os.path.join(get_base_dir(), 'bin', 'ffmpeg.exe')
-    return base_path
+    
+    # 2. 检查项目根目录/bin (开发环境)
+    base_path = os.path.join(get_base_dir(), 'bin', exe_name)
+    if os.path.exists(base_path):
+        return base_path
+    
+    # 3. 回退到系统 PATH 查找
+    system_ffmpeg = shutil.which('ffmpeg')
+    if system_ffmpeg:
+        return system_ffmpeg
+    
+    # 4. 最终回退 (让后续命令调用报错，便于排查)
+    return 'ffmpeg'
 
 
 def get_ffprobe_path() -> str:
-    """获取 ffprobe.exe 的绝对路径。"""
-    # 先检查 _internal/bin (打包后)
-    internal_path = os.path.join(get_internal_dir(), 'bin', 'ffprobe.exe')
+    """
+    获取 ffprobe 可执行文件的路径。
+    查找顺序：
+    1. _internal/bin (PyInstaller 打包环境)
+    2. 项目根目录/bin (开发环境)
+    3. 系统 PATH 环境变量
+    4. 回退到 'ffprobe' (让命令执行时报错)
+    """
+    exe_name = 'ffprobe.exe' if os.name == 'nt' else 'ffprobe'
+    
+    # 1. 检查 _internal/bin (打包环境)
+    internal_path = os.path.join(get_internal_dir(), 'bin', exe_name)
     if os.path.exists(internal_path):
         return internal_path
-    # 再检查项目根目录/bin (开发模式)
-    base_path = os.path.join(get_base_dir(), 'bin', 'ffprobe.exe')
-    return base_path
+    
+    # 2. 检查项目根目录/bin (开发环境)
+    base_path = os.path.join(get_base_dir(), 'bin', exe_name)
+    if os.path.exists(base_path):
+        return base_path
+    
+    # 3. 回退到系统 PATH 查找
+    system_ffprobe = shutil.which('ffprobe')
+    if system_ffprobe:
+        return system_ffprobe
+    
+    # 4. 最终回退 (让后续命令调用报错，便于排查)
+    return 'ffprobe'
 
 
 def escape_path_for_ffmpeg(path: str) -> str:

@@ -4,6 +4,7 @@
 """
 
 # 编码器选项 (显示名称 -> ffmpeg 编码器参数)
+# 注意：视频压制模块不再提供"复制"选项，该功能由封装转换模块提供
 ENCODERS = {
     "H.264 (CPU - libx264)": "libx264",
     "H.264 (NVIDIA NVENC)": "h264_nvenc",
@@ -11,7 +12,6 @@ ENCODERS = {
     "H.264 (AMD AMF)": "h264_amf",
     "H.265/HEVC (CPU - libx265)": "libx265",
     "H.265/HEVC (NVIDIA NVENC)": "hevc_nvenc",
-    "复制 (不重新编码)": "copy",
 }
 
 # 质量预设
@@ -22,7 +22,7 @@ QUALITY_PRESETS = {
         "crf": 20,
         "preset": "medium",
         "resolution": "1920x1080",
-        "fps": 60,
+        "fps": 18,
         "audio_bitrate": "192k",
         "description": "适合日常 B 站投稿，画质与文件大小均衡。"
     },
@@ -60,6 +60,8 @@ QUALITY_PRESETS = {
 AUDIO_ENCODERS = {
     "AAC (推荐)": "aac",
     "MP3": "libmp3lame",
+    "WAV (无损)": "pcm_s16le",
+    "FLAC (无损)": "flac",
     "复制 (不重新编码)": "copy",
 }
 
@@ -83,3 +85,38 @@ RESOLUTION_PRESETS = {
     "自定义": "custom"
 }
 
+# 封装转换预设 (Remux)
+REMUX_PRESETS = {
+    "MP4 (H.264 兼容)": {
+        "extension": ".mp4",
+        "description": "最广泛兼容的格式，适合大多数播放器和平台",
+    },
+    "MKV (多轨封装)": {
+        "extension": ".mkv",
+        "description": "支持多音轨、多字幕轨道，适合资源存档",
+    },
+    "MOV (Apple 生态)": {
+        "extension": ".mov",
+        "description": "适合 Final Cut Pro、Mac 生态剪辑",
+    },
+    "TS (广播流)": {
+        "extension": ".ts",
+        "description": "MPEG 传输流，适合广播级应用",
+    },
+    "WEBM (Web 视频)": {
+        "extension": ".webm",
+        "description": "适合网页嵌入播放 (需 VP8/VP9/AV1 编码)",
+    },
+    "MXF (专业后期)": {
+        "extension": ".mxf",
+        "description": "专业广播/后期工作流标准封装",
+    },
+    "AVI (传统格式)": {
+        "extension": ".avi",
+        "description": "传统 Windows 视频格式",
+    },
+    "自定义": {
+        "extension": None,
+        "description": "手动指定输出路径和扩展名",
+    },
+}

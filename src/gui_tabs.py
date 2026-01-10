@@ -1,0 +1,450 @@
+# -*- coding: utf-8 -*-
+"""
+GUI 标签页定义模块：将各功能标签页的参数定义抽象为独立函数。
+使得 main.py 更加简洁，功能逻辑与界面定义解耦。
+"""
+from gooey import GooeyParser
+
+from .presets import (
+    ENCODERS,
+    QUALITY_PRESETS,
+    AUDIO_ENCODERS,
+    AUDIO_BITRATES,
+    CPU_PRESETS,
+    NVENC_PRESETS,
+    RESOLUTION_PRESETS,
+    REMUX_PRESETS,
+)
+from .notify import FEISHU_COLORS
+
+
+def register_encode_tab(subs) -> None:
+    """注册视频压制标签页。"""
+    encode_parser = subs.add_parser("视频压制", help="视频转码、压缩、字幕烧录")
+
+    # 输入输出分组
+    io_group = encode_parser.add_argument_group(
+        "输入/输出设置",
+        gooey_options={"columns": 1}
+    )
+    io_group.add_argument(
+        "--input",
+        metavar="输入视频",
+        required=True,
+        widget="FileChooser",
+        gooey_options={"wildcard": "视频文件 (*.mp4;*.mov;*.avi;*.mkv)|*.mp4;*.mov;*.avi;*.mkv|所有文件 (*.*)|*.*"},
+        help="选择要处理的视频文件",
+    )
+    io_group.add_argument(
+        "--output",
+        metavar="输出路径 (可选)",
+        required=False,
+        default="",
+        widget="FileSaver",
+        gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|MKV 文件 (*.mkv)|*.mkv|所有文件 (*.*)|*.*"},
+        help="留空则自动生成: 输入文件名_编码器.mp4",
+    )
+    io_group.add_argument(
+        "--subtitle",
+        metavar="字幕文件 (可选)",
+        widget="FileChooser",
+        gooey_options={"wildcard": "字幕文件 (*.srt;*.ass;*.ssa)|*.srt;*.ass;*.ssa|所有文件 (*.*)|*.*"},
+        help="选择要烧录的字幕文件 (留空则不烧录)",
+    )
+
+    # 预设分组
+    preset_group = encode_parser.add_argument_group(
+        "预设选择",
+        gooey_options={"columns": 1}
+    )
+    preset_group.add_argument(
+        "--preset",
+        metavar="质量预设",
+        choices=list(QUALITY_PRESETS.keys()),
+        default="【标准推荐】1080P/60FPS 均衡",
+        help="选择预设配置，或选择 '自定义' 手动配置参数",
+    )
+
+    # 高级参数分组 (当选择自定义时使用)
+    # 注意：已移除"复制 (不重新编码)"选项，该功能由封装转换模块提供
+    encode_only_encoders = {k: v for k, v in ENCODERS.items() if v != "copy"}
+    
+    advanced_group = encode_parser.add_argument_group(
+        "高级参数 (自定义模式)",
+        gooey_options={"columns": 2}
+    )
+    advanced_group.add_argument(
+        "--encoder",
+        metavar="视频编码器",
+        choices=list(encode_only_encoders.keys()),
+        default="H.264 (CPU - libx264)",
+        help="选择视频编码器",
+    )
+    advanced_group.add_argument(
+        "--crf",
+        metavar="CRF 值",
+        type=int,
+        default=18,
+        gooey_options={"min": 0, "max": 51},
+        help="质量控制 (0-51, 越低画质越好, 推荐 18-23)",
+    )
+    advanced_group.add_argument(
+        "--speed-preset",
+        metavar="编码速度",
+        choices=CPU_PRESETS,
+        default="medium",
+        help="编码速度预设 (越慢画质越好)",
+    )
+    advanced_group.add_argument(
+        "--resolution",
+        metavar="分辨率",
+        default="",
+        help="输出分辨率 (如 1920x1080), 留空保持原分辨率",
+    )
+    advanced_group.add_argument(
+        "--fps",
+        metavar="帧率",
+        type=int,
+        default=0,
+        help="输出帧率 (如 30, 60), 填 0 保持原帧率",
+    )
+    advanced_group.add_argument(
+        "--audio-encoder",
+        metavar="音频编码器",
+        choices=list(AUDIO_ENCODERS.keys()),
+        default="AAC (推荐)",
+        help="选择音频编码器",
+    )
+    advanced_group.add_argument(
+        "--audio-bitrate",
+        metavar="音频码率",
+        choices=AUDIO_BITRATES,
+        default="192k",
+        help="音频码率",
+    )
+    advanced_group.add_argument(
+        "--extra-args",
+        metavar="额外参数",
+        default="",
+        help="额外的 FFmpeg 参数 (高级用户)",
+    )
+
+
+def register_replace_audio_tab(subs) -> None:
+    """注册音频替换标签页。"""
+    audio_parser = subs.add_parser("音频替换", help="替换视频中的音轨")
+
+    audio_io = audio_parser.add_argument_group("输入/输出设置")
+    audio_io.add_argument(
+        "--video-input",
+        metavar="原始视频",
+        required=True,
+        widget="FileChooser",
+        gooey_options={"wildcard": "视频文件 (*.mp4;*.mov;*.avi;*.mkv)|*.mp4;*.mov;*.avi;*.mkv|所有文件 (*.*)|*.*"},
+        help="选择原始视频文件",
+    )
+    audio_io.add_argument(
+        "--audio-input",
+        metavar="新音频文件",
+        required=True,
+        widget="FileChooser",
+        gooey_options={"wildcard": "音频文件 (*.mp3;*.aac;*.wav;*.flac;*.m4a)|*.mp3;*.aac;*.wav;*.flac;*.m4a|所有文件 (*.*)|*.*"},
+        help="选择要替换的新音频文件",
+    )
+    audio_io.add_argument(
+        "--audio-output",
+        metavar="输出路径 (可选)",
+        required=False,
+        default="",
+        widget="FileSaver",
+        gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|所有文件 (*.*)|*.*"},
+        help="留空则自动生成: [原视频名]_replaced.mp4",
+    )
+
+    audio_settings = audio_parser.add_argument_group("音频设置")
+    audio_settings.add_argument(
+        "--audio-enc",
+        metavar="音频编码器",
+        choices=list(AUDIO_ENCODERS.keys()),
+        default="AAC (推荐)",
+        help="选择音频编码器",
+    )
+    audio_settings.add_argument(
+        "--audio-br",
+        metavar="音频码率",
+        choices=AUDIO_BITRATES,
+        default="192k",
+        help="音频码率",
+    )
+
+
+def register_remux_tab(subs) -> None:
+    """注册封装转换标签页。"""
+    remux_parser = subs.add_parser("封装转换", help="更换容器格式 (不重新编码)")
+
+    remux_io = remux_parser.add_argument_group("输入/输出设置")
+    remux_io.add_argument(
+        "--remux-input",
+        metavar="输入文件",
+        required=True,
+        widget="FileChooser",
+        gooey_options={"wildcard": "视频文件 (*.mp4;*.mov;*.avi;*.mkv;*.webm;*.ts;*.mxf)|*.mp4;*.mov;*.avi;*.mkv;*.webm;*.ts;*.mxf|所有文件 (*.*)|*.*"},
+        help="选择要转换的文件",
+    )
+    
+    remux_preset = remux_parser.add_argument_group("输出格式")
+    remux_preset.add_argument(
+        "--remux-preset",
+        metavar="封装预设",
+        choices=list(REMUX_PRESETS.keys()),
+        default="MP4 (H.264 兼容)",
+        help="选择目标封装格式预设",
+    )
+    remux_preset.add_argument(
+        "--remux-output",
+        metavar="输出路径 (可选)",
+        required=False,
+        default="",
+        widget="FileSaver",
+        gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|MKV 文件 (*.mkv)|*.mkv|MOV 文件 (*.mov)|*.mov|TS 文件 (*.ts)|*.ts|所有文件 (*.*)|*.*"},
+        help="留空则自动根据预设生成路径",
+    )
+
+
+def register_qc_tab(subs) -> None:
+    """注册质量检测标签页。"""
+    qc_parser = subs.add_parser("质量检测", help="批量检测素材兼容性")
+
+    qc_io = qc_parser.add_argument_group("扫描设置")
+    qc_io.add_argument(
+        "--scan-dir",
+        metavar="扫描目录",
+        required=True,
+        widget="DirChooser",
+        help="选择要扫描的文件夹 (将递归扫描)",
+    )
+    qc_io.add_argument(
+        "--report-output",
+        metavar="报告输出路径 (可选)",
+        required=False,
+        default="",
+        widget="FileSaver",
+        gooey_options={"wildcard": "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*"},
+        help="留空则自动生成: [扫描目录内]/QC_报告.txt",
+    )
+
+    qc_thresholds = qc_parser.add_argument_group("阈值设置 (可选)")
+    qc_thresholds.add_argument(
+        "--max-bitrate",
+        metavar="最大码率 (kbps)",
+        type=int,
+        default=0,
+        help="超过此码率将警告 (0 表示不检查)",
+    )
+    qc_thresholds.add_argument(
+        "--min-bitrate",
+        metavar="最小码率 (kbps)",
+        type=int,
+        default=0,
+        help="低于此码率将警告 (0 表示不检查)",
+    )
+    qc_thresholds.add_argument(
+        "--max-res-preset",
+        metavar="最大分辨率 (预设)",
+        choices=list(RESOLUTION_PRESETS.keys()),
+        default="不限制",
+        help="选择最大分辨率预设，或选择 '自定义'",
+    )
+    qc_thresholds.add_argument(
+        "--max-res-custom",
+        metavar="最大分辨率 (自定义)",
+        default="",
+        help="如果上方选择 '自定义'，请在此输入 (如 1920x1080), 留空不检查",
+    )
+    qc_thresholds.add_argument(
+        "--min-res-preset",
+        metavar="最小分辨率 (预设)",
+        choices=list(RESOLUTION_PRESETS.keys()),
+        default="不限制",
+        help="选择最小分辨率预设，或选择 '自定义'",
+    )
+    qc_thresholds.add_argument(
+        "--min-res-custom",
+        metavar="最小分辨率 (自定义)",
+        default="",
+        help="如果上方选择 '自定义'，请在此输入 (如 1280x720), 留空不检查",
+    )
+    
+    qc_pr = qc_parser.add_argument_group("Premiere Pro 兼容性检测")
+    qc_pr.add_argument(
+        "--check-pr-video",
+        metavar="PR 视频兼容性",
+        action="store_true",
+        default=True,
+        help="检测可能会导致 PR 导入问题的视频格式 (如 MKV, VFR)",
+    )
+    qc_pr.add_argument(
+        "--check-pr-image",
+        metavar="PR 图片兼容性",
+        action="store_true",
+        default=True,
+        help="检测可能会导致 PR 导入问题的图片格式",
+    )
+    
+    # 自定义兼容性规则
+    qc_custom = qc_parser.add_argument_group("自定义兼容性规则 (高级)")
+    qc_custom.add_argument(
+        "--custom-containers",
+        metavar="不兼容容器",
+        default="mkv,webm,ogv,ogg,flv",
+        help="逗号分隔的不兼容容器扩展名 (不含点号)",
+    )
+    qc_custom.add_argument(
+        "--custom-codecs",
+        metavar="不兼容编码",
+        default="vp8,vp9,av1,theora",
+        help="逗号分隔的不兼容视频编码名称",
+    )
+    qc_custom.add_argument(
+        "--custom-images",
+        metavar="不兼容图片",
+        default="webp,heic,avif",
+        help="逗号分隔的不兼容图片扩展名 (不含点号)",
+    )
+
+
+def register_extract_audio_tab(subs) -> None:
+    """注册音频抽取标签页。"""
+    extract_parser = subs.add_parser("音频抽取", help="从视频中提取音频轨道")
+
+    extract_io = extract_parser.add_argument_group("输入/输出设置")
+    extract_io.add_argument(
+        "--extract-input",
+        metavar="输入视频",
+        required=True,
+        widget="FileChooser",
+        gooey_options={"wildcard": "视频文件 (*.mp4;*.mov;*.avi;*.mkv;*.webm)|*.mp4;*.mov;*.avi;*.mkv;*.webm|所有文件 (*.*)|*.*"},
+        help="选择要提取音频的视频文件",
+    )
+    extract_io.add_argument(
+        "--extract-output",
+        metavar="输出音频 (可选)",
+        required=False,
+        default="",
+        widget="FileSaver",
+        gooey_options={"wildcard": "MP3 文件 (*.mp3)|*.mp3|AAC 文件 (*.aac)|*.aac|WAV 文件 (*.wav)|*.wav|FLAC 文件 (*.flac)|*.flac|所有文件 (*.*)|*.*"},
+        help="留空则自动生成: [原视频名]_extract.[ext]",
+    )
+
+    extract_settings = extract_parser.add_argument_group("音频设置")
+    extract_settings.add_argument(
+        "--extract-encoder",
+        metavar="音频编码器",
+        choices=list(AUDIO_ENCODERS.keys()),
+        default="AAC (推荐)",
+        help="选择音频编码器 (选 '复制' 可直接提取原始音频)",
+    )
+    extract_settings.add_argument(
+        "--extract-bitrate",
+        metavar="音频码率",
+        choices=AUDIO_BITRATES,
+        default="192k",
+        help="音频码率 (仅转码时生效)",
+    )
+
+
+def register_notification_tab(subs) -> None:
+    """注册通知设置标签页。"""
+    notify_parser = subs.add_parser("通知设置", help="配置飞书/Webhook 通知")
+
+    # 自动通知设置
+    auto_group = notify_parser.add_argument_group("自动通知设置")
+    auto_group.add_argument(
+        "--enable-auto-notify",
+        metavar="启用自动通知",
+        action="store_true",
+        default=False,
+        help="勾选后，其他任务完成时会自动发送通知",
+    )
+    auto_group.add_argument(
+        "--save-notify-config",
+        metavar="保存配置(运行后生效)",
+        action="store_true",
+        default=False,
+        help="保存当前通知配置，下次启动时自动加载",
+    )
+
+    # 飞书通知
+    feishu_group = notify_parser.add_argument_group("飞书通知")
+    feishu_group.add_argument(
+        "--feishu-webhook",
+        metavar="飞书 Webhook URL",
+        default="",
+        help="飞书机器人 Webhook 地址 (留空则跳过飞书通知)",
+    )
+    feishu_group.add_argument(
+        "--feishu-title",
+        metavar="卡片标题",
+        default="任务完成通知",
+        help="飞书消息卡片的标题",
+    )
+    feishu_group.add_argument(
+        "--feishu-content",
+        metavar="消息内容",
+        default="您的视频处理任务已完成！",
+        widget="Textarea",
+        gooey_options={"height": 80},
+        help="飞书消息内容 (支持 lark_md 格式)",
+    )
+    feishu_group.add_argument(
+        "--feishu-color",
+        metavar="卡片颜色",
+        choices=list(FEISHU_COLORS.keys()),
+        default="蓝色 (Blue)",
+        help="消息卡片头部颜色",
+    )
+
+    # 自定义 Webhook
+    webhook_group = notify_parser.add_argument_group("自定义 Webhook")
+    webhook_group.add_argument(
+        "--webhook-url",
+        metavar="Webhook URL",
+        default="",
+        help="自定义 POST 请求 URL (留空则跳过)",
+    )
+    webhook_group.add_argument(
+        "--webhook-headers",
+        metavar="请求头 (JSON)",
+        default='{"Content-Type": "application/json"}',
+        help='JSON 格式的请求头, 如: {"Authorization": "Bearer xxx"}',
+    )
+    webhook_group.add_argument(
+        "--webhook-body",
+        metavar="请求体 (JSON)",
+        default='{"message": "任务完成"}',
+        widget="Textarea",
+        gooey_options={"height": 80},
+        help='JSON 格式的请求体',
+    )
+
+
+def register_help_tab(subs) -> None:
+    """注册使用说明标签页。"""
+    help_parser = subs.add_parser("使用说明", help="各功能使用指南")
+
+    help_group = help_parser.add_argument_group("功能说明")
+    help_group.add_argument(
+        "--help-topic",
+        metavar="选择功能",
+        choices=[
+            "视频压制",
+            "音频替换",
+            "封装转换",
+            "质量检测",
+            "音频抽取",
+            "通知设置",
+            "常见问题",
+        ],
+        default="视频压制",
+        help="选择要查看说明的功能模块",
+    )
