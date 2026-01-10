@@ -55,3 +55,7 @@ desktop.ini
 *.wav
 *.aac
 *.flac
+
+# personal
+notify_config.json
+

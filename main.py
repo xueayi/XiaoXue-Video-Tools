@@ -76,18 +76,27 @@ _notify_config = {
     "webhook_body": '{"message": "任务完成"}',
 }
 
+# 配置加载状态
+_notify_config_loaded = False
+
 
 def load_notify_config():
     """加载通知配置文件。"""
-    global _notify_config
+    global _notify_config, _notify_config_loaded
+    
+    print(f"[配置] 配置文件路径: {NOTIFY_CONFIG_FILE}")
+    
     if os.path.exists(NOTIFY_CONFIG_FILE):
         try:
             with open(NOTIFY_CONFIG_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
                 _notify_config.update(saved)
-                print(f"{Fore.GREEN}[配置] 已加载通知配置{Style.RESET_ALL}")
+                _notify_config_loaded = True
+                print(f"{Fore.GREEN}[配置] ✓ 已加载通知配置{Style.RESET_ALL}")
         except Exception as e:
             print(f"{Fore.YELLOW}[警告] 加载通知配置失败: {e}{Style.RESET_ALL}")
+    else:
+        print(f"[配置] 未找到配置文件，使用默认设置")
 
 
 def save_notify_config(config: dict):
@@ -98,6 +107,23 @@ def save_notify_config(config: dict):
         print(f"{Fore.GREEN}[配置] 通知配置已保存到 {NOTIFY_CONFIG_FILE}{Style.RESET_ALL}")
     except Exception as e:
         print(f"{Fore.RED}[错误] 保存通知配置失败: {e}{Style.RESET_ALL}")
+
+
+def delete_notify_config():
+    """删除通知配置文件。"""
+    global _notify_config_loaded
+    if os.path.exists(NOTIFY_CONFIG_FILE):
+        try:
+            os.remove(NOTIFY_CONFIG_FILE)
+            _notify_config_loaded = False
+            print(f"{Fore.GREEN}[配置] ✓ 已删除通知配置文件{Style.RESET_ALL}")
+            return True
+        except Exception as e:
+            print(f"{Fore.RED}[错误] 删除配置文件失败: {e}{Style.RESET_ALL}")
+            return False
+    else:
+        print(f"[配置] 配置文件不存在，无需删除")
+        return True
 
 
 def send_auto_notification(task_name: str):
@@ -206,7 +232,7 @@ def main():
     register_image_convert_tab(subs)
     register_folder_creator_tab(subs)
     register_batch_rename_tab(subs)
-    register_notification_tab(subs)
+    register_notification_tab(subs, _notify_config)
     register_help_tab(subs)
 
     args = parser.parse_args()
@@ -222,7 +248,7 @@ def dispatch_command(args):
         "视频压制": execute_encode,
         "音频替换": execute_replace_audio,
         "封装转换": execute_remux,
-        "质量检测": execute_qc,
+        "素材质量检测": execute_qc,
         "音频抽取": execute_extract_audio,
         "图片转换": execute_image_convert,
         "文件夹创建": execute_folder_creator,
@@ -322,6 +348,7 @@ def execute_remux(args):
     preset_name = getattr(args, 'remux_preset', 'MP4 (H.264 兼容)')
     preset = REMUX_PRESETS.get(preset_name, {})
     extension = preset.get("extension", ".mp4")
+    overwrite = getattr(args, 'remux_overwrite', False)
     
     # 获取输入文件列表
     input_files = args.remux_input
@@ -334,10 +361,13 @@ def execute_remux(args):
     print(f"[输入文件数] {len(input_files)}")
     if output_dir:
         print(f"[输出目录] {output_dir}")
+    if overwrite:
+        print(f"{Fore.YELLOW}[警告] 覆盖模式已开启，原文件将被删除{Style.RESET_ALL}")
     print("-" * 50)
 
     success_count = 0
     fail_count = 0
+    files_to_delete = []  # 成功后需要删除的原文件
 
     for i, input_path in enumerate(input_files, 1):
         print(f"\n[{i}/{len(input_files)}] 处理: {os.path.basename(input_path)}")
@@ -359,16 +389,28 @@ def execute_remux(args):
         result = run_ffmpeg_command(cmd)
         if result == 0:
             success_count += 1
+            if overwrite and os.path.normpath(input_path) != os.path.normpath(output_path):
+                files_to_delete.append(input_path)
         else:
             fail_count += 1
+
+    # 覆盖模式：删除原文件
+    if overwrite and files_to_delete:
+        print(f"\n{Fore.YELLOW}[覆盖模式] 删除 {len(files_to_delete)} 个原文件...{Style.RESET_ALL}")
+        for f in files_to_delete:
+            try:
+                os.remove(f)
+                print(f"  ✓ 已删除: {os.path.basename(f)}")
+            except Exception as e:
+                print(f"  ✗ 删除失败: {os.path.basename(f)} - {e}")
 
     print(f"\n{'='*50}")
     print(f"批量转换完成: 成功 {success_count} 个, 失败 {fail_count} 个")
 
 
 def execute_qc(args):
-    """执行质量检测任务。"""
-    print_task_header("质量检测")
+    """执行素材质量检测任务。"""
+    print_task_header("素材质量检测")
 
     report_path = args.report_output
     if not report_path:
@@ -449,6 +491,19 @@ def execute_notification(args):
     
     print_task_header("通知设置")
 
+    # 显示配置加载状态
+    print(f"\n[配置文件信息]")
+    print(f"  路径: {NOTIFY_CONFIG_FILE}")
+    print(f"  加载状态: {'✓ 已加载' if _notify_config_loaded else '✗ 未加载 (使用默认配置)'}")
+    
+    # 处理删除配置请求
+    if getattr(args, 'delete_notify_config', False):
+        print(f"\n{Fore.YELLOW}[操作] 删除配置文件...{Style.RESET_ALL}")
+        delete_notify_config()
+        print(f"\n{'='*50}")
+        print("配置文件已删除，下次启动将使用默认设置")
+        return
+
     # 更新全局配置
     _notify_config["enabled"] = getattr(args, 'enable_auto_notify', False)
     _notify_config["feishu_webhook"] = args.feishu_webhook
@@ -460,7 +515,7 @@ def execute_notification(args):
     _notify_config["webhook_body"] = args.webhook_body
     
     # 显示配置状态
-    print(f"\n[配置状态]")
+    print(f"\n[当前配置]")
     print(f"  自动通知: {'✓ 已启用' if _notify_config['enabled'] else '✗ 未启用'}")
     if _notify_config["feishu_webhook"]:
         print(f"  飞书 Webhook: 已配置")
@@ -550,10 +605,13 @@ def execute_image_convert(args):
 
     output_dir = args.img_output_dir if args.img_output_dir else None
     quality = getattr(args, 'img_quality', 95)
+    overwrite = getattr(args, 'img_overwrite', False)
 
     print(f"[目标格式] {target_ext}")
     print(f"[质量] {quality}")
     print(f"[文件数量] {len(input_files)}")
+    if overwrite:
+        print(f"{Fore.YELLOW}[警告] 覆盖模式已开启，原文件将被删除{Style.RESET_ALL}")
 
     success, fail, errors = batch_convert_images(
         input_paths=input_files,
@@ -561,6 +619,22 @@ def execute_image_convert(args):
         target_extension=target_ext,
         quality=quality,
     )
+
+    # 覆盖模式：删除成功转换的原文件
+    if overwrite and success > 0:
+        print(f"\n{Fore.YELLOW}[覆盖模式] 删除原文件...{Style.RESET_ALL}")
+        deleted_count = 0
+        for input_path in input_files:
+            # 只删除成功转换的，且新旧文件扩展名不同的
+            input_ext = os.path.splitext(input_path)[1].lower()
+            if input_ext != target_ext.lower():
+                try:
+                    os.remove(input_path)
+                    deleted_count += 1
+                except Exception as e:
+                    print(f"  ✗ 删除失败: {os.path.basename(input_path)} - {e}")
+        if deleted_count > 0:
+            print(f"  ✓ 已删除 {deleted_count} 个原文件")
 
     if errors:
         print(f"\n{Fore.YELLOW}[警告] 部分转换失败:{Style.RESET_ALL}")
@@ -575,6 +649,14 @@ def execute_folder_creator(args):
     txt_path = args.folder_txt
     output_dir = args.folder_output_dir
     auto_number = getattr(args, 'folder_auto_number', True)
+
+    # 如果未指定输出目录，使用 TXT 文件所在目录
+    if not output_dir or not output_dir.strip():
+        output_dir = os.path.dirname(txt_path)
+        print(f"[自动设置] 输出目录: {output_dir}")
+    else:
+        # 清理尾部斜杠
+        output_dir = output_dir.rstrip("/\\")
 
     success, fail, errors = batch_create_folders(
         txt_path=txt_path,

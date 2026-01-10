@@ -213,11 +213,18 @@ def register_remux_tab(subs) -> None:
         widget="DirChooser",
         help="批量模式: 选择输出目录。单文件留空则在原位置生成",
     )
+    remux_preset.add_argument(
+        "--remux-overwrite",
+        metavar="覆盖原文件",
+        action="store_true",
+        default=False,
+        help="⚠️ 危险: 转换后删除原文件，仅保留新文件",
+    )
 
 
 def register_qc_tab(subs) -> None:
-    """注册质量检测标签页。"""
-    qc_parser = subs.add_parser("质量检测", help="批量检测素材兼容性")
+    """注册素材质量检测标签页。"""
+    qc_parser = subs.add_parser("素材质量检测", help="批量检测素材兼容性")
 
     qc_io = qc_parser.add_argument_group("扫描设置")
     qc_io.add_argument(
@@ -357,17 +364,29 @@ def register_extract_audio_tab(subs) -> None:
     )
 
 
-def register_notification_tab(subs) -> None:
-    """注册通知设置标签页。"""
+def register_notification_tab(subs, config: dict = None) -> None:
+    """
+    注册通知设置标签页。
+    
+    Args:
+        subs: 子解析器
+        config: 已加载的通知配置字典 (用于设置默认值)
+    """
+    if config is None:
+        config = {}
+    
     notify_parser = subs.add_parser("通知设置", help="配置飞书/Webhook 通知")
 
     # 自动通知设置
-    auto_group = notify_parser.add_argument_group("自动通知设置")
+    auto_group = notify_parser.add_argument_group(
+        "自动通知设置",
+        description="配置文件保存在程序目录下的 notify_config.json",
+    )
     auto_group.add_argument(
         "--enable-auto-notify",
         metavar="启用自动通知",
         action="store_true",
-        default=False,
+        default=config.get("enabled", False),
         help="勾选后，其他任务完成时会自动发送通知",
     )
     auto_group.add_argument(
@@ -377,34 +396,50 @@ def register_notification_tab(subs) -> None:
         default=False,
         help="保存当前通知配置，下次启动时自动加载",
     )
+    auto_group.add_argument(
+        "--delete-notify-config",
+        metavar="删除已保存配置",
+        action="store_true",
+        default=False,
+        help="勾选后运行将删除已保存的配置文件",
+    )
 
     # 飞书通知
     feishu_group = notify_parser.add_argument_group("飞书通知")
     feishu_group.add_argument(
         "--feishu-webhook",
         metavar="飞书 Webhook URL",
-        default="",
+        default=config.get("feishu_webhook", ""),
         help="飞书机器人 Webhook 地址 (留空则跳过飞书通知)",
     )
     feishu_group.add_argument(
         "--feishu-title",
         metavar="卡片标题",
-        default="任务完成通知",
+        default=config.get("feishu_title", "任务完成通知"),
         help="飞书消息卡片的标题",
     )
     feishu_group.add_argument(
         "--feishu-content",
         metavar="消息内容",
-        default="您的视频处理任务已完成！",
+        default=config.get("feishu_content", "您的视频处理任务已完成！"),
         widget="Textarea",
         gooey_options={"height": 80},
         help="飞书消息内容 (支持 lark_md 格式)",
     )
+    
+    # 颜色需要反向查找显示名
+    saved_color = config.get("feishu_color", "blue")
+    color_display = "蓝色 (Blue)"
+    for name, code in FEISHU_COLORS.items():
+        if code == saved_color:
+            color_display = name
+            break
+    
     feishu_group.add_argument(
         "--feishu-color",
         metavar="卡片颜色",
         choices=list(FEISHU_COLORS.keys()),
-        default="蓝色 (Blue)",
+        default=color_display,
         help="消息卡片头部颜色",
     )
 
@@ -413,19 +448,19 @@ def register_notification_tab(subs) -> None:
     webhook_group.add_argument(
         "--webhook-url",
         metavar="Webhook URL",
-        default="",
+        default=config.get("webhook_url", ""),
         help="自定义 POST 请求 URL (留空则跳过)",
     )
     webhook_group.add_argument(
         "--webhook-headers",
         metavar="请求头 (JSON)",
-        default='{"Content-Type": "application/json"}',
+        default=config.get("webhook_headers", '{"Content-Type": "application/json"}'),
         help='JSON 格式的请求头, 如: {"Authorization": "Bearer xxx"}',
     )
     webhook_group.add_argument(
         "--webhook-body",
         metavar="请求体 (JSON)",
-        default='{"message": "任务完成"}',
+        default=config.get("webhook_body", '{"message": "任务完成"}'),
         widget="Textarea",
         gooey_options={"height": 80},
         help='JSON 格式的请求体',
@@ -444,7 +479,7 @@ def register_help_tab(subs) -> None:
             "视频压制",
             "音频替换",
             "封装转换",
-            "质量检测",
+            "素材质量检测",
             "音频抽取",
             "图片转换",
             "文件夹创建",
@@ -478,6 +513,13 @@ def register_image_convert_tab(subs) -> None:
         default="",
         widget="DirChooser",
         help="留空则在原文件位置生成转换后的图片",
+    )
+    img_io.add_argument(
+        "--img-overwrite",
+        metavar="覆盖原文件",
+        action="store_true",
+        default=False,
+        help="⚠️ 危险: 转换后删除原文件，仅保留新文件",
     )
 
     img_format = img_parser.add_argument_group("输出格式")
@@ -519,10 +561,11 @@ def register_folder_creator_tab(subs) -> None:
     )
     folder_io.add_argument(
         "--folder-output-dir",
-        metavar="输出目录",
-        required=True,
+        metavar="输出目录 (可选)",
+        required=False,
+        default="",
         widget="DirChooser",
-        help="选择要在哪个目录下创建文件夹",
+        help="留空则在 TXT 文件所在目录创建。注意：路径不能以 / 或 \\ 结尾",
     )
 
     folder_options = folder_parser.add_argument_group("选项设置")
@@ -592,7 +635,18 @@ def register_batch_rename_tab(subs) -> None:
     # 行为设置
     rename_behavior = rename_parser.add_argument_group(
         "重命名行为",
-        description="递归模式: 处理所有子文件夹，文件名包含父目录信息\n非递归模式: 仅处理指定目录下的文件",
+        description=(
+            "【递归模式示例】\n"
+            "输入目录: 图包\n"
+            "  图包/新作/1_新闻/001.png → 新作_1_图片_1.png\n"
+            "  图包/周边/2_采访/clip.mp4 → 周边_2_视频_1.mp4\n"
+            "  图包/001.png → 图片_1.png\n"
+            "【非递归模式示例】\n"
+            "输入目录: 图包\n"
+            "  图包/001.png → 图片_1.png\n"
+            "  图包/clip.mp4 → 视频_1.mp4\n"
+            "  图包/新作/1_新闻/001.png → 无重命名行为"
+        ),
     )
     rename_behavior.add_argument(
         "--rename-recursive",

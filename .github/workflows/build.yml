@@ -44,24 +44,24 @@ jobs:
       
       - name: Build with PyInstaller
         run: |
-          pyinstaller --name "XiaoXue" --windowed --add-data "bin;bin" --noconfirm main.py
+          pyinstaller XiaoXueToolbox.spec --noconfirm
       
       - name: Create release package
         run: |
-          Compress-Archive -Path "dist\XiaoXue\*" -DestinationPath "XiaoXue_Windows_x64.zip"
+          Compress-Archive -Path "dist\XiaoXueToolbox\*" -DestinationPath "XiaoXueToolbox_Windows_x64.zip"
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: XiaoXue-Video-Tools
-          path: XiaoXue_Windows_x64.zip
+          path: XiaoXueToolbox_Windows_x64.zip
           retention-days: 30
       
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: XiaoXue_Windows_x64.zip
+          files: XiaoXueToolbox_Windows_x64.zip
           generate_release_notes: true
           draft: false
           prerelease: false
@@ -69,14 +69,20 @@ jobs:
           body: |
             ## 小雪工具箱 ${{ github.ref_name }}
             
-            一个简单的视频压制与检测工具。
+            一个简单的视频压制与素材质量检测工具。
             
             ### 下载说明
-            - 下载 `XiaoXue_Windows_x64.zip`
-            - 解压后运行 `XiaoXue.exe` 即可
+            - 下载 `XiaoXueToolbox_Windows_x64.zip`
+            - 解压后运行 `XiaoXueToolbox.exe` 即可
             
-            ### 功能
+            ### 主要功能
             - 视频压制 (H.264/H.265 + 字幕烧录)
             - 音频替换 / 音频抽取
-            - 转封装 (MKV → MP4)
-            - 质量检测报告
+            - 封装转换 (MKV → MP4，支持批量)
+            - 素材质量检测报告
+            - 图片格式批量转换
+            - 批量创建文件夹
+            - 批量序列重命名
+            - 任务完成通知 (飞书/Webhook)
+            
+            详细更新日志请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)

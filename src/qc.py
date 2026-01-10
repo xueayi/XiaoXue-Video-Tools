@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-质量检测 (QC) 模块：分析视频文件，生成兼容性报告。
+素材质量检测 (QC) 模块：分析视频文件，生成兼容性报告。
 """
 import json
 import os
@@ -295,7 +295,7 @@ def generate_report(results: List[MediaInfo], output_path: str) -> str:
     """
     lines = []
     lines.append("=" * 60)
-    lines.append("小雪工具箱 - 质量检测报告 (QC Report)")
+    lines.append("小雪工具箱 - 素材质量检测报告 (QC Report)")
     lines.append("=" * 60)
     lines.append("")
 
