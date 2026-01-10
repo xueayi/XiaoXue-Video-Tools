@@ -4,7 +4,8 @@ FFmpeg 核心调用模块：构建命令行并执行。
 """
 import subprocess
 import os
-from typing import Optional, List
+import tempfile
+from typing import Optional, List, Tuple
 
 from colorama import Fore, Style
 
@@ -26,6 +27,7 @@ def build_encode_command(
     audio_bitrate: str = "192k",
     subtitle_path: Optional[str] = None,
     extra_args: Optional[str] = None,
+    rc_mode: Optional[str] = None,
 ) -> List[str]:
     """
     构建视频编码 FFmpeg 命令。
@@ -44,6 +46,7 @@ def build_encode_command(
         audio_bitrate: 音频码率。
         subtitle_path: 字幕文件路径 (可选，用于烧录)。
         extra_args: 额外的 FFmpeg 参数 (字符串)。
+        rc_mode: NVENC 码率控制模式 (如 constqp, vbr, cbr)。
 
     Returns:
         FFmpeg 命令列表。
@@ -69,9 +72,12 @@ def build_encode_command(
     if subtitle_path:
         escaped_sub = escape_path_for_ffmpeg(subtitle_path)
         vf_filters.append(f"subtitles='{escaped_sub}'")
-    if resolution:
-        w, h = resolution.split("x")
-        vf_filters.append(f"scale={w}:{h}")
+    if resolution and isinstance(resolution, str) and "x" in resolution:
+        try:
+            w, h = resolution.split("x")
+            vf_filters.append(f"scale={w}:{h}")
+        except ValueError:
+            pass  # 无效分辨率格式，跳过
 
     if vf_filters:
         cmd.extend(["-vf", ",".join(vf_filters)])
@@ -80,21 +86,95 @@ def build_encode_command(
     actual_encoder = ENCODERS.get(encoder, encoder) if encoder else "libx264"
     cmd.extend(["-c:v", actual_encoder])
 
-    # 编码参数
+    # 编码参数 - 根据编码器类型自动适配
     if actual_encoder != "copy":
-        if bitrate:
-            cmd.extend(["-b:v", bitrate])
-        elif crf is not None:
-            if "nvenc" in actual_encoder:
-                cmd.extend(["-cq", str(crf)])
-            else:
-                cmd.extend(["-crf", str(crf)])
+        # 识别编码器类型
+        is_nvenc = "nvenc" in actual_encoder
+        is_qsv = "qsv" in actual_encoder
+        is_amf = "amf" in actual_encoder
+        is_cpu = actual_encoder in ("libx264", "libx265")
+        
+        # 处理码率控制模式
+        if rc_mode == "2pass":
+            # 2-Pass 编码逻辑 (当前简化为 VBR 高质量模式)
+            # 注意: 真正的 2-pass 需要运行两次 ffmpeg，这里用高质量 VBR 替代
+            if bitrate:
+                cmd.extend(["-b:v", bitrate])
+                if is_nvenc:
+                    cmd.extend(["-rc", "vbr_hq", "-2pass", "1"])
+                elif is_amf:
+                    cmd.extend(["-rc", "vbr_peak", "-2pass", "1"])
+                else:
+                    # CPU 编码器使用 VBR 高质量
+                    cmd.extend(["-maxrate", bitrate, "-bufsize", bitrate])
+            elif crf is not None:
+                # 没有码率时回退到 CRF/CQ 模式
+                if is_nvenc:
+                    cmd.extend(["-cq", str(crf)])
+                elif is_qsv:
+                    cmd.extend(["-global_quality", str(crf)])
+                else:
+                    cmd.extend(["-crf", str(crf)])
+                    
+        elif rc_mode == "vbr":
+            # VBR 可变码率模式
+            if bitrate:
+                cmd.extend(["-b:v", bitrate])
+                if is_nvenc:
+                    cmd.extend(["-rc", "vbr"])
+                elif is_amf:
+                    cmd.extend(["-rc", "vbr_peak"])
+                # CPU 编码器默认就是 VBR
+                cmd.extend(["-maxrate", bitrate, "-bufsize", bitrate])
+            elif crf is not None:
+                # 没有码率时回退到 CRF/CQ 模式
+                if is_nvenc:
+                    cmd.extend(["-cq", str(crf)])
+                elif is_qsv:
+                    cmd.extend(["-global_quality", str(crf)])
+                else:
+                    cmd.extend(["-crf", str(crf)])
+                    
+        elif rc_mode == "cbr":
+            # CBR 恒定码率模式
+            if bitrate:
+                cmd.extend(["-b:v", bitrate])
+                if is_nvenc:
+                    cmd.extend(["-rc", "cbr"])
+                elif is_amf:
+                    cmd.extend(["-rc", "cbr"])
+                # CPU 编码器通过 minrate=maxrate=bitrate 实现 CBR
+                cmd.extend(["-minrate", bitrate, "-maxrate", bitrate, "-bufsize", bitrate])
+            elif crf is not None:
+                # CBR 必须有码率，回退到 CRF
+                if is_nvenc:
+                    cmd.extend(["-cq", str(crf)])
+                elif is_qsv:
+                    cmd.extend(["-global_quality", str(crf)])
+                else:
+                    cmd.extend(["-crf", str(crf)])
+                    
+        else:
+            # 默认 CRF/CQ 恒定质量模式
+            if bitrate:
+                # 如果指定了码率，优先使用码率
+                cmd.extend(["-b:v", bitrate])
+            elif crf is not None:
+                # 根据编码器类型选择正确的参数
+                if is_nvenc:
+                    cmd.extend(["-cq", str(crf)])
+                elif is_qsv:
+                    cmd.extend(["-global_quality", str(crf)])
+                elif is_amf:
+                    # AMF 使用 qp_i/qp_p/qp_b
+                    cmd.extend(["-qp_i", str(crf), "-qp_p", str(crf)])
+                else:
+                    # CPU 编码器 (libx264/libx265)
+                    cmd.extend(["-crf", str(crf)])
 
+        # 速度预设
         if speed_preset:
-            if "nvenc" in actual_encoder:
-                cmd.extend(["-preset", speed_preset])
-            else:
-                cmd.extend(["-preset", speed_preset])
+            cmd.extend(["-preset", speed_preset])
 
     # 帧率
     if fps:
@@ -249,3 +329,169 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None) -> int:
     except Exception as e:
         print(f"\n{Fore.RED}[错误] 执行失败: {e}{Style.RESET_ALL}", flush=True)
         return -1
+
+
+def build_2pass_commands(
+    input_path: str,
+    output_path: str,
+    preset_name: Optional[str] = None,
+    encoder: Optional[str] = None,
+    bitrate: str = "10M",
+    speed_preset: Optional[str] = None,
+    resolution: Optional[str] = None,
+    fps: Optional[int] = None,
+    audio_encoder: str = "aac",
+    audio_bitrate: str = "192k",
+    subtitle_path: Optional[str] = None,
+    extra_args: Optional[str] = None,
+) -> Tuple[List[str], List[str]]:
+    """
+    构建真正的两遍编码 FFmpeg 命令。
+
+    Args:
+        input_path: 输入视频路径。
+        output_path: 输出视频路径。
+        preset_name: 预设名称。
+        encoder: 视频编码器。
+        bitrate: 目标码率 (如 "10M")。
+        speed_preset: 速度预设。
+        resolution: 分辨率。
+        fps: 帧率。
+        audio_encoder: 音频编码器。
+        audio_bitrate: 音频码率。
+        subtitle_path: 字幕文件路径。
+        extra_args: 额外参数。
+
+    Returns:
+        (pass1_cmd, pass2_cmd) 两遍编码的命令列表。
+    """
+    ffmpeg = get_ffmpeg_path()
+
+    # 如果使用预设, 加载预设参数
+    if preset_name and preset_name in QUALITY_PRESETS and preset_name != "自定义 (Custom)":
+        preset = QUALITY_PRESETS[preset_name]
+        encoder = encoder or preset.get("encoder")
+        speed_preset = speed_preset or preset.get("preset")
+        resolution = resolution or preset.get("resolution")
+        fps = fps if fps is not None else preset.get("fps")
+        audio_bitrate = audio_bitrate or preset.get("audio_bitrate", "192k")
+
+    # 确定实际编码器
+    actual_encoder = ENCODERS.get(encoder, encoder) if encoder else "libx264"
+    
+    # 识别编码器类型
+    is_nvenc = "nvenc" in actual_encoder
+    is_qsv = "qsv" in actual_encoder
+    is_amf = "amf" in actual_encoder
+    is_cpu = actual_encoder in ("libx264", "libx265")
+
+    # 视频滤镜链
+    vf_filters = []
+    if subtitle_path:
+        escaped_sub = escape_path_for_ffmpeg(subtitle_path)
+        vf_filters.append(f"subtitles='{escaped_sub}'")
+    if resolution and isinstance(resolution, str) and "x" in resolution:
+        try:
+            w, h = resolution.split("x")
+            vf_filters.append(f"scale={w}:{h}")
+        except ValueError:
+            pass
+
+    # 构建基础命令部分
+    base_cmd = [ffmpeg, "-y", "-i", input_path]
+    
+    if vf_filters:
+        base_cmd.extend(["-vf", ",".join(vf_filters)])
+
+    base_cmd.extend(["-c:v", actual_encoder])
+    base_cmd.extend(["-b:v", bitrate])
+
+    # 根据编码器类型添加速度预设
+    if speed_preset:
+        base_cmd.extend(["-preset", speed_preset])
+
+    if fps:
+        base_cmd.extend(["-r", str(fps)])
+
+    # 额外参数
+    if extra_args:
+        base_cmd.extend(extra_args.split())
+
+    # ===== Pass 1: 分析阶段 =====
+    pass1_cmd = base_cmd.copy()
+    
+    if is_nvenc:
+        # NVENC 2-pass
+        pass1_cmd.extend(["-multipass", "fullres"])
+        pass1_cmd.extend(["-2pass", "1"])
+    elif is_amf:
+        # AMF 2-pass
+        pass1_cmd.extend(["-2pass", "1"])
+    else:
+        # CPU 编码器 (libx264/libx265)
+        pass1_cmd.extend(["-pass", "1"])
+    
+    # 第一遍禁用音频，输出到空设备
+    pass1_cmd.extend(["-an", "-f", "null"])
+    pass1_cmd.append("NUL" if os.name == "nt" else "/dev/null")
+
+    # ===== Pass 2: 实际编码 =====
+    pass2_cmd = base_cmd.copy()
+    
+    if is_nvenc:
+        pass2_cmd.extend(["-multipass", "fullres"])
+        pass2_cmd.extend(["-2pass", "1"])  # NVENC 不需要单独的 pass 2 标志
+    elif is_amf:
+        pass2_cmd.extend(["-2pass", "1"])
+    else:
+        # CPU 编码器
+        pass2_cmd.extend(["-pass", "2"])
+
+    # 音频设置
+    pass2_cmd.extend(["-c:a", audio_encoder])
+    if audio_encoder != "copy":
+        pass2_cmd.extend(["-b:a", audio_bitrate])
+
+    pass2_cmd.append(output_path)
+
+    return pass1_cmd, pass2_cmd
+
+
+def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str]) -> int:
+    """
+    执行真正的两遍编码。
+
+    Args:
+        pass1_cmd: 第一遍命令。
+        pass2_cmd: 第二遍命令。
+
+    Returns:
+        最终返回码 (0 表示成功)。
+    """
+    print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[Pass 1/2] 分析视频...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+
+    result1 = run_ffmpeg_command(pass1_cmd)
+    
+    if result1 != 0:
+        print(f"\n{Fore.RED}[错误] Pass 1 失败，终止编码{Style.RESET_ALL}")
+        return result1
+
+    print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}[Pass 2/2] 正式编码...{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
+
+    result2 = run_ffmpeg_command(pass2_cmd)
+
+    # 清理 2-pass 临时文件
+    for ext in [".log", ".log.mbtree", "-0.log", "-0.log.mbtree"]:
+        log_file = f"ffmpeg2pass{ext}"
+        if os.path.exists(log_file):
+            try:
+                os.remove(log_file)
+            except Exception:
+                pass
+
+    return result2
+

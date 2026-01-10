@@ -12,6 +12,8 @@ from .presets import (
     AUDIO_BITRATES,
     CPU_PRESETS,
     NVENC_PRESETS,
+    RATE_CONTROL_MODES,
+    VIDEO_BITRATES,
     RESOLUTION_PRESETS,
     REMUX_PRESETS,
     IMAGE_FORMATS,
@@ -65,72 +67,122 @@ def register_encode_tab(subs) -> None:
         "--preset",
         metavar="质量预设",
         choices=list(QUALITY_PRESETS.keys()),
-        default="【标准推荐】1080P/60FPS 均衡",
+        default="【均衡画质】CRF18常规导出",
         help="选择预设配置，或选择 '自定义' 手动配置参数",
     )
 
-    # 高级参数分组 (当选择自定义时使用)
+    # ========== 编码器设置 ==========
     # 注意：已移除"复制 (不重新编码)"选项，该功能由封装转换模块提供
     encode_only_encoders = {k: v for k, v in ENCODERS.items() if v != "copy"}
     
-    advanced_group = encode_parser.add_argument_group(
-        "高级参数 (自定义模式)",
+    encoder_group = encode_parser.add_argument_group(
+        "编码器设置",
+        description="选择自定义模式时生效",
         gooey_options={"columns": 2}
     )
-    advanced_group.add_argument(
+    encoder_group.add_argument(
         "--encoder",
         metavar="视频编码器",
         choices=list(encode_only_encoders.keys()),
         default="H.264 (CPU - libx264)",
-        help="选择视频编码器",
+        help="选择视频编码器 (CPU/NVIDIA/Intel/AMD)",
     )
-    advanced_group.add_argument(
-        "--crf",
-        metavar="CRF 值",
-        type=int,
-        default=18,
-        gooey_options={"min": 0, "max": 51},
-        help="质量控制 (0-51, 越低画质越好, 推荐 18-23)",
-    )
-    advanced_group.add_argument(
+    encoder_group.add_argument(
         "--speed-preset",
         metavar="编码速度",
         choices=CPU_PRESETS,
         default="medium",
         help="编码速度预设 (越慢画质越好)",
     )
-    advanced_group.add_argument(
+
+    # ========== 质量与码率 ==========
+    quality_group = encode_parser.add_argument_group(
+        "质量与码率",
+        description="CRF/CQ 模式由质量值控制；VBR/CBR 模式需设置目标码率",
+        gooey_options={"columns": 2}
+    )
+    quality_group.add_argument(
+        "--rate-control",
+        metavar="码率控制模式",
+        choices=list(RATE_CONTROL_MODES.keys()),
+        default="CRF/CQ (恒定质量)",
+        help="恒定质量(推荐) / 可变码率 / 恒定码率 / 两遍编码",
+    )
+    quality_group.add_argument(
+        "--crf",
+        metavar="质量值 (CRF/CQ)",
+        type=int,
+        default=18,
+        gooey_options={"min": 0, "max": 51},
+        help="0-51，越低画质越好，推荐 18-23",
+    )
+    quality_group.add_argument(
+        "--video-bitrate",
+        metavar="目标码率",
+        choices=VIDEO_BITRATES,
+        default="",
+        help=(
+            "不同模式下的作用：\n"
+            "• CRF/CQ 模式：留空，由上方质量值控制\n"
+            "• VBR 模式：设置平均码率，允许波动\n"
+            "• CBR 模式：设置恒定码率，适合直播\n"
+            "• 2-Pass 模式：设置目标码率，更精确"
+        ),
+    )
+
+    # ========== 视频输出 ==========
+    output_group = encode_parser.add_argument_group(
+        "视频输出",
+        gooey_options={"columns": 2}
+    )
+    output_group.add_argument(
         "--resolution",
         metavar="分辨率",
         default="",
-        help="输出分辨率 (如 1920x1080), 留空保持原分辨率",
+        help="如 1920x1080，留空保持原分辨率",
     )
-    advanced_group.add_argument(
+    output_group.add_argument(
         "--fps",
         metavar="帧率",
         type=int,
         default=0,
-        help="输出帧率 (如 30, 60), 填 0 保持原帧率",
+        help="如 30、60，填 0 保持原帧率",
     )
-    advanced_group.add_argument(
+
+    # ========== 音频设置 ==========
+    audio_group = encode_parser.add_argument_group(
+        "音频设置",
+        gooey_options={"columns": 2}
+    )
+    audio_group.add_argument(
         "--audio-encoder",
         metavar="音频编码器",
         choices=list(AUDIO_ENCODERS.keys()),
         default="AAC (推荐)",
         help="选择音频编码器",
     )
-    advanced_group.add_argument(
+    audio_group.add_argument(
         "--audio-bitrate",
         metavar="音频码率",
         choices=AUDIO_BITRATES,
         default="192k",
         help="音频码率",
     )
-    advanced_group.add_argument(
+
+    # ========== 高级选项 ==========
+    extra_group = encode_parser.add_argument_group(
+        "高级选项",
+        description=(
+            "额外参数会追加到 FFmpeg 命令末尾，直接填写参数即可。\n"
+            "【填写示例】-ss 00:01:00 -t 30 -tune animation"
+        ),
+        gooey_options={"columns": 1}
+    )
+    extra_group.add_argument(
         "--extra-args",
-        metavar="额外参数",
+        metavar="额外 FFmpeg 参数",
         default="",
-        help="额外的 FFmpeg 参数 (高级用户)",
+        help="多个参数用空格分隔，会追加到命令末尾",
     )
 
 

@@ -20,10 +20,12 @@ colorama_init()
 # 导入后端模块
 from src.core import (
     build_encode_command,
+    build_2pass_commands,
     build_replace_audio_command,
     build_remux_command,
     build_extract_audio_command,
     run_ffmpeg_command,
+    run_2pass_encode,
 )
 from src.qc import scan_directory, generate_report
 from src.presets import (
@@ -32,6 +34,7 @@ from src.presets import (
     RESOLUTION_PRESETS,
     REMUX_PRESETS,
     ENCODERS,
+    RATE_CONTROL_MODES,
     IMAGE_FORMATS,
     RENAME_MODES,
     RENAME_TARGETS,
@@ -281,9 +284,12 @@ def execute_encode(args):
     """执行视频压制任务。"""
     print_task_header("视频压制")
 
-    # 获取实际使用的编码器
+    # 判断是否使用预设模式
     preset_name = args.preset
-    if preset_name and preset_name in QUALITY_PRESETS and preset_name != "自定义 (Custom)":
+    is_custom = preset_name == "自定义 (Custom)"
+    
+    # 获取实际使用的编码器
+    if not is_custom and preset_name in QUALITY_PRESETS:
         preset = QUALITY_PRESETS[preset_name]
         actual_encoder = preset.get("encoder", "libx264")
         print(f"[预设] {preset_name}", flush=True)
@@ -302,23 +308,57 @@ def execute_encode(args):
         output_path = generate_output_path(args.input, actual_encoder)
         print(f"[自动生成输出路径] {output_path}", flush=True)
 
-    # 构建命令
-    cmd = build_encode_command(
-        input_path=args.input,
-        output_path=output_path,
-        preset_name=args.preset,
-        encoder=args.encoder,
-        crf=args.crf if args.preset == "自定义 (Custom)" else None,
-        speed_preset=getattr(args, 'speed_preset', None),
-        resolution=args.resolution if args.resolution else None,
-        fps=args.fps if args.fps > 0 else None,
-        audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac"),
-        audio_bitrate=args.audio_bitrate,
-        subtitle_path=args.subtitle if args.subtitle else None,
-        extra_args=args.extra_args if args.extra_args else None,
-    )
+    # 获取码率控制参数
+    rc_mode_name = getattr(args, 'rate_control', 'CRF/CQ (恒定质量)')
+    rc_mode = RATE_CONTROL_MODES.get(rc_mode_name, "crf")
+    video_bitrate = getattr(args, 'video_bitrate', '')
+    
+    # 打印码率控制参数信息 (自定义模式下)
+    if is_custom:
+        print(f"  码率控制: {rc_mode_name}", flush=True)
+        if video_bitrate:
+            print(f"  视频码率: {video_bitrate}", flush=True)
 
-    run_ffmpeg_command(cmd)
+    # 2-Pass 编码模式 - 使用真正的两遍编码
+    if rc_mode == "2pass" and video_bitrate:
+        print(f"{Fore.CYAN}[2-Pass 模式] 将执行真正的两遍编码{Style.RESET_ALL}", flush=True)
+        
+        pass1_cmd, pass2_cmd = build_2pass_commands(
+            input_path=args.input,
+            output_path=output_path,
+            preset_name=args.preset,
+            encoder=args.encoder if is_custom else None,  # 非自定义模式不传入编码器
+            bitrate=video_bitrate,
+            speed_preset=getattr(args, 'speed_preset', None) if is_custom else None,
+            resolution=args.resolution if args.resolution else None,
+            fps=args.fps if args.fps > 0 else None,
+            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac"),
+            audio_bitrate=args.audio_bitrate,
+            subtitle_path=args.subtitle if args.subtitle else None,
+            extra_args=args.extra_args if args.extra_args else None,
+        )
+        
+        run_2pass_encode(pass1_cmd, pass2_cmd)
+    else:
+        # 普通编码模式
+        cmd = build_encode_command(
+            input_path=args.input,
+            output_path=output_path,
+            preset_name=args.preset,
+            encoder=args.encoder if is_custom else None,  # 非自定义模式不传入编码器，使用预设值
+            crf=args.crf if is_custom else None,
+            bitrate=video_bitrate if video_bitrate else None,
+            speed_preset=getattr(args, 'speed_preset', None) if is_custom else None,
+            resolution=args.resolution if args.resolution else None,
+            fps=args.fps if args.fps > 0 else None,
+            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac"),
+            audio_bitrate=args.audio_bitrate,
+            subtitle_path=args.subtitle if args.subtitle else None,
+            extra_args=args.extra_args if args.extra_args else None,
+            rc_mode=rc_mode if rc_mode != "crf" else None,
+        )
+
+        run_ffmpeg_command(cmd)
 
 
 def execute_replace_audio(args):

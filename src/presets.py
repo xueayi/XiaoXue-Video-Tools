@@ -17,12 +17,12 @@ ENCODERS = {
 # 质量预设
 # 每个预设包含: crf, bitrate (可选), preset (速度), 分辨率, 帧率
 QUALITY_PRESETS = {
-    "【标准推荐】1080P/60FPS 均衡": {
+    "【均衡画质】CRF18常规导出": {
         "encoder": "libx264",
-        "crf": 20,
+        "crf": 18,
         "preset": "medium",
-        "resolution": "1920x1080",
-        "fps": 18,
+        "resolution": None,
+        "fps": None,
         "audio_bitrate": "192k",
         "description": "适合日常 B 站投稿，画质与文件大小均衡。"
     },
@@ -73,6 +73,21 @@ CPU_PRESETS = ["ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
 
 # NVENC 速度预设
 NVENC_PRESETS = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"]
+
+# 通用码率控制模式 (根据编码器自动适配参数)
+# - CRF/CQ 模式: 恒定质量，由质量值控制
+# - VBR 模式: 可变码率，需要设置目标码率
+# - CBR 模式: 恒定码率，适合直播推流
+# - 2-Pass 模式: 两遍编码，更精确的码率控制
+RATE_CONTROL_MODES = {
+    "CRF/CQ (恒定质量)": "crf",        # 默认，最常用
+    "VBR (可变码率)": "vbr",            # 需要设置码率
+    "CBR (恒定码率)": "cbr",            # 恒定码率，适合推流
+    "2-Pass VBR (两遍编码)": "2pass",   # 更精确的码率控制
+}
+
+# 常用视频码率预设
+VIDEO_BITRATES = ["", "2M", "4M", "6M", "8M", "10M", "15M", "20M", "30M", "50M"]
 
 # 分辨率预设 (用于 QC 检测)
 RESOLUTION_PRESETS = {
