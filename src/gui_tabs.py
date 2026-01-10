@@ -67,7 +67,7 @@ def register_encode_tab(subs) -> None:
         "--preset",
         metavar="质量预设",
         choices=list(QUALITY_PRESETS.keys()),
-        default="【均衡画质】CRF18常规导出",
+        default="【均衡画质】x264常用导出(CRF18)",
         help="选择预设配置，或选择 '自定义' 手动配置参数",
     )
 

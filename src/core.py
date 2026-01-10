@@ -290,6 +290,9 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None) -> int:
     print(" ".join(cmd), flush=True)
     print("-" * 50, flush=True)
 
+    # 收集输出用于错误分析
+    output_lines = []
+
     try:
         # 使用 Popen 以实时读取输出
         process = subprocess.Popen(
@@ -310,6 +313,7 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None) -> int:
                 break
             if line:
                 print(line, end='', flush=True)
+                output_lines.append(line)
                 if progress_callback:
                     progress_callback(line)
 
@@ -319,6 +323,8 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None) -> int:
             print(f"\n{Fore.GREEN}[成功] 任务完成!{Style.RESET_ALL}", flush=True)
         else:
             print(f"\n{Fore.RED}[失败] FFmpeg 返回错误 (code={process.returncode}){Style.RESET_ALL}", flush=True)
+            # 检测硬件编码器错误并给出友好提示
+            _check_hardware_encoder_error(output_lines)
 
         return process.returncode
 
@@ -329,6 +335,103 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None) -> int:
     except Exception as e:
         print(f"\n{Fore.RED}[错误] 执行失败: {e}{Style.RESET_ALL}", flush=True)
         return -1
+
+
+def _check_hardware_encoder_error(output_lines: List[str]) -> None:
+    """
+    检测硬件编码器错误并输出友好提示。
+
+    Args:
+        output_lines: FFmpeg 输出行列表。
+    """
+    output_text = "\n".join(output_lines)
+    
+    # NVENC 错误关键词
+    nvenc_errors = [
+        "No NVENC capable devices found",
+        "Cannot load cuvidparser",
+        "Driver does not support the required nvenc API version",
+        "The minimum required Nvidia driver for nvenc",
+        "nvenc encoder error",
+        "Failed to init NVENC",
+    ]
+    
+    # QSV 错误关键词  
+    qsv_errors = [
+        "Error initializing an MFX session",
+        "device failed",
+        "MFXInit failed",
+        "Could not initialize mfx session",
+        "QSV is not supported",
+    ]
+    
+    # AMF 错误关键词
+    amf_errors = [
+        "CreateComponent failed",
+        "AMF failed",
+        "amf encoder error",
+        "Failed to create AMF",
+        "AMFComponentOptimizedPush_QueryMHESupport",
+    ]
+    
+    detected_encoder = None
+    
+    for keyword in nvenc_errors:
+        if keyword.lower() in output_text.lower():
+            detected_encoder = "nvenc"
+            break
+    
+    if not detected_encoder:
+        for keyword in qsv_errors:
+            if keyword.lower() in output_text.lower():
+                detected_encoder = "qsv"
+                break
+    
+    if not detected_encoder:
+        for keyword in amf_errors:
+            if keyword.lower() in output_text.lower():
+                detected_encoder = "amf"
+                break
+    
+    if detected_encoder:
+        print(f"\n{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}[提示] 检测到硬件编码器错误{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}{'='*60}{Style.RESET_ALL}")
+        
+        if detected_encoder == "nvenc":
+            print(f"""
+{Fore.CYAN}NVIDIA NVENC 编码失败可能的原因:{Style.RESET_ALL}
+  • 显卡驱动版本过低，请更新至最新版本
+  • 您的 GPU 不支持 NVENC (需 GTX 600 系列或更新)
+  • 驱动版本与 FFmpeg 要求不匹配 (建议驱动版本 ≥ 570.0)
+
+{Fore.GREEN}解决建议:{Style.RESET_ALL}
+  1. 访问 NVIDIA 官网下载最新驱动: https://www.nvidia.cn/drivers/
+  2. 若无法更新驱动，可改用 CPU 编码器 (H.264/H.265)
+""")
+        elif detected_encoder == "qsv":
+            print(f"""
+{Fore.CYAN}Intel QSV 编码失败可能的原因:{Style.RESET_ALL}
+  • 未安装 Intel 核显驱动
+  • CPU 不带集成显卡或已在 BIOS 中禁用
+  • 驱动版本过低
+
+{Fore.GREEN}解决建议:{Style.RESET_ALL}
+  1. 下载 Intel 核显驱动: https://www.intel.cn/content/www/cn/zh/download-center/home.html
+  2. 确认 BIOS 中核显未被禁用
+  3. 若无法使用 QSV，可改用 CPU 编码器 (H.264/H.265)
+""")
+        elif detected_encoder == "amf":
+            print(f"""
+{Fore.CYAN}AMD AMF 编码失败可能的原因:{Style.RESET_ALL}
+  • AMD 显卡驱动版本过低
+  • 显卡不支持 AMF 硬件编码
+  • 驱动安装不完整
+
+{Fore.GREEN}解决建议:{Style.RESET_ALL}
+  1. 下载最新 AMD 驱动: https://www.amd.com/zh-hans/support
+  2. 若无法更新驱动，可改用 CPU 编码器 (H.264/H.265)
+""")
 
 
 def build_2pass_commands(

@@ -6,7 +6,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 from colorama import Fore, Style
 
@@ -21,6 +21,108 @@ PR_INCOMPATIBLE_CODECS = {"vp8", "vp9", "av1", "theora"}
 
 # 不兼容的图片格式 (作为视频序列导入时可能有问题)
 PR_INCOMPATIBLE_IMAGE_FORMATS = {".webp", ".heic", ".avif"}
+
+# 常见图片格式扩展名 (用于扫描)
+COMMON_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".webp", ".heic", ".avif"}
+
+# 图片文件头魔数定义
+IMAGE_SIGNATURES = {
+    # JPEG: FF D8 FF
+    "jpeg": (b'\xff\xd8\xff', 0),
+    # PNG: 89 50 4E 47 0D 0A 1A 0A
+    "png": (b'\x89PNG\r\n\x1a\n', 0),
+    # GIF: 47 49 46 38 (GIF8)
+    "gif": (b'GIF8', 0),
+    # BMP: 42 4D (BM)
+    "bmp": (b'BM', 0),
+    # TIFF: 49 49 2A 00 (little-endian) 或 4D 4D 00 2A (big-endian)
+    "tiff_le": (b'II*\x00', 0),
+    "tiff_be": (b'MM\x00*', 0),
+    # WebP: RIFF....WEBP
+    "webp": (b'WEBP', 8),
+}
+
+
+def detect_image_format_by_header(file_path: str) -> Optional[str]:
+    """
+    通过读取文件头魔数检测图片真实格式。
+
+    Args:
+        file_path: 文件路径。
+
+    Returns:
+        检测到的格式名称 (如 "jpeg", "png", "gif" 等)，若无法识别则返回 None。
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            # 读取文件头 (最多 16 字节足够识别大多数格式)
+            header = f.read(16)
+            
+            if len(header) < 4:
+                return None
+            
+            # 检查 JPEG
+            if header[:3] == b'\xff\xd8\xff':
+                return "jpeg"
+            
+            # 检查 PNG
+            if header[:8] == b'\x89PNG\r\n\x1a\n':
+                return "png"
+            
+            # 检查 GIF
+            if header[:4] == b'GIF8':
+                return "gif"
+            
+            # 检查 BMP
+            if header[:2] == b'BM':
+                return "bmp"
+            
+            # 检查 TIFF
+            if header[:4] in (b'II*\x00', b'MM\x00*'):
+                return "tiff"
+            
+            # 检查 WebP (RIFF....WEBP)
+            if header[:4] == b'RIFF' and len(header) >= 12 and header[8:12] == b'WEBP':
+                return "webp"
+            
+            # 检查 HEIC/AVIF (ftyp box)
+            # 格式: [4字节大小][ftyp][品牌标识]
+            if len(header) >= 12:
+                # ftyp 通常在偏移 4 处
+                if header[4:8] == b'ftyp':
+                    brand = header[8:12]
+                    if brand in (b'heic', b'heix', b'hevc', b'hevx', b'mif1'):
+                        return "heic"
+                    if brand in (b'avif', b'avis'):
+                        return "avif"
+            
+            return None
+            
+    except Exception:
+        return None
+
+
+def get_expected_extension(detected_format: str) -> str:
+    """
+    根据检测到的格式返回预期的扩展名。
+
+    Args:
+        detected_format: 检测到的格式名称。
+
+    Returns:
+        预期的扩展名 (含点号)。
+    """
+    format_to_ext = {
+        "jpeg": ".jpg",
+        "png": ".png",
+        "gif": ".gif",
+        "bmp": ".bmp",
+        "tiff": ".tiff",
+        "webp": ".webp",
+        "heic": ".heic",
+        "avif": ".avif",
+    }
+    return format_to_ext.get(detected_format, "")
 
 
 @dataclass
@@ -209,6 +311,27 @@ def check_compatibility(
     if check_pr_image:
         if info.container in images_to_check:
             info.errors.append(f"[兼容性] 图片格式 {info.container} 可能不被支持")
+        
+        # 检测图片文件头与后缀是否匹配
+        if info.container.lower() in COMMON_IMAGE_EXTENSIONS:
+            detected_format = detect_image_format_by_header(info.path)
+            if detected_format:
+                expected_ext = get_expected_extension(detected_format)
+                actual_ext = info.container.lower()
+                # 处理 .jpg 和 .jpeg 等价的情况
+                equivalent_exts = {
+                    ".jpg": {".jpg", ".jpeg"},
+                    ".jpeg": {".jpg", ".jpeg"},
+                    ".tiff": {".tiff", ".tif"},
+                    ".tif": {".tiff", ".tif"},
+                }
+                actual_set = equivalent_exts.get(actual_ext, {actual_ext})
+                expected_set = equivalent_exts.get(expected_ext, {expected_ext})
+                
+                if not actual_set.intersection(expected_set):
+                    info.warnings.append(
+                        f"[格式不匹配] 文件实际格式为 {detected_format.upper()}({expected_ext})，但扩展名为 {actual_ext}"
+                    )
 
     return info
 
@@ -246,10 +369,17 @@ def scan_directory(
         MediaInfo 列表。
     """
     if extensions is None:
-        extensions = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".ts", ".mts", ".m2ts"]
+        extensions = [
+            # 视频格式
+            ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".ts", ".mts", ".m2ts",
+            # 图片格式
+            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif", ".avif", ".webp"
+        ]
 
-    # 使用自定义或默认的图片格式集合
-    image_formats = incompatible_images if incompatible_images else PR_INCOMPATIBLE_IMAGE_FORMATS
+    # 使用自定义或默认的不兼容图片格式集合
+    incompatible_image_set = incompatible_images if incompatible_images else PR_INCOMPATIBLE_IMAGE_FORMATS
+    # 合并所有需要扫描的图片格式 (常见图片 + 不兼容图片)
+    all_image_formats = COMMON_IMAGE_EXTENSIONS | incompatible_image_set
     
     extensions = [ext.lower() if ext.startswith(".") else f".{ext.lower()}" for ext in extensions]
     results = []
@@ -259,7 +389,8 @@ def scan_directory(
     for root, dirs, files in os.walk(directory):
         for filename in files:
             ext = os.path.splitext(filename)[1].lower()
-            if ext in extensions or ext in image_formats:
+            # 扫描视频格式和所有图片格式
+            if ext in extensions or ext in all_image_formats:
                 file_path = os.path.join(root, filename)
                 print(f"  扫描: {file_path}")
                 info = probe_media(file_path)

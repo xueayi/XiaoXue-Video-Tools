@@ -188,15 +188,26 @@ GOOEY_CONFIG = {
     "show_restart_button": True,
     "menu": [
         {
-            "name": "帮助",
+            "name": "关于",
             "items": [
                 {
                     "type": "AboutDialog",
-                    "menuTitle": "关于",
+                    "menuTitle": "关于小雪工具箱",
                     "name": "小雪工具箱",
                     "description": "一个简单的视频压制与检测工具",
                     "version": "1.2.0",
                     "developer": "雪阿宜",
+                    "website": "https://github.com/xueayi/XiaoXue-Video-Tools",
+                },
+            ],
+        },
+        {
+            "name": "链接",
+            "items": [
+                {
+                    "type": "Link",
+                    "menuTitle": "GitHub 仓库",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools",
                 },
                 {
                     "type": "Link",
@@ -204,7 +215,7 @@ GOOEY_CONFIG = {
                     "url": "https://space.bilibili.com/107936977",
                 },
             ],
-        }
+        },
     ],
     "image_dir": get_base_dir(),
 }

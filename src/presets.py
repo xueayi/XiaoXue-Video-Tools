@@ -17,7 +17,7 @@ ENCODERS = {
 # 质量预设
 # 每个预设包含: crf, bitrate (可选), preset (速度), 分辨率, 帧率
 QUALITY_PRESETS = {
-    "【均衡画质】CRF18常规导出": {
+    "【均衡画质】x264常用导出(CRF18)": {
         "encoder": "libx264",
         "crf": 18,
         "preset": "medium",
