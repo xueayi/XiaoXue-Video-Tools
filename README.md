@@ -1,5 +1,10 @@
 # 小雪工具箱 (XiaoXue Video Toolbox)
 
+<p align="center">
+  <img src="image/小雪工具箱2.png" width="200" alt="小雪工具箱 Logo">
+</p>
+
+
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
 ![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?logo=ffmpeg&logoColor=white)
 ![Gooey](https://img.shields.io/badge/Gooey-GUI-4B8BBE)
