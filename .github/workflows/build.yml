@@ -46,22 +46,29 @@ jobs:
         run: |
           pyinstaller XiaoXueToolbox.spec --noconfirm
       
+      - name: Get version
+        id: version
+        run: |
+          $version = "${{ github.ref_name }}"
+          if (-not $version) { $version = "dev" }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+      
       - name: Create release package
         run: |
-          Compress-Archive -Path "dist\XiaoXueToolbox\*" -DestinationPath "XiaoXueToolbox_Windows_x64.zip"
+          Compress-Archive -Path "dist\XiaoXueToolbox\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip"
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: XiaoXue-Video-Tools
-          path: XiaoXueToolbox_Windows_x64.zip
+          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}
+          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
           retention-days: 30
       
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: XiaoXueToolbox_Windows_x64.zip
+          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
           generate_release_notes: true
           draft: false
           prerelease: false
