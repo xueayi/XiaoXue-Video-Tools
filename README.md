@@ -1,8 +1,13 @@
 # 小雪工具箱 (XiaoXue Video Toolbox)
 
-一个简洁实用的视频压制与素材管理工具。基于 Python + Gooey 图形界面，内置 FFmpeg，开箱即用。
+![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-007808?logo=ffmpeg&logoColor=white)
+![Gooey](https://img.shields.io/badge/Gooey-GUI-4B8BBE)
+![wxPython](https://img.shields.io/badge/wxPython-4.x-2C5BB4)
+![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-**仓库地址**: https://github.com/xueayi/XiaoXue-Video-Tools
+一个简洁实用的视频压制与素材管理工具。基于 Python + Gooey 图形界面，内置 FFmpeg，开箱即用。
 
 ---
 
@@ -12,9 +17,8 @@
 
 支持 H.264/H.265 编码，内置三档画质预设（均衡/极致/速度），可选字幕烧录。
 
-- **多编码器支持**: CPU (libx264/libx265)、NVIDIA NVENC、Intel QSV、AMD AMF
-- **灵活的码率控制**: CRF/CQ 恒定质量、VBR 可变码率、CBR 恒定码率、真 2-Pass 编码
-- **硬件加速失败智能提示**: 自动检测 NVENC/QSV/AMF 错误，给出驱动下载链接和解决建议
+- **编码器预设**: CPU (libx264/libx265)、NVIDIA NVENC、Intel QSV、AMD AMF
+- **码率控制**: CRF/CQ 恒定质量、VBR 可变码率、CBR 恒定码率、真 2-Pass 编码
 
 ### 封装转换 (Remux)
 

@@ -166,6 +166,28 @@ def send_auto_notification(task_name: str):
 # ============================================================
 # Gooey 配置常量
 # ============================================================
+def get_icon_path():
+    """获取图标路径 (可选)。"""
+    from src.utils import get_internal_dir
+    
+    base = get_base_dir()
+    internal = get_internal_dir()
+    
+    # 优先检查 _internal 目录 (PyInstaller 打包环境)
+    icon_internal = os.path.join(internal, "icon.ico")
+    if os.path.exists(icon_internal):
+        print(f"[图标] 图标路径: {icon_internal}")
+        return icon_internal
+    
+    # 回退到 exe 同目录 (开发环境)
+    icon_base = os.path.join(base, "icon.ico")
+    if os.path.exists(icon_base):
+        print(f"[图标] 图标路径: {icon_base}")
+        return icon_base
+    
+    print(f"[图标] 未找到图标文件")
+    return None
+
 GOOEY_CONFIG = {
     "program_name": "小雪工具箱",
     "program_description": "一个简单的视频压制与检测工具",
@@ -218,14 +240,9 @@ GOOEY_CONFIG = {
         },
     ],
     "image_dir": get_base_dir(),
+    "program_icon": get_icon_path(),
 }
 
-
-def get_icon_path():
-    """获取图标路径 (可选)。"""
-    base = get_base_dir()
-    icon = os.path.join(base, "icon.ico")
-    return icon if os.path.exists(icon) else None
 
 
 @Gooey(**GOOEY_CONFIG)
