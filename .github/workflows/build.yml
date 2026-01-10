@@ -42,6 +42,26 @@ jobs:
           Remove-Item -Recurse -Force "ffmpeg_temp"
           Remove-Item "ffmpeg.zip"
       
+      - name: Inject version to main.py
+        run: |
+          # 从 tag 中获取版本号 (去掉 v 前缀)
+          $version = "${{ github.ref_name }}"
+          if (-not $version -or $version -eq "") { 
+            $version = "dev" 
+          } else {
+            # 去掉 v 前缀 (v1.2.0 -> 1.2.0)
+            $version = $version -replace '^v', ''
+          }
+          Write-Host "Injecting version: $version"
+          
+          # 替换 main.py 中的版本号
+          $content = Get-Content "main.py" -Raw -Encoding UTF8
+          $content = $content -replace '"version":\s*"[^"]*"', "`"version`": `"$version`""
+          Set-Content "main.py" -Value $content -Encoding UTF8 -NoNewline
+          
+          # 验证替换结果
+          Get-Content "main.py" | Select-String -Pattern '"version"'
+      
       - name: Build with PyInstaller
         run: |
           pyinstaller XiaoXueToolbox.spec --noconfirm
