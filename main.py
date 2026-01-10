@@ -32,7 +32,14 @@ from src.presets import (
     RESOLUTION_PRESETS,
     REMUX_PRESETS,
     ENCODERS,
+    IMAGE_FORMATS,
+    RENAME_MODES,
+    RENAME_TARGETS,
+    RENAME_BEHAVIORS,
 )
+from src.image_converter import batch_convert_images
+from src.folder_creator import batch_create_folders
+from src.batch_renamer import batch_rename, RenameConfig
 from src.notify import send_feishu_notification, send_webhook_notification, FEISHU_COLORS
 from src.utils import get_base_dir, generate_output_path, auto_generate_output_path
 from src.help_texts import get_help_text
@@ -46,6 +53,9 @@ from src.gui_tabs import (
     register_extract_audio_tab,
     register_notification_tab,
     register_help_tab,
+    register_image_convert_tab,
+    register_folder_creator_tab,
+    register_batch_rename_tab,
 )
 
 
@@ -193,6 +203,9 @@ def main():
     register_remux_tab(subs)
     register_qc_tab(subs)
     register_extract_audio_tab(subs)
+    register_image_convert_tab(subs)
+    register_folder_creator_tab(subs)
+    register_batch_rename_tab(subs)
     register_notification_tab(subs)
     register_help_tab(subs)
 
@@ -211,6 +224,9 @@ def dispatch_command(args):
         "封装转换": execute_remux,
         "质量检测": execute_qc,
         "音频抽取": execute_extract_audio,
+        "图片转换": execute_image_convert,
+        "文件夹创建": execute_folder_creator,
+        "批量重命名": execute_batch_rename,
     }
     
     # 不需要自动通知的任务
@@ -300,29 +316,54 @@ def execute_replace_audio(args):
 
 
 def execute_remux(args):
-    """执行封装转换任务。"""
+    """执行封装转换任务（支持批量）。"""
     print_task_header("封装转换")
 
-    output_path = args.remux_output
     preset_name = getattr(args, 'remux_preset', 'MP4 (H.264 兼容)')
     preset = REMUX_PRESETS.get(preset_name, {})
+    extension = preset.get("extension", ".mp4")
     
-    if not output_path:
-        # 根据预设自动生成输出路径
-        extension = preset.get("extension", ".mp4")
-        if extension:
-            output_path = auto_generate_output_path(args.remux_input, "_remux", extension)
+    # 获取输入文件列表
+    input_files = args.remux_input
+    if isinstance(input_files, str):
+        input_files = [input_files]
+    
+    output_dir = args.remux_output if args.remux_output else None
+    
+    print(f"[预设] {preset_name}")
+    print(f"[输入文件数] {len(input_files)}")
+    if output_dir:
+        print(f"[输出目录] {output_dir}")
+    print("-" * 50)
+
+    success_count = 0
+    fail_count = 0
+
+    for i, input_path in enumerate(input_files, 1):
+        print(f"\n[{i}/{len(input_files)}] 处理: {os.path.basename(input_path)}")
+        
+        # 生成输出路径
+        if output_dir:
+            basename = os.path.splitext(os.path.basename(input_path))[0]
+            output_path = os.path.join(output_dir, basename + "_remux" + extension)
         else:
-            output_path = auto_generate_output_path(args.remux_input, "_remux")
-        print(f"[预设] {preset_name}", flush=True)
-        print(f"[自动生成输出路径] {output_path}", flush=True)
+            output_path = auto_generate_output_path(input_path, "_remux", extension)
+        
+        print(f"[输出] {output_path}")
 
-    cmd = build_remux_command(
-        input_path=args.remux_input,
-        output_path=output_path,
-    )
+        cmd = build_remux_command(
+            input_path=input_path,
+            output_path=output_path,
+        )
 
-    run_ffmpeg_command(cmd)
+        result = run_ffmpeg_command(cmd)
+        if result == 0:
+            success_count += 1
+        else:
+            fail_count += 1
+
+    print(f"\n{'='*50}")
+    print(f"批量转换完成: 成功 {success_count} 个, 失败 {fail_count} 个")
 
 
 def execute_qc(args):
@@ -482,6 +523,119 @@ def execute_help(args):
     print(f"📖 {topic} 使用说明")
     print(f"{'='*50}\n")
     print(help_content)
+
+
+def execute_image_convert(args):
+    """执行图片格式转换任务。"""
+    print_task_header("图片格式转换")
+
+    # 获取输入文件列表
+    input_files = args.img_input
+    if isinstance(input_files, str):
+        input_files = [input_files]
+
+    # 确定目标格式
+    format_preset = getattr(args, 'img_format', 'PNG (无损)')
+    if format_preset == "自定义":
+        target_ext = getattr(args, 'img_format_custom', 'png')
+        if not target_ext:
+            print(f"{Fore.RED}[错误] 选择自定义格式时必须输入扩展名{Style.RESET_ALL}")
+            return
+    else:
+        target_ext = IMAGE_FORMATS.get(format_preset, ".png")
+
+    # 确保扩展名格式正确
+    if target_ext and not target_ext.startswith("."):
+        target_ext = "." + target_ext
+
+    output_dir = args.img_output_dir if args.img_output_dir else None
+    quality = getattr(args, 'img_quality', 95)
+
+    print(f"[目标格式] {target_ext}")
+    print(f"[质量] {quality}")
+    print(f"[文件数量] {len(input_files)}")
+
+    success, fail, errors = batch_convert_images(
+        input_paths=input_files,
+        output_dir=output_dir,
+        target_extension=target_ext,
+        quality=quality,
+    )
+
+    if errors:
+        print(f"\n{Fore.YELLOW}[警告] 部分转换失败:{Style.RESET_ALL}")
+        for err in errors[:5]:
+            print(f"  - {err}")
+
+
+def execute_folder_creator(args):
+    """执行批量创建文件夹任务。"""
+    print_task_header("批量创建文件夹")
+
+    txt_path = args.folder_txt
+    output_dir = args.folder_output_dir
+    auto_number = getattr(args, 'folder_auto_number', True)
+
+    success, fail, errors = batch_create_folders(
+        txt_path=txt_path,
+        output_dir=output_dir,
+        auto_number=auto_number,
+    )
+
+    if errors:
+        print(f"\n{Fore.YELLOW}[警告] 部分创建失败:{Style.RESET_ALL}")
+        for err in errors[:5]:
+            print(f"  - {err}")
+
+
+def execute_batch_rename(args):
+    """执行批量序列重命名任务。"""
+    print_task_header("批量序列重命名")
+
+    input_dir = args.rename_input_dir
+    
+    # 解析模式
+    mode_name = getattr(args, 'rename_mode', '原地重命名')
+    mode = RENAME_MODES.get(mode_name, 'rename_in_place')
+    
+    # 解析目标类型
+    target_name = getattr(args, 'rename_target', '图片和视频')
+    target_type = RENAME_TARGETS.get(target_name, 'both')
+    
+    # 解析递归行为
+    behavior_name = getattr(args, 'rename_recursive', '递归模式（保持目录结构）')
+    recursive = RENAME_BEHAVIORS.get(behavior_name, True)
+    
+    # 解析扩展名
+    image_exts = [ext.strip() for ext in args.rename_image_exts.split(',') if ext.strip()]
+    video_exts = [ext.strip() for ext in args.rename_video_exts.split(',') if ext.strip()]
+    
+    # 输出目录
+    output_dir = args.rename_output_dir if args.rename_output_dir else None
+    
+    # 排除下划线
+    exclude_underscore = getattr(args, 'rename_exclude_underscore', True)
+
+    # 创建配置
+    config = RenameConfig(
+        mode=mode,
+        output_dir=output_dir,
+        target_type=target_type,
+        image_extensions=image_exts,
+        video_extensions=video_exts,
+        recursive=recursive,
+        exclude_underscore=exclude_underscore,
+    )
+
+    success, fail, errors = batch_rename(
+        input_path=input_dir,
+        config=config,
+    )
+
+    if errors:
+        print(f"\n{Fore.YELLOW}[警告] 部分重命名失败:{Style.RESET_ALL}")
+        for err in errors[:5]:
+            print(f"  - {err}")
 
 
 # ============================================================

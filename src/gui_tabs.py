@@ -14,6 +14,10 @@ from .presets import (
     NVENC_PRESETS,
     RESOLUTION_PRESETS,
     REMUX_PRESETS,
+    IMAGE_FORMATS,
+    RENAME_MODES,
+    RENAME_TARGETS,
+    RENAME_BEHAVIORS,
 )
 from .notify import FEISHU_COLORS
 
@@ -179,17 +183,18 @@ def register_replace_audio_tab(subs) -> None:
 
 
 def register_remux_tab(subs) -> None:
-    """注册封装转换标签页。"""
-    remux_parser = subs.add_parser("封装转换", help="更换容器格式 (不重新编码)")
+    """注册封装转换标签页（支持批量）。"""
+    remux_parser = subs.add_parser("封装转换", help="更换容器格式 (不重新编码，支持批量)")
 
     remux_io = remux_parser.add_argument_group("输入/输出设置")
     remux_io.add_argument(
         "--remux-input",
-        metavar="输入文件",
+        metavar="输入文件 (可多选)",
         required=True,
-        widget="FileChooser",
+        nargs="+",
+        widget="MultiFileChooser",
         gooey_options={"wildcard": "视频文件 (*.mp4;*.mov;*.avi;*.mkv;*.webm;*.ts;*.mxf)|*.mp4;*.mov;*.avi;*.mkv;*.webm;*.ts;*.mxf|所有文件 (*.*)|*.*"},
-        help="选择要转换的文件",
+        help="选择要转换的文件 (可批量选择多个)",
     )
     
     remux_preset = remux_parser.add_argument_group("输出格式")
@@ -202,12 +207,11 @@ def register_remux_tab(subs) -> None:
     )
     remux_preset.add_argument(
         "--remux-output",
-        metavar="输出路径 (可选)",
+        metavar="输出目录 (可选)",
         required=False,
         default="",
-        widget="FileSaver",
-        gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|MKV 文件 (*.mkv)|*.mkv|MOV 文件 (*.mov)|*.mov|TS 文件 (*.ts)|*.ts|所有文件 (*.*)|*.*"},
-        help="留空则自动根据预设生成路径",
+        widget="DirChooser",
+        help="批量模式: 选择输出目录。单文件留空则在原位置生成",
     )
 
 
@@ -442,9 +446,169 @@ def register_help_tab(subs) -> None:
             "封装转换",
             "质量检测",
             "音频抽取",
+            "图片转换",
+            "文件夹创建",
+            "批量重命名",
             "通知设置",
             "常见问题",
         ],
         default="视频压制",
         help="选择要查看说明的功能模块",
     )
+
+
+def register_image_convert_tab(subs) -> None:
+    """注册图片格式转换标签页。"""
+    img_parser = subs.add_parser("图片转换", help="批量图片格式转换")
+
+    img_io = img_parser.add_argument_group("输入/输出设置")
+    img_io.add_argument(
+        "--img-input",
+        metavar="输入图片 (可多选)",
+        required=True,
+        nargs="+",
+        widget="MultiFileChooser",
+        gooey_options={"wildcard": "图片文件 (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.tiff)|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif;*.tiff|所有文件 (*.*)|*.*"},
+        help="选择要转换的图片文件 (可批量选择多个)",
+    )
+    img_io.add_argument(
+        "--img-output-dir",
+        metavar="输出目录 (可选)",
+        required=False,
+        default="",
+        widget="DirChooser",
+        help="留空则在原文件位置生成转换后的图片",
+    )
+
+    img_format = img_parser.add_argument_group("输出格式")
+    img_format.add_argument(
+        "--img-format",
+        metavar="目标格式",
+        choices=list(IMAGE_FORMATS.keys()),
+        default="PNG (无损)",
+        help="选择目标图片格式，或选择 '自定义' 手动输入",
+    )
+    img_format.add_argument(
+        "--img-format-custom",
+        metavar="自定义格式",
+        default="",
+        help="当上方选择 '自定义' 时，在此输入扩展名 (如 ico, tga)",
+    )
+    img_format.add_argument(
+        "--img-quality",
+        metavar="质量 (JPG/WEBP)",
+        type=int,
+        default=95,
+        gooey_options={"min": 1, "max": 100},
+        help="JPEG/WEBP 格式的压缩质量 (1-100)，其他格式忽略",
+    )
+
+
+def register_folder_creator_tab(subs) -> None:
+    """注册批量创建文件夹标签页。"""
+    folder_parser = subs.add_parser("文件夹创建", help="从 TXT 批量创建文件夹")
+
+    folder_io = folder_parser.add_argument_group("输入/输出设置")
+    folder_io.add_argument(
+        "--folder-txt",
+        metavar="TXT 文件",
+        required=True,
+        widget="FileChooser",
+        gooey_options={"wildcard": "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*"},
+        help="选择包含文件夹名称的 TXT 文件，每行一个名称",
+    )
+    folder_io.add_argument(
+        "--folder-output-dir",
+        metavar="输出目录",
+        required=True,
+        widget="DirChooser",
+        help="选择要在哪个目录下创建文件夹",
+    )
+
+    folder_options = folder_parser.add_argument_group("选项设置")
+    folder_options.add_argument(
+        "--folder-auto-number",
+        metavar="自动排序",
+        action="store_true",
+        default=True,
+        help="开启后自动在文件夹名前添加序号 (如 1_文件夹名)",
+    )
+
+
+def register_batch_rename_tab(subs) -> None:
+    """注册批量序列重命名标签页。"""
+    rename_parser = subs.add_parser("批量重命名", help="批量序列重命名图片/视频")
+
+    # 输入配置
+    rename_io = rename_parser.add_argument_group("输入设置")
+    rename_io.add_argument(
+        "--rename-input-dir",
+        metavar="输入目录",
+        required=True,
+        widget="DirChooser",
+        help="选择要重命名的文件所在目录",
+    )
+
+    # 重命名模式
+    rename_mode = rename_parser.add_argument_group("重命名模式")
+    rename_mode.add_argument(
+        "--rename-mode",
+        metavar="模式",
+        choices=list(RENAME_MODES.keys()),
+        default="原地重命名",
+        help="原地: 直接重命名; 复制: 保留原文件; 移动: 移动到新位置",
+    )
+    rename_mode.add_argument(
+        "--rename-output-dir",
+        metavar="安全输出路径 (可选)",
+        required=False,
+        default="",
+        widget="DirChooser",
+        help="复制/移动模式: 留空则在输入目录创建 'rename_output' 文件夹",
+    )
+
+    # 对象设置
+    rename_target = rename_parser.add_argument_group("重命名对象")
+    rename_target.add_argument(
+        "--rename-target",
+        metavar="目标类型",
+        choices=list(RENAME_TARGETS.keys()),
+        default="图片和视频",
+        help="选择要重命名的文件类型",
+    )
+    rename_target.add_argument(
+        "--rename-image-exts",
+        metavar="图片格式",
+        default="png,jpg",
+        help="逗号分隔的图片扩展名 (不含点号)",
+    )
+    rename_target.add_argument(
+        "--rename-video-exts",
+        metavar="视频格式",
+        default="mp4,mov",
+        help="逗号分隔的视频扩展名 (不含点号)",
+    )
+
+    # 行为设置
+    rename_behavior = rename_parser.add_argument_group(
+        "重命名行为",
+        description="递归模式: 处理所有子文件夹，文件名包含父目录信息\n非递归模式: 仅处理指定目录下的文件",
+    )
+    rename_behavior.add_argument(
+        "--rename-recursive",
+        metavar="行为模式",
+        choices=list(RENAME_BEHAVIORS.keys()),
+        default="递归模式（保持目录结构）",
+        help="递归: 包含子目录; 非递归: 仅当前目录",
+    )
+
+    # 高级选项
+    rename_advanced = rename_parser.add_argument_group("高级选项")
+    rename_advanced.add_argument(
+        "--rename-exclude-underscore",
+        metavar="排除下划线后文字",
+        action="store_true",
+        default=True,
+        help="递归模式下，忽略文件夹名中第一个下划线后的内容",
+    )
+

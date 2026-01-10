@@ -120,3 +120,34 @@ REMUX_PRESETS = {
         "description": "手动指定输出路径和扩展名",
     },
 }
+
+# 图片格式预设 (用于图片格式转换)
+IMAGE_FORMATS = {
+    "PNG (无损)": ".png",
+    "JPG/JPEG (有损压缩)": ".jpg",
+    "WEBP (Web 优化)": ".webp",
+    "BMP (位图)": ".bmp",
+    "GIF (动图)": ".gif",
+    "TIFF (专业)": ".tiff",
+    "自定义": None,
+}
+
+# 重命名模式预设
+RENAME_MODES = {
+    "原地重命名": "rename_in_place",
+    "复制并重命名": "copy_rename",
+    "移动并重命名": "move_rename",
+}
+
+# 重命名目标类型预设
+RENAME_TARGETS = {
+    "仅图片": "images",
+    "仅视频": "videos",
+    "图片和视频": "both",
+}
+
+# 重命名行为预设
+RENAME_BEHAVIORS = {
+    "递归模式（保持目录结构）": True,
+    "非递归模式": False,
+}
