@@ -29,15 +29,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Download FFmpeg (LGPL 精简版)
+      - name: Download FFmpeg (GPL 完整版)
         run: |
-          # 下载 FFmpeg LGPL 精简版 (~80MB vs 200MB)
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip" -OutFile "ffmpeg.zip"
+          # 下载 FFmpeg GPL 完整版 (包含 libx264/libx265 编码器)
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
           Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
           # 复制到 bin 目录
           New-Item -ItemType Directory -Force -Path "bin"
-          Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-lgpl\bin\ffmpeg.exe" -Destination "bin\"
-          Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-lgpl\bin\ffprobe.exe" -Destination "bin\"
+          Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe" -Destination "bin\"
+          Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe" -Destination "bin\"
           # 清理临时文件
           Remove-Item -Recurse -Force "ffmpeg_temp"
           Remove-Item "ffmpeg.zip"
