@@ -68,6 +68,18 @@ def generate_avs_script(
     bin_dir = get_bin_dir()
     temp_dir = tempfile.gettempdir()
     
+    # 诊断日志: 打印 bin 目录信息
+    print(f"{Fore.CYAN}[诊断] bin 目录路径: {bin_dir}{Style.RESET_ALL}")
+    print(f"[诊断] bin 目录是否存在: {os.path.isdir(bin_dir)}")
+    
+    # 检查关键 DLL 文件
+    dlls = ["AviSynth.dll", "LSMASHSource.dll", "VSFilter.dll"]
+    for dll in dlls:
+        dll_path = os.path.join(bin_dir, dll)
+        exists = os.path.isfile(dll_path)
+        size = os.path.getsize(dll_path) if exists else 0
+        print(f"[诊断] {dll}: 存在={exists}, 大小={size} bytes, 路径={dll_path}")
+    
     # 将字幕文件复制到临时目录，使用 ASCII 文件名
     subtitle_ext = os.path.splitext(subtitle_path)[1]
     temp_subtitle = os.path.join(temp_dir, f"xiaoxue_temp_sub{subtitle_ext}")
@@ -79,6 +91,10 @@ def generate_avs_script(
     vsfilter_dll = os.path.join(bin_dir, "VSFilter.dll").replace("\\", "/")
     video_avs_path = os.path.abspath(video_path).replace("\\", "/")
     subtitle_avs_path = temp_subtitle.replace("\\", "/")
+    
+    # 诊断日志: 打印 AVS 脚本中使用的路径
+    print(f"[诊断] AVS 中 LSMASHSource.dll 路径: {lsmash_dll}")
+    print(f"[诊断] AVS 中 VSFilter.dll 路径: {vsfilter_dll}")
     
     # AVS 脚本内容
     avs_content = f'''# XiaoXue Toolbox - Compat Mode AVS Script
