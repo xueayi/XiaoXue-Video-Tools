@@ -20,6 +20,10 @@ from .presets import (
     RENAME_MODES,
     RENAME_TARGETS,
     RENAME_BEHAVIORS,
+    SHIELD_THRESHOLDS,
+    SHIELD_CENSOR_TYPES,
+    SHIELD_MOSAIC_SIZES,
+    SHIELD_EXPAND_OPTIONS,
 )
 from .notify import FEISHU_COLORS
 
@@ -895,3 +899,118 @@ def register_batch_rename_tab(subs) -> None:
         gooey_options={"visible": True, "full_width": True}
     )
 
+def register_shield_tab(subs) -> None:
+    """注册露骨图片识别标签页 (Shield)。"""
+    shield_parser = subs.add_parser(
+        "露骨图片识别",
+        help="识别 B 站过审风险图片，可选打码"
+    )
+
+    # 输入设置
+    io_group = shield_parser.add_argument_group(
+        "输入设置",
+        description="选择要扫描的文件夹或图片文件",
+    )
+    io_group.add_argument(
+        "--shield-input-dir",
+        metavar="扫描目录",
+        widget="DirChooser",
+        default="",
+        help="选择要扫描的文件夹 (递归扫描所有图片)",
+    )
+    io_group.add_argument(
+        "--shield-input-files",
+        metavar="或选择图片 (可多选)",
+        nargs="*",
+        widget="MultiFileChooser",
+        gooey_options={"wildcard": "图片文件 (*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.webp;*.bmp;*.gif|所有文件 (*.*)|*.*"},
+        help="直接选择多个图片文件，与上方二选一",
+    )
+
+    # 输出设置
+    output_group = shield_parser.add_argument_group("输出设置")
+    output_group.add_argument(
+        "--shield-output-dir",
+        metavar="输出目录 (可选)",
+        widget="DirChooser",
+        default="",
+        help="打码图片和报告的输出目录。留空则在输入目录下创建 shield_output 子目录",
+    )
+    output_group.add_argument(
+        "--shield-report",
+        metavar="报告路径 (可选)",
+        widget="FileSaver",
+        gooey_options={"wildcard": "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*"},
+        default="",
+        help="留空则自动生成: [输出目录]/shield_report.txt",
+    )
+
+    # 检测设置
+    detect_group = shield_parser.add_argument_group("检测设置")
+    detect_group.add_argument(
+        "--shield-threshold",
+        metavar="风险阈值",
+        choices=list(SHIELD_THRESHOLDS.keys()),
+        default="Questionable 及以上 (推荐)",
+        help="达到此级别及以上将被标记为风险图片",
+    )
+    detect_group.add_argument(
+        "--shield-recursive",
+        metavar="递归扫描子目录",
+        action="store_true",
+        default=True,
+        help="勾选后将扫描所有子目录中的图片",
+    )
+
+    # 打码设置
+    censor_group = shield_parser.add_argument_group("打码设置 (可选)")
+    censor_group.add_argument(
+        "--shield-enable-censor",
+        metavar="启用自动打码",
+        action="store_true",
+        default=False,
+        help="对风险图片的敏感区域自动打码",
+    )
+    censor_group.add_argument(
+        "--shield-censor-type",
+        metavar="打码类型",
+        choices=list(SHIELD_CENSOR_TYPES.keys()),
+        default="马赛克 (Pixelate)",
+        help="选择打码效果",
+    )
+    censor_group.add_argument(
+        "--shield-mosaic-size",
+        metavar="处理强度/大小",
+        widget="Dropdown",
+        choices=SHIELD_MOSAIC_SIZES,
+        default="16",
+        help="马赛克模式=方块大小，模糊模式=半径，黑色遮盖=圆角大小，表情=元素比例",
+    )
+
+    censor_group.add_argument(
+        "--shield-overlay-image",
+        metavar="覆盖图片 (自定义模式)",
+        widget="FileChooser",
+        gooey_options={"wildcard": "图片文件 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|所有文件 (*.*)|*.*"},
+        default="",
+        help="当打码类型选择“自定义图片”时，使用此图片覆盖敏感区域",
+    )
+
+    censor_group.add_argument(
+        "--shield-expand-pixels",
+        metavar="打码范围扩展 (像素)",
+        widget="Dropdown",
+        choices=SHIELD_EXPAND_OPTIONS,
+        default="0",
+        help="向外扩展打码区域的像素数，值越大覆盖范围越广 (所有模式生效)",
+    )
+
+    # 在线文档
+    docs_group = shield_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-shield",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Shield",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )

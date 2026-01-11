@@ -62,6 +62,7 @@ flowchart TD
 - **图片转换**: PNG/JPG/WEBP/BMP/GIF/TIFF 互转
 - **批量文件管理**: 文件夹批量创建、序列重命名
 - **任务通知**: 飞书通知、自定义 Webhook
+- **露骨图片识别** *(Shield 增强版)*: B 站过审风险检测，自动打码
 
 ---
 
@@ -69,7 +70,14 @@ flowchart TD
 
 ### 从发布包运行
 
-在 [Release](https://github.com/xueayi/XiaoXue-Video-Tools/releases) 页面下载打包好的 EXE 文件，直接双击运行。
+在 [Release](https://github.com/xueayi/XiaoXue-Video-Tools/releases) 页面下载：
+
+| 版本                                           | 说明                              |
+| ---------------------------------------------- | --------------------------------- |
+| `XiaoXueToolbox_vX.X.X_Windows_x64.zip`        | 标准版，体积较小                  |
+| `XiaoXueToolbox_vX.X.X_Shield_Windows_x64.zip` | Shield 增强版，含露骨图片识别功能 |
+
+解压后双击 `XiaoXueToolbox.exe` 运行即可。
 
 ### 从源代码运行
 
@@ -105,6 +113,7 @@ python -m pytest tests/test_encode_params.py::TestNvencPresetOverride -v
 小雪工具箱/
 ├── main.py              # 主程序入口
 ├── requirements.txt     # Python 依赖
+├── requirements-shield.txt  # Shield 版额外依赖
 ├── bin/                 # FFmpeg 和 AviSynth 依赖
 │   ├── ffmpeg.exe
 │   ├── ffprobe.exe
@@ -120,6 +129,7 @@ python -m pytest tests/test_encode_params.py::TestNvencPresetOverride -v
 │   ├── utils.py         # 工具函数
 │   ├── gui_tabs.py      # GUI 标签页定义
 │   ├── notify.py        # 通知模块
+│   ├── nsfw_detect.py   # 露骨图片识别 (Shield)
 │   ├── image_converter.py  # 图片格式转换
 │   ├── folder_creator.py   # 批量文件夹创建
 │   ├── batch_renamer.py    # 批量序列重命名

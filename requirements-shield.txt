@@ -1,0 +1,7 @@
+# Shield Edition extra dependencies
+# AI models for NSFW detection
+
+-r requirements.txt
+pilmoji==2.0.4
+dghs-imgutils>=0.8.0
+onnxruntime>=1.15.0

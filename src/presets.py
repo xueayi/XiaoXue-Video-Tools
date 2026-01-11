@@ -183,3 +183,30 @@ RENAME_BEHAVIORS = {
     "递归模式（保持目录结构）": True,
     "非递归模式": False,
 }
+
+# ============================================================
+# Shield (露骨图片识别) 相关预设
+# ============================================================
+
+# NSFW 风险阈值
+SHIELD_THRESHOLDS = {
+    "仅 Explicit (R-18)": "explicit",
+    "Questionable 及以上 (推荐)": "questionable",
+    "Sensitive 及以上 (严格)": "sensitive",
+    "全部检测": "all",
+}
+
+# 打码类型
+SHIELD_CENSOR_TYPES = {
+    "马赛克 (Pixelate)": "pixelate",
+    "模糊 (Blur)": "blur",
+    "黑色遮盖 (Black)": "black",
+    "表情覆盖 (Emoji)": "emoji",
+    "自定义图片 (Custom)": "custom",
+}
+
+# 处理强度/大小选项
+SHIELD_MOSAIC_SIZES = ["4", "8", "12", "16", "24", "32", "48", "64", "96", "128"]
+
+# 打码范围扩展选项 (像素)
+SHIELD_EXPAND_OPTIONS = ["0", "10", "20", "30", "50", "75", "100", "150", "200"]

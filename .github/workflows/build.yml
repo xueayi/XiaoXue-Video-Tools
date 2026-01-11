@@ -13,6 +13,17 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - variant: standard
+            requirements: requirements.txt
+            suffix: ""
+            display_name: "标准版"
+          - variant: shield
+            requirements: requirements-shield.txt
+            suffix: "_Shield"
+            display_name: "Shield 增强版"
     
     steps:
       - name: Checkout code
@@ -24,10 +35,10 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
       
-      - name: Install dependencies
+      - name: Install dependencies (${{ matrix.display_name }})
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r ${{ matrix.requirements }}
       
       - name: Download FFmpeg (GPL 完整版)
         run: |
@@ -62,7 +73,7 @@ jobs:
           # 验证替换结果
           Get-Content "main.py" | Select-String -Pattern '"version"'
       
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (${{ matrix.display_name }})
         run: |
           pyinstaller XiaoXueToolbox.spec --noconfirm
       
@@ -73,22 +84,22 @@ jobs:
           if (-not $version) { $version = "dev" }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
       
-      - name: Create release package
+      - name: Create release package (${{ matrix.display_name }})
         run: |
-          Compress-Archive -Path "dist\XiaoXueToolbox\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip"
+          Compress-Archive -Path "dist\XiaoXueToolbox\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
       
-      - name: Upload artifact
+      - name: Upload artifact (${{ matrix.display_name }})
         uses: actions/upload-artifact@v4
         with:
-          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}
-          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
+          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}
+          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
           retention-days: 30
       
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
+          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
           generate_release_notes: true
           draft: false
           prerelease: false
@@ -98,9 +109,18 @@ jobs:
             
             一个简单的视频压制与素材质量检测工具。
             
+            ### 版本选择
+            
+            | 版本 | 说明 |
+            |------|------|
+            | `XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip` | 标准版，体积较小 |
+            | `XiaoXueToolbox_${{ github.ref_name }}_Shield_Windows_x64.zip` | Shield 增强版，含露骨图片识别功能 |
+            
             ### 下载说明
-            - 下载 `XiaoXueToolbox_Windows_x64.zip`
+            - 下载对应版本的 `.zip` 文件
             - 解压后运行 `XiaoXueToolbox.exe` 即可
+            - 不加后缀的标准版，体积较小，不含 AI识别模块，建议大部分用户使用
+            - 加后缀的 Shield 增强版，体积较大，含 AI识别模块，建议需要 AI识别功能的用户使用
             
             ### 主要功能
             - 视频压制 (H.264/H.265 + 字幕烧录)
@@ -111,5 +131,7 @@ jobs:
             - 批量创建文件夹
             - 批量序列重命名
             - 任务完成通知 (飞书/Webhook)
+            - **[Shield 版] 露骨图片识别与自动打码**
             
             详细更新日志请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+
