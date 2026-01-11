@@ -1,7 +1,7 @@
 # 小雪工具箱 (XiaoXue Video Toolbox)
 
 <p align="center">
-  <img src="image/小雪工具箱2.png" width="200" alt="小雪工具箱 Logo">
+  <img src="image/小雪工具箱.png" width="200" alt="小雪工具箱 Logo">
 </p>
 
 ![Python](https://img.shields.io/badge/Python-3.8+-3776AB?logo=python&logoColor=white)
@@ -16,6 +16,10 @@
 
 ## 功能一览
 
+![预览1](image/image1.png)
+![预览2](image/image2.png)
+![预览3](image/image3.png)
+
 ### 视频压制
 
 支持 H.264/H.265 编码，内置四档画质预设，可选字幕烧录。
@@ -27,12 +31,12 @@
 
 ### 预设说明
 
-| 预设        | 编码器     | 质量值 | 速度   | 适用场景    |
-| ----------- | ---------- | ------ | ------ | ----------- |
-| 均衡画质    | libx264    | CRF 18 | medium | 日常投稿    |
-| 极致画质    | libx264    | CRF 16 | slow   | AMV/4K      |
-| 速度优先    | h264_nvenc | CQ 23  | p4     | NVIDIA 加速 |
-| 画质优先 HQ | h264_nvenc | CQ 19  | p7     | N 卡高画质  |
+| 预设        | 编码器     | 质量值 | 速度   | 适用场景    | 音频       |
+| ----------- | ---------- | ------ | ------ | ----------- | ---------- |
+| 均衡画质    | libx264    | CRF 18 | medium | 日常投稿    | 复制音频流 |
+| 极致画质    | libx264    | CRF 16 | slow   | AMV/4K      | 复制音频流 |
+| 速度优先    | h264_nvenc | CQ 23  | p4     | NVIDIA 加速 | 复制音频流 |
+| 画质优先 HQ | h264_nvenc | CQ 19  | p7     | N 卡高画质  | 复制音频流 |
 
 ### 字幕兼容模式
 
@@ -41,14 +45,28 @@
 - **便携设计**: 无需安装 AviSynth，解压即用
 - **参数复用**: 所有编码参数与普通模式共用
 - **自动清理**: 压制完成后自动删除临时文件
+- **所见即所得**: 压制前用aegisub等软件预览字幕效果，与压制后看到的效果一致
+- **使用场景**: 可以解决当无法调用TTC/OTF字体的内置字重时造成的字幕错误。
+  
+本模式需要程序在非中文路径下运行，否则会出错。
 
 ```mermaid
 flowchart TD
     A[用户选择视频+字幕] --> B{兼容模式?}
-    B -- 关闭 --> C[FFmpeg subtitles 滤镜]
+    B -- 关闭 --> C[FFmpeg 内置 libass 渲染]
+    
     B -- 开启 --> D[临时修改 PATH 环境变量]
     D --> E[生成 .avs 脚本]
-    E --> F[FFmpeg 读取 AVS + 原视频音频]
+    
+    subgraph AviSynth_Engine [AviSynth+ 运行环境]
+        E1[LoadPlugin: 加载 VSFilter.dll]
+        E2[Source: 读取视频帧数据]
+        E3[TextSub: VSFilter 逐帧渲染字幕]
+        E1 --> E2 --> E3
+    end
+    
+    E --> AviSynth_Engine
+    AviSynth_Engine --> F[FFmpeg 读取 AVS 虚拟视频流 + 原视频音频]
     F --> G[应用用户设置的编码参数]
     G --> H[输出最终视频]
     H --> I[清理临时文件]
@@ -61,7 +79,7 @@ flowchart TD
 - **音频处理**: 音频替换、音频抽取
 - **图片转换**: PNG/JPG/WEBP/BMP/GIF/TIFF 互转
 - **批量文件管理**: 文件夹批量创建、序列重命名
-- **任务通知**: 飞书通知、自定义 Webhook
+- **任务通知**: 飞书通知、自定义 Webhook(可用于astrbot向QQ等消息平台推送任务完成消息)
 - **露骨图片识别** *(Shield 增强版)*: B 站过审风险检测，自动打码
 
 ---
