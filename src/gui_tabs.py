@@ -57,6 +57,13 @@ def register_encode_tab(subs) -> None:
         gooey_options={"wildcard": "字幕文件 (*.srt;*.ass;*.ssa)|*.srt;*.ass;*.ssa|所有文件 (*.*)|*.*"},
         help="选择要烧录的字幕文件 (留空则不烧录)",
     )
+    io_group.add_argument(
+        "--compat-mode",
+        metavar="兼容模式 (字幕)",
+        action="store_true",
+        default=False,
+        help="使用 AviSynth+VSFilter 渲染字幕，解决字体兼容性问题",
+    )
 
     # 预设分组
     preset_group = encode_parser.add_argument_group(
@@ -93,6 +100,13 @@ def register_encode_tab(subs) -> None:
         choices=CPU_PRESETS,
         default="medium",
         help="编码速度预设 (越慢画质越好)",
+    )
+    encoder_group.add_argument(
+        "--nvenc-preset",
+        metavar="N卡速度档位",
+        choices=["使用预设默认"] + NVENC_PRESETS,
+        default="使用预设默认",
+        help="NVENC 速度档位 (p1最快/p7最慢)，选择 NVENC 预设时生效",
     )
 
     # ========== 质量与码率 ==========
@@ -158,7 +172,7 @@ def register_encode_tab(subs) -> None:
         "--audio-encoder",
         metavar="音频编码器",
         choices=list(AUDIO_ENCODERS.keys()),
-        default="AAC (推荐)",
+        default="复制 (不重新编码)",
         help="选择音频编码器",
     )
     audio_group.add_argument(

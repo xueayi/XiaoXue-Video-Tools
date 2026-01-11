@@ -27,6 +27,7 @@ from src.core import (
     run_ffmpeg_command,
     run_2pass_encode,
 )
+from src.compat_encoder import run_compat_encode
 from src.qc import scan_directory, generate_report
 from src.presets import (
     QUALITY_PRESETS,
@@ -46,6 +47,12 @@ from src.batch_renamer import batch_rename, RenameConfig
 from src.notify import send_feishu_notification, send_webhook_notification, FEISHU_COLORS
 from src.utils import get_base_dir, generate_output_path, auto_generate_output_path
 from src.help_texts import get_help_text
+from src.encode_params import (
+    EncodeParams,
+    EncodeMode,
+    resolve_encoder_params,
+    print_encode_info,
+)
 
 # 导入 GUI 标签页定义
 from src.gui_tabs import (
@@ -217,7 +224,7 @@ GOOEY_CONFIG = {
                     "menuTitle": "关于小雪工具箱",
                     "name": "小雪工具箱",
                     "description": "一个简单的视频压制与检测工具",
-                    "version": "1.2.3",
+                    "version": "1.3.0",
                     "developer": "雪阿宜",
                     "website": "https://github.com/xueayi/XiaoXue-Video-Tools",
                 },
@@ -308,86 +315,97 @@ def dispatch_command(args):
 # 执行函数
 # ============================================================
 
-def execute_encode(args):
-    """执行视频压制任务。"""
+def execute_encode(args) -> int:
+    """
+    执行视频压制任务。
+    
+    Returns:
+        返回码 (0 表示成功)
+    """
     print_task_header("视频压制")
 
-    # 判断是否使用预设模式
-    preset_name = args.preset
-    is_custom = preset_name == "自定义 (Custom)"
+    # 解析编码参数
+    params = resolve_encoder_params(
+        args=args,
+        quality_presets=QUALITY_PRESETS,
+        encoders=ENCODERS,
+        audio_encoders=AUDIO_ENCODERS,
+        rate_control_modes=RATE_CONTROL_MODES,
+        generate_output_path_func=generate_output_path,
+    )
     
-    # 获取实际使用的编码器
-    if not is_custom and preset_name in QUALITY_PRESETS:
-        preset = QUALITY_PRESETS[preset_name]
-        actual_encoder = preset.get("encoder", "libx264")
-        print(f"[预设] {preset_name}", flush=True)
-        print(f"  编码器: {actual_encoder}", flush=True)
-        print(f"  CRF: {preset.get('crf', 'N/A')}", flush=True)
-        print(f"  速度: {preset.get('preset', 'N/A')}", flush=True)
-    else:
-        actual_encoder = ENCODERS.get(args.encoder, "libx264")
-        print(f"[自定义模式]", flush=True)
-        print(f"  编码器: {actual_encoder}", flush=True)
-        print(f"  CRF: {args.crf}", flush=True)
-
-    # 自动生成输出路径 (如果未指定或为空)
-    output_path = args.output
-    if not output_path or output_path.strip() == "":
-        output_path = generate_output_path(args.input, actual_encoder)
-        print(f"[自动生成输出路径] {output_path}", flush=True)
-
-    # 获取码率控制参数
-    rc_mode_name = getattr(args, 'rate_control', 'CRF/CQ (恒定质量)')
-    rc_mode = RATE_CONTROL_MODES.get(rc_mode_name, "crf")
-    video_bitrate = getattr(args, 'video_bitrate', '')
+    # 验证输入参数
+    is_valid, error_msg = params.validate()
+    if not is_valid:
+        print(f"{Fore.RED}[错误] {error_msg}{Style.RESET_ALL}", flush=True)
+        return 1
     
-    # 打印码率控制参数信息 (自定义模式下)
-    if is_custom:
-        print(f"  码率控制: {rc_mode_name}", flush=True)
-        if video_bitrate:
-            print(f"  视频码率: {video_bitrate}", flush=True)
-
-    # 2-Pass 编码模式 - 使用真正的两遍编码
-    # 严格模式: 只有在自定义模式下，且选择了 2-pass 且设置了码率时才启用
-    if is_custom and rc_mode == "2pass" and video_bitrate:
-        print(f"{Fore.CYAN}[2-Pass 模式] 将执行真正的两遍编码{Style.RESET_ALL}", flush=True)
-        
-        pass1_cmd, pass2_cmd = build_2pass_commands(
-            input_path=args.input,
-            output_path=output_path,
-            preset_name=args.preset,
-            encoder=args.encoder if is_custom else None,
-            bitrate=video_bitrate,
-            speed_preset=getattr(args, 'speed_preset', None) if is_custom else None,
-            resolution=args.resolution if args.resolution and is_custom else None,
-            fps=args.fps if args.fps > 0 and is_custom else None,
-            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac") if is_custom else "aac",
-            audio_bitrate=args.audio_bitrate if is_custom else None,
-            subtitle_path=args.subtitle if args.subtitle else None,
-            extra_args=args.extra_args if args.extra_args else None,
+    # 打印编码信息
+    print_encode_info(params, QUALITY_PRESETS)
+    
+    # 自动生成输出路径提示
+    if args.output != params.output_path:
+        print(f"[自动生成输出路径] {params.output_path}", flush=True)
+    
+    # 根据编码模式执行
+    mode = params.get_encode_mode()
+    
+    if mode == EncodeMode.COMPAT:
+        # 兼容模式：字幕渲染使用 AviSynth + VSFilter
+        return run_compat_encode(
+            input_path=params.input_path,
+            output_path=params.output_path,
+            subtitle_path=params.subtitle_path,
+            encoder=params.encoder,
+            crf=params.crf,
+            bitrate=params.bitrate,
+            speed_preset=params.speed_preset,
+            resolution=params.resolution,
+            fps=params.fps,
+            audio_encoder=params.audio_encoder,
+            audio_bitrate=params.audio_bitrate,
+            extra_args=params.extra_args,
+            rc_mode=params.rc_mode,
+            dry_run=params.dry_run,
         )
-        
-        run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=args.debug_mode)
+    
+    elif mode == EncodeMode.TWO_PASS:
+        # 2-Pass 编码模式
+        pass1_cmd, pass2_cmd = build_2pass_commands(
+            input_path=params.input_path,
+            output_path=params.output_path,
+            preset_name=params.preset_name,
+            encoder=args.encoder if params.is_custom else None,
+            bitrate=params.bitrate,
+            speed_preset=params.speed_preset,
+            resolution=params.resolution,
+            fps=params.fps,
+            audio_encoder=params.audio_encoder if params.is_custom else "aac",
+            audio_bitrate=params.audio_bitrate if params.is_custom else None,
+            subtitle_path=params.subtitle_path,
+            extra_args=params.extra_args,
+        )
+        return run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=params.dry_run)
+    
     else:
         # 普通编码模式
         cmd = build_encode_command(
-            input_path=args.input,
-            output_path=output_path,
-            preset_name=args.preset,
-            encoder=args.encoder if is_custom else None,
-            crf=args.crf if is_custom else None,
-            bitrate=video_bitrate if (is_custom and video_bitrate) else None,
-            speed_preset=getattr(args, 'speed_preset', None) if is_custom else None,
-            resolution=args.resolution if args.resolution and is_custom else None,
-            fps=args.fps if args.fps > 0 and is_custom else None,
-            audio_encoder=AUDIO_ENCODERS.get(args.audio_encoder, "aac") if is_custom else "aac",
-            audio_bitrate=args.audio_bitrate if is_custom else None,
-            subtitle_path=args.subtitle if args.subtitle else None,
-            extra_args=args.extra_args if args.extra_args else None,
-            rc_mode=rc_mode if (is_custom and rc_mode != "crf") else None,
+            input_path=params.input_path,
+            output_path=params.output_path,
+            preset_name=params.preset_name,
+            encoder=args.encoder if params.is_custom else None,
+            crf=params.crf if params.is_custom else None,
+            bitrate=params.bitrate,
+            speed_preset=params.speed_preset,
+            resolution=params.resolution,
+            fps=params.fps,
+            audio_encoder=params.audio_encoder if params.is_custom else "aac",
+            audio_bitrate=params.audio_bitrate if params.is_custom else None,
+            subtitle_path=params.subtitle_path,
+            extra_args=params.extra_args,
+            rc_mode=params.rc_mode,
         )
-
-        run_ffmpeg_command(cmd, dry_run=args.debug_mode)
+        return run_ffmpeg_command(cmd, dry_run=params.dry_run)
 
 
 def execute_replace_audio(args):

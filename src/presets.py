@@ -15,7 +15,7 @@ ENCODERS = {
 }
 
 # 质量预设
-# 每个预设包含: crf, bitrate (可选), preset (速度), 分辨率, 帧率
+# 每个预设包含: encoder, crf, preset (速度), 分辨率, 帧率, 音频编码器, 音频码率
 QUALITY_PRESETS = {
     "【均衡画质】x264常用导出(CRF18)": {
         "encoder": "libx264",
@@ -23,15 +23,17 @@ QUALITY_PRESETS = {
         "preset": "medium",
         "resolution": None,
         "fps": None,
-        "audio_bitrate": "192k",
+        "audio_encoder": "copy",  # 默认复制音频流
+        "audio_bitrate": "192k",  # 仅在需要转码时使用
         "description": "适合日常 B 站投稿，画质与文件大小均衡。"
     },
     "【极致画质】4K/高动态/AMV": {
         "encoder": "libx264",
         "crf": 16,
         "preset": "slow",
-        "resolution": None,  # 保持原分辨率
-        "fps": None,  # 保持原帧率
+        "resolution": None,
+        "fps": None,
+        "audio_encoder": "copy",
         "audio_bitrate": "320k",
         "description": "高码率极致画质，适合 AMV 或对画质要求极高的投稿。"
     },
@@ -42,6 +44,7 @@ QUALITY_PRESETS = {
         "preset": "p4",  # NVENC preset
         "resolution": None,
         "fps": None,
+        "audio_encoder": "copy",
         "audio_bitrate": "192k",
         "extra_args": "-rc vbr -b:v 0 -maxrate 20M",
         "description": "利用 NVIDIA 显卡快速编码，适合赶稿。"
@@ -53,6 +56,7 @@ QUALITY_PRESETS = {
         "preset": "p7",
         "resolution": None,
         "fps": None,
+        "audio_encoder": "copy",
         "audio_bitrate": "320k",
         "extra_args": "-rc vbr -b:v 0 -maxrate 20M",
         "description": "N 卡高质量导出，使用动态码率 (VBR) 和 p7 预设。"
@@ -63,6 +67,7 @@ QUALITY_PRESETS = {
         "preset": None,
         "resolution": None,
         "fps": None,
+        "audio_encoder": None,  # 自定义模式由用户选择
         "audio_bitrate": None,
         "description": "手动指定所有参数。"
     }
