@@ -5,6 +5,8 @@
 
 HELP_TEXTS = {
     "视频压制": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Video-Encode
+
 【视频压制】视频转码、压缩和字幕烧录
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -41,10 +43,13 @@ HELP_TEXTS = {
 • 2-Pass: 两遍编码，精确控制
 
 ━━━━━━━━━━ 字幕兼容模式 ━━━━━━━━━━
-字体显示异常时勾选"兼容模式":
-• 使用 AviSynth + VSFilter 渲染
-• 调用 Windows GDI 字体引擎
-• 无需安装 AviSynth，解压即用
+✅ 推荐开启的情况:
+• ASS 字幕特效显示错乱
+• 无法调用 TTC/OTF 字体特定字重
+• 需要 VSFilter (Windows GDI) 渲染
+
+❌ 默认关闭 (使用 libass):
+• 速度更快，适合 SRT 及简单 ASS
 
 ━━━━━━━━━━ 高级选项 ━━━━━━━━━━
 • Debug 模式: 仅输出命令，不执行
@@ -53,6 +58,8 @@ HELP_TEXTS = {
 """,
     
     "音频替换": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools
+
 【音频替换】替换视频中的音轨
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -71,6 +78,8 @@ HELP_TEXTS = {
 """,
     
     "封装转换": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image
+
 【封装转换】更换容器格式，不重新编码
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -91,6 +100,8 @@ HELP_TEXTS = {
 """,
     
     "素材质量检测": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Quality-Control
+
 【素材质量检测】批量检测素材兼容性
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -115,6 +126,8 @@ HELP_TEXTS = {
 """,
     
     "音频抽取": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools
+
 【音频抽取】从视频中提取音频轨道
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -133,6 +146,8 @@ HELP_TEXTS = {
 """,
     
     "通知设置": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Notification
+
 【通知设置】任务完成后自动通知
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -156,6 +171,8 @@ HELP_TEXTS = {
 """,
     
     "常见问题": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/FAQ
+
 【常见问题 FAQ】
 
 ❓ 找不到 FFmpeg？
@@ -181,6 +198,8 @@ HELP_TEXTS = {
 """,
 
     "图片转换": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image
+
 【图片转换】批量转换图片格式
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -203,6 +222,8 @@ HELP_TEXTS = {
 """,
 
     "文件夹创建": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools
+
 【文件夹创建】从 TXT 批量创建文件夹
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━
@@ -222,6 +243,8 @@ HELP_TEXTS = {
 """,
 
     "批量重命名": """
+在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools
+
 【批量重命名】序列重命名图片/视频
 
 ━━━━━━━━━━ 基本使用 ━━━━━━━━━━

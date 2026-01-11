@@ -231,7 +231,57 @@ GOOEY_CONFIG = {
             ],
         },
         {
-            "name": "链接",
+            "name": "帮助文档",
+            "items": [
+                {
+                    "type": "Link",
+                    "menuTitle": "使用手册首页 (Home)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Home",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "安装与环境 (Installation)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Installation",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "视频压制 (Video Encode)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Video-Encode",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "音频工具 (Audio Tools)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "封装与图片 (Remux & Image)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "素材质量检测 (QC)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Quality-Control",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "批量与效率工具 (Batch Tools)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "通知设置 (Notification)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Notification",
+                },
+                {
+                    "type": "Link",
+                    "menuTitle": "常见问题 (FAQ)",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/FAQ",
+                },
+            ],
+        },
+        {
+            "name": "主页链接",
             "items": [
                 {
                     "type": "Link",

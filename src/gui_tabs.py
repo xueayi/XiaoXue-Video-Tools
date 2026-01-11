@@ -26,13 +26,17 @@ from .notify import FEISHU_COLORS
 
 def register_encode_tab(subs) -> None:
     """注册视频压制标签页。"""
-    encode_parser = subs.add_parser("视频压制", help="视频转码、压缩、字幕烧录")
+    encode_parser = subs.add_parser(
+        "视频压制",
+        help="视频转码、压缩、字幕烧录"
+    )
 
     # 输入输出分组
     io_group = encode_parser.add_argument_group(
         "输入/输出设置",
         gooey_options={"columns": 1}
     )
+
     io_group.add_argument(
         "--input",
         metavar="输入视频",
@@ -62,7 +66,7 @@ def register_encode_tab(subs) -> None:
         metavar="兼容模式 (字幕)",
         action="store_true",
         default=False,
-        help="使用 AviSynth+VSFilter 渲染字幕，解决字体兼容性问题",
+        help="开启：使用 AviSynth+VSFilter 渲染。\n当发现 ASS 字幕特效异常，或无法调用 TTC/OTF 字体的内置字重时请勾选。\n关闭 (默认)：使用 FFmpeg 内置 libass 渲染。速度更快，适合 SRT 及大多数 ASS 字幕。",
     )
 
     # 预设分组
@@ -206,12 +210,28 @@ def register_encode_tab(subs) -> None:
         default=False
     )
 
+    # 在线文档
+    docs_group = encode_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-encode",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Video-Encode",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_replace_audio_tab(subs) -> None:
     """注册音频替换标签页。"""
-    audio_parser = subs.add_parser("音频替换", help="替换视频中的音轨")
+    audio_parser = subs.add_parser(
+        "音频替换",
+        help="替换视频中的音轨"
+    )
 
-    audio_io = audio_parser.add_argument_group("输入/输出设置")
+    audio_io = audio_parser.add_argument_group(
+        "输入/输出设置",
+    )
+
     audio_io.add_argument(
         "--video-input",
         metavar="原始视频",
@@ -254,12 +274,28 @@ def register_replace_audio_tab(subs) -> None:
         help="音频码率",
     )
 
+    # 在线文档
+    docs_group = audio_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-audio",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_remux_tab(subs) -> None:
     """注册封装转换标签页（支持批量）。"""
-    remux_parser = subs.add_parser("封装转换", help="更换容器格式 (不重新编码，支持批量)")
+    remux_parser = subs.add_parser(
+        "封装转换",
+        help="更换容器格式 (不重新编码，支持批量)"
+    )
 
-    remux_io = remux_parser.add_argument_group("输入/输出设置")
+    remux_io = remux_parser.add_argument_group(
+        "输入/输出设置",
+    )
+
     remux_io.add_argument(
         "--remux-input",
         metavar="输入文件 (可多选)",
@@ -294,12 +330,28 @@ def register_remux_tab(subs) -> None:
         help="⚠️ 危险: 转换后删除原文件，仅保留新文件",
     )
 
+    # 在线文档
+    docs_group = remux_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-remux",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_qc_tab(subs) -> None:
     """注册素材质量检测标签页。"""
-    qc_parser = subs.add_parser("素材质量检测", help="批量检测素材兼容性")
+    qc_parser = subs.add_parser(
+        "素材质量检测",
+        help="批量检测素材兼容性"
+    )
 
-    qc_io = qc_parser.add_argument_group("扫描设置")
+    qc_io = qc_parser.add_argument_group(
+        "扫描设置",
+    )
+
     qc_io.add_argument(
         "--scan-dir",
         metavar="扫描目录",
@@ -396,12 +448,28 @@ def register_qc_tab(subs) -> None:
         help="逗号分隔的不兼容图片扩展名 (不含点号)",
     )
 
+    # 在线文档
+    docs_group = qc_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-qc",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Quality-Control",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_extract_audio_tab(subs) -> None:
     """注册音频抽取标签页。"""
-    extract_parser = subs.add_parser("音频抽取", help="从视频中提取音频轨道")
+    extract_parser = subs.add_parser(
+        "音频抽取",
+        help="从视频中提取音频轨道"
+    )
 
-    extract_io = extract_parser.add_argument_group("输入/输出设置")
+    extract_io = extract_parser.add_argument_group(
+        "输入/输出设置",
+    )
+
     extract_io.add_argument(
         "--extract-input",
         metavar="输入视频",
@@ -436,6 +504,16 @@ def register_extract_audio_tab(subs) -> None:
         help="音频码率 (仅转码时生效)",
     )
 
+    # 在线文档
+    docs_group = extract_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-extract",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_notification_tab(subs, config: dict = None) -> None:
     """
@@ -448,13 +526,17 @@ def register_notification_tab(subs, config: dict = None) -> None:
     if config is None:
         config = {}
     
-    notify_parser = subs.add_parser("通知设置", help="配置飞书/Webhook 通知")
+    notify_parser = subs.add_parser(
+        "通知设置",
+        help="配置飞书/Webhook 通知"
+    )
 
     # 自动通知设置
     auto_group = notify_parser.add_argument_group(
         "自动通知设置",
         description="配置文件保存在程序目录下的 notify_config.json",
     )
+
     auto_group.add_argument(
         "--enable-auto-notify",
         metavar="启用自动通知",
@@ -539,12 +621,28 @@ def register_notification_tab(subs, config: dict = None) -> None:
         help='JSON 格式的请求体',
     )
 
+    # 在线文档
+    docs_group = notify_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-notify",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Notification",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_help_tab(subs) -> None:
     """注册使用说明标签页。"""
-    help_parser = subs.add_parser("使用说明", help="各功能使用指南")
+    help_parser = subs.add_parser(
+        "使用说明",
+        help="各功能使用指南"
+    )
 
-    help_group = help_parser.add_argument_group("功能说明")
+    help_group = help_parser.add_argument_group(
+        "功能说明",
+    )
+
     help_group.add_argument(
         "--help-topic",
         metavar="选择功能",
@@ -564,12 +662,28 @@ def register_help_tab(subs) -> None:
         help="选择要查看说明的功能模块",
     )
 
+    # 在线文档
+    docs_group = help_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-home",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Home",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_image_convert_tab(subs) -> None:
     """注册图片格式转换标签页。"""
-    img_parser = subs.add_parser("图片转换", help="批量图片格式转换")
+    img_parser = subs.add_parser(
+        "图片转换",
+        help="批量图片格式转换"
+    )
 
-    img_io = img_parser.add_argument_group("输入/输出设置")
+    img_io = img_parser.add_argument_group(
+        "输入/输出设置",
+    )
+
     img_io.add_argument(
         "--img-input",
         metavar="输入图片 (可多选)",
@@ -618,12 +732,28 @@ def register_image_convert_tab(subs) -> None:
         help="JPEG/WEBP 格式的压缩质量 (1-100)，其他格式忽略",
     )
 
+    # 在线文档
+    docs_group = img_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-img",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_folder_creator_tab(subs) -> None:
     """注册批量创建文件夹标签页。"""
-    folder_parser = subs.add_parser("文件夹创建", help="从 TXT 批量创建文件夹")
+    folder_parser = subs.add_parser(
+        "文件夹创建",
+        help="从 TXT 批量创建文件夹"
+    )
 
-    folder_io = folder_parser.add_argument_group("输入/输出设置")
+    folder_io = folder_parser.add_argument_group(
+        "输入/输出设置",
+    )
+
     folder_io.add_argument(
         "--folder-txt",
         metavar="TXT 文件",
@@ -650,13 +780,29 @@ def register_folder_creator_tab(subs) -> None:
         help="开启后自动在文件夹名前添加序号 (如 1_文件夹名)",
     )
 
+    # 在线文档
+    docs_group = folder_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-folder",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
 
 def register_batch_rename_tab(subs) -> None:
     """注册批量序列重命名标签页。"""
-    rename_parser = subs.add_parser("批量重命名", help="批量序列重命名图片/视频")
+    rename_parser = subs.add_parser(
+        "批量重命名",
+        help="批量序列重命名图片/视频"
+    )
 
     # 输入配置
-    rename_io = rename_parser.add_argument_group("输入设置")
+    rename_io = rename_parser.add_argument_group(
+        "输入设置",
+    )
+
     rename_io.add_argument(
         "--rename-input-dir",
         metavar="输入目录",
@@ -737,5 +883,15 @@ def register_batch_rename_tab(subs) -> None:
         action="store_true",
         default=True,
         help="递归模式下，忽略文件夹名中第一个下划线后的内容",
+    )
+
+    # 在线文档
+    docs_group = rename_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-rename",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
     )
 
