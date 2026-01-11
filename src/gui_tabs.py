@@ -110,7 +110,7 @@ def register_encode_tab(subs) -> None:
         metavar="N卡速度档位",
         choices=["使用预设默认"] + NVENC_PRESETS,
         default="使用预设默认",
-        help="NVENC 速度档位 (p1最快/p7最慢)，选择 NVENC 预设时生效",
+        help="NVENC 速度档位 (p1最快/p7最慢)，选择 NVENC 编码器时生效",
     )
 
     # ========== 质量与码率 ==========
