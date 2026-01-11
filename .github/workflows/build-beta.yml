@@ -120,11 +120,11 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: true  # 标记为预发布版本
-          name: "🧪 小雪工具箱 ${{ steps.version.outputs.VERSION }} (测试版)"
+          name: "小雪工具箱 ${{ steps.version.outputs.VERSION }} (测试版)"
           body: |
-            ## 🧪 小雪工具箱 ${{ steps.version.outputs.VERSION }} (测试版)
+            ## 小雪工具箱 ${{ steps.version.outputs.VERSION }} (测试版)
             
-            > ⚠️ **这是一个测试版本 (Pre-release)**，可能包含未完成的功能或已知问题。
+            > **这是一个测试版本 (Pre-release)**，可能包含未完成的功能或已知问题。
             > 仅供测试使用，不建议在生产环境中使用。
             
             ### 版本选择
