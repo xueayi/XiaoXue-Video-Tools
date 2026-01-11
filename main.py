@@ -224,7 +224,7 @@ GOOEY_CONFIG = {
                     "menuTitle": "关于小雪工具箱",
                     "name": "小雪工具箱",
                     "description": "一个简单的视频压制与检测工具",
-                    "version": "1.3.0",
+                    "version": "1.4.0",
                     "developer": "雪阿宜",
                     "website": "https://github.com/xueayi/XiaoXue-Video-Tools",
                 },
