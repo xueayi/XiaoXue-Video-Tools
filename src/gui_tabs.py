@@ -70,7 +70,7 @@ def register_encode_tab(subs) -> None:
         metavar="兼容模式 (字幕)",
         action="store_true",
         default=False,
-        help="开启：使用 AviSynth+VSFilter 渲染。\n当发现 ASS 字幕特效异常，或无法调用 TTC/OTF 字体的内置字重时请勾选。\n关闭 (默认)：使用 FFmpeg 内置 libass 渲染。速度更快，适合 SRT 及大多数 ASS 字幕。",
+        help="开启：使用 AviSynth+VSFilter 渲染。\n当发现 ASS 字幕特效异常，或无法调用 TTC/OTF 字体的内置字重时请勾选。\n关闭 (默认)：使用 FFmpeg 内置 libass 渲染。速度更快，适合 SRT 及大多数 ASS 字幕。\n本模式需要程序在非中文路径下运行，否则会出错。",
     )
 
     # 预设分组

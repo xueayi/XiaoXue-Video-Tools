@@ -23,21 +23,7 @@ from .utils import get_base_dir, get_internal_dir, get_ffmpeg_path
 from .presets import ENCODERS
 
 import logging
-import hashlib
-import ctypes
 logger = logging.getLogger(__name__)
-
-
-def calculate_md5(file_path: str) -> str:
-    """计算文件的 MD5 哈希值。"""
-    hash_md5 = hashlib.md5()
-    try:
-        with open(file_path, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-    except Exception as e:
-        return f"Error: {e}"
 
 
 def get_bin_dir() -> str:
@@ -86,49 +72,13 @@ def generate_avs_script(
     print(f"{Fore.CYAN}[诊断] bin 目录路径: {bin_dir}{Style.RESET_ALL}")
     print(f"[诊断] bin 目录是否存在: {os.path.isdir(bin_dir)}")
     
-    # 获取 _internal 根目录（bin 的父目录）
-    internal_dir = os.path.dirname(bin_dir)
-    print(f"[诊断] _internal 根目录: {internal_dir}")
-    
-    # 打印 _internal 根目录下的 DLL (检查 vcruntime)
-    try:
-        root_dlls = [f for f in os.listdir(internal_dir) if f.lower().endswith('.dll')]
-        print(f"[诊断] _internal 下的 DLL: {root_dlls}")
-    except Exception as e:
-        print(f"[诊断] 无法列出 _internal DLL: {e}")
-
     # 检查关键 DLL 文件
     dlls = ["AviSynth.dll", "LSMASHSource.dll", "VSFilter.dll"]
     for dll in dlls:
         dll_path = os.path.join(bin_dir, dll)
         exists = os.path.isfile(dll_path)
         size = os.path.getsize(dll_path) if exists else 0
-        md5 = calculate_md5(dll_path) if exists else "N/A"
-        print(f"[诊断] {dll}: 存在={exists}, 大小={size}, MD5={md5}, 路径={dll_path}")
-        
-        # 尝试使用 ctypes 加载 (仅针对 LSMASHSource 深度诊断)
-        if exists and "LSMASHSource" in dll:
-            try:
-                # 使用 LoadLibraryEx 标志? 不，先尝试默认加载
-                # 注意：LSMASHSource 可能依赖 _internal 根目录下的 DLL
-                # 我们先尝试添加 _internal 到 DLL 搜索路径 (Python 3.8+)
-                if hasattr(os, 'add_dll_directory'):
-                    try:
-                        os.add_dll_directory(internal_dir)
-                        os.add_dll_directory(bin_dir)
-                    except:
-                        pass
-                
-                ctypes.CDLL(dll_path)
-                print(f"[诊断] ctypes.CDLL 加载 {dll} 成功 (依赖完整)")
-            except Exception as e:
-                print(f"{Fore.RED}[诊断] ctypes.CDLL 加载 {dll} 失败: {e}{Style.RESET_ALL}")
-                # 尝试获取最后的 Windows 错误
-                import ctypes.wintypes
-                err = ctypes.GetLastError()
-                print(f"[诊断] LastError: {err}")
-    
-    # 将字幕文件复制到临时目录，使用 ASCII 文件名
+        print(f"[诊断] {dll}: 存在={exists}, 大小={size} bytes, 路径={dll_path}")
     
     # 将字幕文件复制到临时目录，使用 ASCII 文件名
     subtitle_ext = os.path.splitext(subtitle_path)[1]
@@ -361,17 +311,10 @@ def run_compat_encode(
         # 步骤 3: 执行编码 (使用临时 PATH 环境变量)
         print(f"[3/3] 开始编码...", flush=True)
         
-        # 便携版方案: 临时修改 PATH 和工作目录
+        # 便携版方案: 临时修改 PATH
         bin_dir = get_bin_dir()
-        internal_dir = os.path.dirname(bin_dir)
         env = os.environ.copy()
-        # 将 bin 和 _internal (包含 VC Runtime) 都加入 PATH
-        env["PATH"] = bin_dir + os.pathsep + internal_dir + os.pathsep + env.get("PATH", "")
-        
-        # 诊断: 打印传递给 FFmpeg 的 PATH (只打印前300字符)
-        print(f"[诊断] FFmpeg PATH 前缀: {bin_dir}")
-        print(f"[诊断] 追加 search path: {internal_dir}")
-        print(f"[诊断] 工作目录设为: {bin_dir}")
+        env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
         
         process = subprocess.Popen(
             cmd,
@@ -382,7 +325,6 @@ def run_compat_encode(
             errors='replace',
             bufsize=1,
             env=env,  # 使用修改后的环境变量
-            cwd=bin_dir,  # 将工作目录设为 bin 目录
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
         )
         
