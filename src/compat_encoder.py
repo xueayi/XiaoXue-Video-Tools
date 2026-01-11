@@ -311,10 +311,14 @@ def run_compat_encode(
         # 步骤 3: 执行编码 (使用临时 PATH 环境变量)
         print(f"[3/3] 开始编码...", flush=True)
         
-        # 便携版方案: 临时修改 PATH
+        # 便携版方案: 临时修改 PATH 和工作目录
         bin_dir = get_bin_dir()
         env = os.environ.copy()
         env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
+        
+        # 诊断: 打印传递给 FFmpeg 的 PATH (只打印前300字符)
+        print(f"[诊断] FFmpeg PATH 前缀: {bin_dir}")
+        print(f"[诊断] 工作目录设为: {bin_dir}")
         
         process = subprocess.Popen(
             cmd,
@@ -325,6 +329,7 @@ def run_compat_encode(
             errors='replace',
             bufsize=1,
             env=env,  # 使用修改后的环境变量
+            cwd=bin_dir,  # 将工作目录设为 bin 目录
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
         )
         

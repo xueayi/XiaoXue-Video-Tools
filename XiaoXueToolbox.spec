@@ -4,7 +4,12 @@
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        # AviSynth DLL 需要放在 _internal 根目录 (FFmpeg 加载时需要)
+        ('bin/AviSynth.dll', '.'),
+        ('bin/LSMASHSource.dll', '.'),
+        ('bin/VSFilter.dll', '.'),
+    ],
     datas=[('bin', 'bin'), ('icon.ico', '.')],
     hiddenimports=[
         'requests',
