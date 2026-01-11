@@ -129,32 +129,45 @@ python -m pytest tests/test_encode_params.py::TestNvencPresetOverride -v
 
 ```
 小雪工具箱/
-├── main.py              # 主程序入口
-├── requirements.txt     # Python 依赖
+├── main.py                  # 程序入口 (命令分发)
+├── requirements.txt         # Python 依赖
 ├── requirements-shield.txt  # Shield 版额外依赖
-├── bin/                 # FFmpeg 和 AviSynth 依赖
+├── bin/                     # FFmpeg 和 AviSynth 依赖
 │   ├── ffmpeg.exe
 │   ├── ffprobe.exe
-│   ├── AviSynth.dll     # AviSynth 核心
-│   ├── LSMASHSource.dll # 视频解码插件
-│   └── VSFilter.dll     # 字幕渲染插件
-├── src/                 # 后端模块
-│   ├── core.py          # FFmpeg 命令构建
-│   ├── compat_encoder.py   # 兼容模式 (AviSynth + VSFilter)
-│   ├── encode_params.py    # 编码参数数据类
-│   ├── presets.py       # 编码器/预设配置
-│   ├── qc.py            # 素材质量检测
-│   ├── utils.py         # 工具函数
-│   ├── gui_tabs.py      # GUI 标签页定义
-│   ├── notify.py        # 通知模块
-│   ├── nsfw_detect.py   # 露骨图片识别 (Shield)
-│   ├── image_converter.py  # 图片格式转换
-│   ├── folder_creator.py   # 批量文件夹创建
-│   ├── batch_renamer.py    # 批量序列重命名
-│   └── help_texts.py    # 使用说明文本
-└── tests/               # 测试用例
-    ├── conftest.py      # pytest fixtures
-    └── test_encode_params.py  # 编码参数测试
+│   ├── AviSynth.dll         # AviSynth 核心
+│   ├── LSMASHSource.dll     # 视频解码插件
+│   └── VSFilter.dll         # 字幕渲染插件
+├── src/                     # 核心模块
+│   ├── gui_config.py        # GUI 配置常量
+│   ├── gui_tabs.py          # GUI 标签页定义
+│   ├── notify_config.py     # 通知配置管理
+│   ├── presets.py           # 编码器/预设配置
+│   ├── core.py              # FFmpeg 命令构建
+│   ├── compat_encoder.py    # 兼容模式 (AviSynth)
+│   ├── encode_params.py     # 编码参数数据类
+│   ├── qc.py                # 素材质量检测
+│   ├── utils.py             # 工具函数
+│   ├── notify.py            # 通知发送模块
+│   ├── nsfw_detect.py       # 露骨图片识别 (Shield)
+│   ├── image_converter.py   # 图片格式转换
+│   ├── folder_creator.py    # 批量文件夹创建
+│   ├── batch_renamer.py     # 批量序列重命名
+│   ├── help_texts.py        # 使用说明文本
+│   └── executors/           # 执行器模块
+│       ├── video_executor.py    # 视频/音频执行
+│       ├── file_executor.py     # 文件转换执行
+│       ├── batch_executor.py    # 批量操作执行
+│       ├── qc_executor.py       # 质量检测执行
+│       ├── shield_executor.py   # Shield 功能执行
+│       └── misc_executor.py     # 杂项功能执行
+└── tests/                   # 测试用例
+    ├── conftest.py              # pytest fixtures
+    ├── test_encode_params.py    # 编码参数测试
+    ├── test_notify_config.py    # 通知配置测试
+    ├── test_video_executor.py   # 视频执行器测试
+    ├── test_file_executor.py    # 文件执行器测试
+    └── test_qc_executor.py      # QC 执行器测试
 ```
 
 ---
