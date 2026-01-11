@@ -3,7 +3,11 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # 当推送 v 开头的 tag 时触发 (如 v1.0.0)
+      - 'v[0-9]*.[0-9]*.[0-9]*'  # 仅匹配正式版 (如 v1.0.0, v1.2.3)
+    tags-ignore:
+      - 'v*-beta*'    # 排除 beta 版
+      - 'v*-alpha*'   # 排除 alpha 版
+      - 'v*-rc*'      # 排除 rc 版
   workflow_dispatch:  # 支持手动触发
 
 # 添加权限声明，允许创建 Release
