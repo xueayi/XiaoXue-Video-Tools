@@ -1,7 +1,7 @@
 # 小雪工具箱 (XiaoXue Video Toolbox)
 
 <p align="center">
-  <img src="image/小雪工具箱.png" width="200" alt="小雪工具箱 Logo">
+  <img src="image/小雪工具箱亮色.png" width="200" alt="小雪工具箱 Logo">
 </p>
 
 <p align="center">
@@ -15,7 +15,10 @@
 
 
 
+<p align="center">
 一个简洁实用的视频压制与素材管理工具。基于 Python + Gooey 图形界面，内置 FFmpeg，开箱即用。
+</p>
+
 <p align="center">
   <a href="https://github.com/xueayi/XiaoXue-Video-Tools/wiki">项目首页</a> | 
   <a href="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Installation">安装部署</a> | 
