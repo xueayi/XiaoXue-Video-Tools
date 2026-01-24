@@ -3,15 +3,18 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # 当推送 v 开头的 tag 时触发 (如 v1.0.0)
+      - 'v[0-9]*'  # 匹配 v 开头的版本号
   workflow_dispatch:  # 支持手动触发
 
 # 添加权限声明，允许创建 Release
 permissions:
   contents: write
 
+
 jobs:
   build:
+    # 排除 beta/alpha/rc 版本 (这些由 build-beta.yml 处理)
+    if: ${{ !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-rc') }}
     runs-on: windows-latest
     strategy:
       matrix:
