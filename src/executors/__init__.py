@@ -32,13 +32,8 @@ from .misc_executor import (
     execute_help,
 )
 
-# Shield 执行器需要条件导入（依赖 imgutils）
-try:
-    from .shield_executor import execute_shield
-    SHIELD_AVAILABLE = True
-except ImportError:
-    SHIELD_AVAILABLE = False
-    execute_shield = None
+# Shield 执行器 (始终导入，内部通过 SHIELD_AVAILABLE 标志控制可用性)
+from .shield_executor import execute_shield, SHIELD_AVAILABLE
 
 
 __all__ = [

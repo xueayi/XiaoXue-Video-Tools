@@ -61,9 +61,7 @@ HELP_TEXTS = {
 压制完成 → 自动上传到 NAS/云端。
 
 ⚠️ 压制失败或由于 Debug 模式未生成文件时，分发会自动跳过。
-""",StartLine:54,TargetContent:,
-    
-    "音频替换": """
+
 在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools
 
 【音频替换】替换视频中的音轨

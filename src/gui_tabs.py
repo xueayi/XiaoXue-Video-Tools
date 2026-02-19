@@ -958,12 +958,37 @@ def register_batch_rename_tab(subs) -> None:
         gooey_options={"visible": True, "full_width": True}
     )
 
-def register_shield_tab(subs) -> None:
+def register_shield_tab(subs, shield_available: bool = True) -> None:
     """注册露骨图片识别标签页 (Shield)。"""
     shield_parser = subs.add_parser(
         "露骨图片识别",
         help="识别 B 站过审风险图片，可选打码"
     )
+
+    # 非 Shield 版：显示版本差异说明
+    if not shield_available:
+        notice_group = shield_parser.add_argument_group(
+            "您目前的软件版本不支持该功能",
+            description=(
+                "当前为 标准版，不包含 AI 露骨图片识别模块。\n"
+                "\n"
+                "━━━━━━━━━━ 版本区别 ━━━━━━━━━━\n"
+                "【标准版】体积小，适合日常视频压制和批量处理。\n"
+                "【Shield 增强版】额外包含基于 AI 的 NSFW 识别功能，\n"
+                "  可自动检测 B 站投稿中的过审风险图片并打码。\n"
+                "\n"
+                "━━━━━━━━━━ 如何获取 ━━━━━━━━━━\n"
+                "前往 GitHub Releases 页面下载带 shield 标识的版本即可。"
+            ),
+        )
+        notice_group.add_argument(
+            "--shield-download-url",
+            metavar="下载地址",
+            default="https://github.com/xueayi/XiaoXue-Video-Tools/releases",
+            help="复制此链接到浏览器，下载 Shield 增强版",
+            gooey_options={"visible": True, "full_width": True}
+        )
+        return
 
     # 输入设置
     io_group = shield_parser.add_argument_group(

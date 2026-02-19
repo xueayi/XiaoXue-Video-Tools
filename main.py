@@ -93,9 +93,8 @@ def main():
     register_folder_creator_tab(subs)
     register_batch_rename_tab(subs)
     
-    # Shield 功能（仅在 imgutils 可用时注册）
-    if SHIELD_AVAILABLE:
-        register_shield_tab(subs)
+    # Shield 功能（始终注册标签页，传入可用性标志）
+    register_shield_tab(subs, shield_available=SHIELD_AVAILABLE)
     
     # 获取通知配置用于标签页默认值
     notify_config = get_notify_config()
@@ -133,9 +132,8 @@ def dispatch_command(args):
         "使用说明": execute_help,
     }
     
-    # Shield 功能（仅在可用时添加）
-    if SHIELD_AVAILABLE:
-        auto_notify_tasks["露骨图片识别"] = execute_shield
+    # Shield 功能（始终注册，执行器内部已有可用性检查）
+    auto_notify_tasks["露骨图片识别"] = execute_shield
 
     if args.command in auto_notify_tasks:
         handler = auto_notify_tasks[args.command]
