@@ -428,7 +428,7 @@ def register_qc_tab(subs) -> None:
         metavar="PR 图片兼容性",
         action="store_true",
         default=True,
-        help="检测可能会导致 PR 导入问题的图片格式",
+        help="检测可能会导致 PR 导入问题的图片格式\n（可以检测图片和后缀是否匹配）",
     )
     
     # 自定义兼容性规则
