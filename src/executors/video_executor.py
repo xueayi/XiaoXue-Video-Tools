@@ -22,6 +22,8 @@ from ..presets import (
     RATE_CONTROL_MODES,
 )
 from ..utils import generate_output_path, auto_generate_output_path
+from ..post_transfer import transfer_file
+from ..presets import POST_TRANSFER_MODES
 from ..encode_params import (
     EncodeParams,
     EncodeMode,
@@ -71,7 +73,7 @@ def execute_encode(args) -> int:
     
     if mode == EncodeMode.COMPAT:
         # 兼容模式：字幕渲染使用 AviSynth + VSFilter
-        return run_compat_encode(
+        return_code = run_compat_encode(
             input_path=params.input_path,
             output_path=params.output_path,
             subtitle_path=params.subtitle_path,
@@ -104,7 +106,7 @@ def execute_encode(args) -> int:
             subtitle_path=params.subtitle_path,
             extra_args=params.extra_args,
         )
-        return run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=params.dry_run)
+        return_code = run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=params.dry_run)
     
     else:
         # 普通编码模式
@@ -124,7 +126,42 @@ def execute_encode(args) -> int:
             extra_args=params.extra_args,
             rc_mode=params.rc_mode,
         )
-        return run_ffmpeg_command(cmd, dry_run=params.dry_run)
+        return_code = run_ffmpeg_command(cmd, dry_run=params.dry_run)
+    
+    # 压制后分发
+    _post_transfer(args, params.output_path, return_code)
+    
+    return return_code
+
+
+def _post_transfer(args, output_path: str, return_code: int) -> None:
+    """
+    压制完成后执行文件分发。
+    
+    Args:
+        args: argparse 解析后的参数对象
+        output_path: 成品文件路径
+        return_code: 编码返回码 (0 表示成功)
+    """
+    transfer_mode_name = getattr(args, 'post_transfer_mode', '不分发')
+    transfer_mode = POST_TRANSFER_MODES.get(transfer_mode_name, 'none')
+    transfer_dir = getattr(args, 'post_transfer_dir', '')
+
+    if transfer_mode == 'none' or not transfer_dir:
+        return
+
+    if return_code != 0:
+        print(f"{Fore.YELLOW}[分发] 编码未成功，跳过分发{Style.RESET_ALL}")
+        return
+
+    if not os.path.isfile(output_path):
+        print(f"{Fore.YELLOW}[分发] 输出文件不存在，跳过分发{Style.RESET_ALL}")
+        return
+
+    try:
+        transfer_file(output_path, transfer_dir, mode=transfer_mode)
+    except Exception as e:
+        print(f"{Fore.RED}[分发失败] {e}{Style.RESET_ALL}")
 
 
 def execute_replace_audio(args):

@@ -6,7 +6,7 @@ import os
 
 from colorama import Fore, Style
 
-from ..presets import RENAME_MODES, RENAME_TARGETS, RENAME_BEHAVIORS
+from ..presets import RENAME_MODES, RENAME_TARGETS, RENAME_BEHAVIORS, RENAME_SORT_METHODS, RENAME_SORT_ORDERS
 from ..folder_creator import batch_create_folders
 from ..batch_renamer import batch_rename, RenameConfig
 from .common import print_task_header
@@ -78,6 +78,15 @@ def execute_batch_rename(args):
     # 排除下划线
     exclude_underscore = getattr(args, 'rename_exclude_underscore', True)
 
+    # 解析排序参数
+    sort_method_name = getattr(args, 'rename_sort_method', '按文件名排序')
+    sort_method = RENAME_SORT_METHODS.get(sort_method_name, 'name')
+
+    sort_order_name = getattr(args, 'rename_sort_order', '升序（从小到大）')
+    sort_order = RENAME_SORT_ORDERS.get(sort_order_name, 'asc')
+
+    priority_keyword = getattr(args, 'rename_priority_keyword', '')
+
     # 创建配置
     config = RenameConfig(
         mode=mode,
@@ -87,6 +96,9 @@ def execute_batch_rename(args):
         video_extensions=video_exts,
         recursive=recursive,
         exclude_underscore=exclude_underscore,
+        sort_method=sort_method,
+        sort_order=sort_order,
+        priority_keyword=priority_keyword,
     )
 
     success, fail, errors = batch_rename(

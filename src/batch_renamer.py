@@ -29,6 +29,12 @@ class RenameConfig:
     recursive: bool = True
     # 递归模式下是否排除下划线后的文字
     exclude_underscore: bool = True
+    # 排序方式: "name", "size"
+    sort_method: str = "name"
+    # 排序方向: "asc", "desc"
+    sort_order: str = "asc"
+    # 关键词提前排序 (文件名包含该关键词的文件优先排序)
+    priority_keyword: str = ""
 
 
 def normalize_extensions(extensions: List[str]) -> List[str]:
@@ -51,13 +57,13 @@ def get_file_size(file_path: str) -> int:
         return 0
 
 
-def get_files_sorted_by_size(
+def _collect_files(
     directory: str,
     extensions: List[str],
     recursive: bool = True,
 ) -> List[str]:
     """
-    获取按文件大小排序的文件列表。
+    收集目录中符合扩展名条件的文件列表 (不排序)。
 
     Args:
         directory: 目录路径
@@ -65,7 +71,7 @@ def get_files_sorted_by_size(
         recursive: 是否递归
 
     Returns:
-        按大小排序的文件路径列表
+        文件路径列表
     """
     files = []
     extensions = set(normalize_extensions(extensions))
@@ -84,9 +90,79 @@ def get_files_sorted_by_size(
                 if ext in extensions:
                     files.append(filepath)
 
-    # 按文件大小排序
-    files.sort(key=get_file_size)
     return files
+
+
+def get_sorted_files(
+    directory: str,
+    extensions: List[str],
+    recursive: bool = True,
+    sort_method: str = "name",
+    sort_order: str = "asc",
+    priority_keyword: str = "",
+) -> List[str]:
+    """
+    获取排序后的文件列表，支持按名称/大小排序、升降序和关键词提前。
+
+    Args:
+        directory: 目录路径
+        extensions: 扩展名列表 (不含点号)
+        recursive: 是否递归
+        sort_method: 排序方式 ("name" 或 "size")
+        sort_order: 排序方向 ("asc" 或 "desc")
+        priority_keyword: 关键词提前排序 (文件名包含该关键词的优先)
+
+    Returns:
+        排序后的文件路径列表
+    """
+    files = _collect_files(directory, extensions, recursive)
+
+    # 确定排序键
+    reverse = (sort_order == "desc")
+    if sort_method == "size":
+        sort_key = get_file_size
+    else:
+        # 按文件名排序 (不含路径，忽略大小写)
+        sort_key = lambda f: os.path.basename(f).lower()
+
+    files.sort(key=sort_key, reverse=reverse)
+
+    # 关键词提前排序
+    if priority_keyword and priority_keyword.strip():
+        keyword = priority_keyword.strip()
+        priority = []
+        normal = []
+        for f in files:
+            if keyword in os.path.basename(f):
+                priority.append(f)
+            else:
+                normal.append(f)
+        files = priority + normal
+
+    return files
+
+
+# 保留兼容性别名
+def get_files_sorted_by_size(
+    directory: str,
+    extensions: List[str],
+    recursive: bool = True,
+) -> List[str]:
+    """
+    获取按文件大小排序的文件列表 (兼容旧接口)。
+
+    Args:
+        directory: 目录路径
+        extensions: 扩展名列表 (不含点号)
+        recursive: 是否递归
+
+    Returns:
+        按大小排序的文件路径列表
+    """
+    return get_sorted_files(
+        directory, extensions, recursive,
+        sort_method="size", sort_order="asc",
+    )
 
 
 def process_parent_folder_name(
@@ -174,6 +250,10 @@ def batch_rename(
     print(f"目标类型: {config.target_type}")
     print(f"递归模式: {'是' if config.recursive else '否'}")
     print(f"排除下划线后文字: {'是' if config.exclude_underscore else '否'}")
+    sort_desc = f"{'文件名' if config.sort_method == 'name' else '文件大小'}({'升序' if config.sort_order == 'asc' else '降序'})"
+    print(f"排序方式: {sort_desc}")
+    if config.priority_keyword:
+        print(f"关键词提前: {config.priority_keyword}")
     print("-" * 50)
 
     if not os.path.isdir(input_path):
@@ -186,8 +266,13 @@ def batch_rename(
     if config.target_type in ("videos", "both"):
         all_extensions.extend(config.video_extensions)
 
-    # 获取所有符合条件的文件
-    files = get_files_sorted_by_size(input_path, all_extensions, config.recursive)
+    # 获取所有符合条件的文件 (按配置排序)
+    files = get_sorted_files(
+        input_path, all_extensions, config.recursive,
+        sort_method=config.sort_method,
+        sort_order=config.sort_order,
+        priority_keyword=config.priority_keyword,
+    )
 
     if not files:
         print(f"{Fore.YELLOW}[提示] 未找到符合条件的文件{Style.RESET_ALL}")

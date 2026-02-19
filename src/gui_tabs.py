@@ -8,10 +8,10 @@ from gooey import GooeyParser
 from .presets import (
     ENCODERS,
     QUALITY_PRESETS,
-    AUDIO_ENCODERS,
-    AUDIO_BITRATES,
     CPU_PRESETS,
     NVENC_PRESETS,
+    AUDIO_ENCODERS,
+    AUDIO_BITRATES,
     RATE_CONTROL_MODES,
     VIDEO_BITRATES,
     RESOLUTION_PRESETS,
@@ -20,6 +20,9 @@ from .presets import (
     RENAME_MODES,
     RENAME_TARGETS,
     RENAME_BEHAVIORS,
+    RENAME_SORT_METHODS,
+    RENAME_SORT_ORDERS,
+    POST_TRANSFER_MODES,
     SHIELD_THRESHOLDS,
     SHIELD_CENSOR_TYPES,
     SHIELD_MOSAIC_SIZES,
@@ -47,7 +50,7 @@ def register_encode_tab(subs) -> None:
         required=True,
         widget="FileChooser",
         gooey_options={"wildcard": "视频文件 (*.mp4;*.mov;*.avi;*.mkv)|*.mp4;*.mov;*.avi;*.mkv|所有文件 (*.*)|*.*"},
-        help="选择要处理的视频文件",
+        help="选择要处理的视频文件（支持将文件直接拖动到输入框）",
     )
     io_group.add_argument(
         "--output",
@@ -189,6 +192,32 @@ def register_encode_tab(subs) -> None:
         choices=AUDIO_BITRATES,
         default="192k",
         help="音频码率",
+    )
+
+    # ========== 压制后分发 ==========
+    transfer_group = encode_parser.add_argument_group(
+        "压制后分发",
+        description=(
+            "压制完成后，自动将成品文件复制或移动到指定目录。\n"
+            "【提示】将网络位置 (WebDAV / SMB) 挂载为本地磁盘后，\n"
+            "选择该挂载路径即可变相实现自动上传成品。"
+        ),
+        gooey_options={"columns": 1}
+    )
+    transfer_group.add_argument(
+        "--post-transfer-mode",
+        metavar="分发模式",
+        choices=list(POST_TRANSFER_MODES.keys()),
+        default="不分发",
+        help="不分发: 不做额外操作; 复制: 保留原文件; 移动: 原文件移走",
+    )
+    transfer_group.add_argument(
+        "--post-transfer-dir",
+        metavar="目标目录",
+        required=False,
+        default="",
+        widget="DirChooser",
+        help="选择成品分发的目标目录 (支持已挂载的网络位置)",
     )
 
     # ========== 高级选项 ==========
@@ -812,7 +841,7 @@ def register_batch_rename_tab(subs) -> None:
         metavar="输入目录",
         required=True,
         widget="DirChooser",
-        help="选择要重命名的文件所在目录",
+        help="选择要重命名的文件所在目录（支持将目录直接拖动到输入框）",
     )
 
     # 重命名模式
@@ -831,6 +860,36 @@ def register_batch_rename_tab(subs) -> None:
         default="",
         widget="DirChooser",
         help="复制/移动模式: 留空则在输入目录创建 'rename_output' 文件夹",
+    )
+
+    # 排序设置
+    rename_sort = rename_parser.add_argument_group(
+        "排序设置",
+        description=(
+            "控制文件的排序规则，影响重命名后的序号分配。\n"
+            "关键词提前：文件名包含指定关键词的文件会优先排在最前面。\n"
+            "【示例】关键词填写“主视觉图”，则包含该关键词的图片将优先编号"
+        ),
+    )
+    rename_sort.add_argument(
+        "--rename-sort-method",
+        metavar="排序方式",
+        choices=list(RENAME_SORT_METHODS.keys()),
+        default="按文件名排序",
+        help="选择文件的排序方式",
+    )
+    rename_sort.add_argument(
+        "--rename-sort-order",
+        metavar="排序方向",
+        choices=list(RENAME_SORT_ORDERS.keys()),
+        default="升序（从小到大）",
+        help="选择升序或降序",
+    )
+    rename_sort.add_argument(
+        "--rename-priority-keyword",
+        metavar="关键词提前排序 (可选)",
+        default="",
+        help="文件名包含此关键词的文件会优先排在序列前面，如:主视觉图",
     )
 
     # 对象设置
