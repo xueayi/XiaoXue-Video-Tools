@@ -450,14 +450,14 @@ def register_qc_tab(subs) -> None:
         "--check-pr-video",
         metavar="PR 视频兼容性",
         action="store_true",
-        default=True,
+        gooey_options={"initial_value": True},
         help="检测可能会导致 PR 导入问题的视频格式 (如 MKV, VFR)",
     )
     qc_pr.add_argument(
         "--check-pr-image",
         metavar="PR 图片兼容性",
         action="store_true",
-        default=True,
+        gooey_options={"initial_value": True},
         help="检测可能会导致 PR 导入问题的图片格式\n（可以检测图片和后缀是否匹配）",
     )
     
@@ -787,7 +787,7 @@ def register_image_convert_tab(subs) -> None:
         "--img-skip-same-format",
         metavar="忽略同格式文件",
         action="store_true",
-        default=True,
+        gooey_options={"initial_value": True},
         help="跳过与目标转换格式相同的图片",
     )
 
@@ -835,7 +835,7 @@ def register_folder_creator_tab(subs) -> None:
         "--folder-auto-number",
         metavar="自动排序",
         action="store_true",
-        default=True,
+        gooey_options={"initial_value": True},
         help="开启后自动在文件夹名前添加序号 (如 1_文件夹名)",
     )
 
@@ -970,7 +970,7 @@ def register_batch_rename_tab(subs) -> None:
         "--rename-exclude-underscore",
         metavar="排除下划线后文字",
         action="store_true",
-        default=True,
+        gooey_options={"initial_value": True},
         help="递归模式下，忽略文件夹名中第一个下划线后的内容",
     )
 
@@ -1068,7 +1068,7 @@ def register_shield_tab(subs, shield_available: bool = True) -> None:
         "--shield-recursive",
         metavar="递归扫描子目录",
         action="store_true",
-        default=True,
+        gooey_options={"initial_value": True},
         help="勾选后将扫描所有子目录中的图片",
     )
 
