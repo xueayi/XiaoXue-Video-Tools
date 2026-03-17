@@ -100,12 +100,31 @@ def convert_image(
         return False, f"转换失败: {str(e)}"
 
 
+def _normalize_extension(ext: str) -> str:
+    """
+    归一化图片扩展名，使 .jpg 和 .jpeg 视为同一格式。
+
+    Args:
+        ext: 文件扩展名 (含前导点号)
+
+    Returns:
+        归一化后的扩展名
+    """
+    ext = ext.lower()
+    if ext == ".jpeg":
+        return ".jpg"
+    if ext == ".tif":
+        return ".tiff"
+    return ext
+
+
 def batch_convert_images(
     input_paths: List[str],
     output_dir: Optional[str],
     target_extension: str,
     quality: int = 95,
-) -> Tuple[int, int, List[str]]:
+    skip_same_format: bool = True,
+) -> Tuple[int, int, int, List[str]]:
     """
     批量转换图片格式。
 
@@ -114,12 +133,13 @@ def batch_convert_images(
         output_dir: 输出目录 (None 则在原文件位置生成)
         target_extension: 目标扩展名 (如 ".png", ".jpg")
         quality: JPEG/WEBP 质量
+        skip_same_format: 跳过与目标格式相同的文件
 
     Returns:
-        (成功数, 失败数, 错误消息列表)
+        (成功数, 失败数, 跳过数, 错误消息列表)
     """
     if not check_pillow_available():
-        return 0, len(input_paths), ["Pillow 库不可用"]
+        return 0, len(input_paths), 0, ["Pillow 库不可用"]
 
     # 确保扩展名格式正确
     if not target_extension.startswith("."):
@@ -128,19 +148,36 @@ def batch_convert_images(
 
     # 检查是否为支持的格式
     if target_extension not in PIL_FORMAT_MAP:
-        return 0, len(input_paths), [f"不支持的目标格式: {target_extension}"]
+        return 0, len(input_paths), 0, [f"不支持的目标格式: {target_extension}"]
 
     target_format = PIL_FORMAT_MAP[target_extension]
+    target_ext_normalized = _normalize_extension(target_extension)
     
     success_count = 0
     fail_count = 0
+    skip_count = 0
     errors = []
 
     print(f"\n{Fore.CYAN}[批量图片转换] 开始处理 {len(input_paths)} 个文件{Style.RESET_ALL}")
     print(f"目标格式: {target_extension.upper()}")
+    if skip_same_format:
+        print(f"已启用: 忽略同格式文件")
     print("-" * 50)
 
     for i, input_path in enumerate(input_paths, 1):
+        # 跳过同格式文件
+        input_ext = os.path.splitext(input_path)[1]
+        input_ext_normalized = _normalize_extension(input_ext)
+
+        if skip_same_format and input_ext_normalized == target_ext_normalized:
+            print(
+                f"[{i}/{len(input_paths)}] "
+                f"{Fore.YELLOW}[跳过] {os.path.basename(input_path)} "
+                f"已是目标格式 ({target_extension}){Style.RESET_ALL}"
+            )
+            skip_count += 1
+            continue
+
         # 生成输出路径
         basename = os.path.splitext(os.path.basename(input_path))[0]
         
@@ -172,6 +209,9 @@ def batch_convert_images(
             errors.append(f"{os.path.basename(input_path)}: {msg}")
 
     print("-" * 50)
-    print(f"完成: 成功 {success_count} 个, 失败 {fail_count} 个")
+    summary_parts = [f"成功 {success_count} 个", f"失败 {fail_count} 个"]
+    if skip_count > 0:
+        summary_parts.append(f"跳过 {skip_count} 个")
+    print(f"完成: {', '.join(summary_parts)}")
 
-    return success_count, fail_count, errors
+    return success_count, fail_count, skip_count, errors

@@ -116,6 +116,7 @@ def execute_image_convert(args):
     output_dir = args.img_output_dir if args.img_output_dir else None
     quality = getattr(args, 'img_quality', 95)
     overwrite = getattr(args, 'img_overwrite', False)
+    skip_same = getattr(args, 'img_skip_same_format', True)
 
     print(f"[目标格式] {target_ext}")
     print(f"[质量] {quality}")
@@ -123,11 +124,12 @@ def execute_image_convert(args):
     if overwrite:
         print(f"{Fore.YELLOW}[警告] 覆盖模式已开启，原文件将被删除{Style.RESET_ALL}")
 
-    success, fail, errors = batch_convert_images(
+    success, fail, skipped, errors = batch_convert_images(
         input_paths=input_files,
         output_dir=output_dir,
         target_extension=target_ext,
         quality=quality,
+        skip_same_format=skip_same,
     )
 
     # 覆盖模式：删除成功转换的原文件

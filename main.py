@@ -44,7 +44,7 @@ from src.gui_tabs import (
     register_replace_audio_tab,
     register_remux_tab,
     register_qc_tab,
-    register_extract_audio_tab,
+    register_extract_av_tab,
     register_notification_tab,
     register_help_tab,
     register_image_convert_tab,
@@ -57,7 +57,7 @@ from src.gui_tabs import (
 from src.executors import (
     execute_encode,
     execute_replace_audio,
-    execute_extract_audio,
+    execute_extract_av,
     execute_remux,
     execute_image_convert,
     execute_folder_creator,
@@ -88,7 +88,7 @@ def main():
     register_replace_audio_tab(subs)
     register_remux_tab(subs)
     register_qc_tab(subs)
-    register_extract_audio_tab(subs)
+    register_extract_av_tab(subs)
     register_image_convert_tab(subs)
     register_folder_creator_tab(subs)
     register_batch_rename_tab(subs)
@@ -120,7 +120,7 @@ def dispatch_command(args):
         "音频替换": execute_replace_audio,
         "封装转换": execute_remux,
         "素材质量检测": execute_qc,
-        "音频抽取": execute_extract_audio,
+        "音视频抽取": execute_extract_av,
         "图片转换": execute_image_convert,
         "文件夹创建": execute_folder_creator,
         "批量重命名": execute_batch_rename,

@@ -27,6 +27,7 @@ from .presets import (
     SHIELD_CENSOR_TYPES,
     SHIELD_MOSAIC_SIZES,
     SHIELD_EXPAND_OPTIONS,
+    EXTRACT_MODES,
 )
 from .notify import FEISHU_COLORS
 
@@ -492,11 +493,11 @@ def register_qc_tab(subs) -> None:
     )
 
 
-def register_extract_audio_tab(subs) -> None:
-    """注册音频抽取标签页。"""
+def register_extract_av_tab(subs) -> None:
+    """注册音视频抽取标签页。"""
     extract_parser = subs.add_parser(
-        "音频抽取",
-        help="从视频中提取音频轨道"
+        "音视频抽取",
+        help="从视频中分离音频和/或视频轨道"
     )
 
     extract_io = extract_parser.add_argument_group(
@@ -509,16 +510,34 @@ def register_extract_audio_tab(subs) -> None:
         required=True,
         widget="FileChooser",
         gooey_options={"wildcard": "视频文件 (*.mp4;*.mov;*.avi;*.mkv;*.webm)|*.mp4;*.mov;*.avi;*.mkv;*.webm|所有文件 (*.*)|*.*"},
-        help="选择要提取音频的视频文件",
+        help="选择要处理的视频文件",
     )
     extract_io.add_argument(
         "--extract-output",
-        metavar="输出音频 (可选)",
+        metavar="音频输出路径 (可选)",
         required=False,
         default="",
         widget="FileSaver",
         gooey_options={"wildcard": "MP3 文件 (*.mp3)|*.mp3|AAC 文件 (*.aac)|*.aac|WAV 文件 (*.wav)|*.wav|FLAC 文件 (*.flac)|*.flac|所有文件 (*.*)|*.*"},
         help="留空则自动生成: [原视频名]_extract.[ext]",
+    )
+    extract_io.add_argument(
+        "--extract-video-output",
+        metavar="视频输出路径 (可选)",
+        required=False,
+        default="",
+        widget="FileSaver",
+        gooey_options={"wildcard": "MP4 文件 (*.mp4)|*.mp4|MKV 文件 (*.mkv)|*.mkv|所有文件 (*.*)|*.*"},
+        help="留空则自动生成: [原视频名]_noaudio.[ext]",
+    )
+
+    extract_mode_group = extract_parser.add_argument_group("抽取模式")
+    extract_mode_group.add_argument(
+        "--extract-mode",
+        metavar="抽取模式",
+        choices=list(EXTRACT_MODES.keys()),
+        default="仅音频",
+        help="仅音频: 提取纯音频; 仅视频: 输出无音频的纯视频; 音频+视频: 同时输出两个文件",
     )
 
     extract_settings = extract_parser.add_argument_group("音频设置")
@@ -542,7 +561,7 @@ def register_extract_audio_tab(subs) -> None:
     docs_group.add_argument(
         "--wiki-extract",
         metavar="文档链接",
-        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Video-Tools",
         help="复制此链接到浏览器访问",
         gooey_options={"visible": True, "full_width": True}
     )
@@ -684,7 +703,7 @@ def register_help_tab(subs) -> None:
             "音频替换",
             "封装转换",
             "素材质量检测",
-            "音频抽取",
+            "音视频抽取",
             "图片转换",
             "文件夹创建",
             "批量重命名",
@@ -763,6 +782,13 @@ def register_image_convert_tab(subs) -> None:
         default=95,
         gooey_options={"min": 1, "max": 100},
         help="JPEG/WEBP 格式的压缩质量 (1-100)，其他格式忽略",
+    )
+    img_format.add_argument(
+        "--img-skip-same-format",
+        metavar="忽略同格式文件",
+        action="store_true",
+        default=True,
+        help="跳过与目标转换格式相同的图片",
     )
 
     # 在线文档

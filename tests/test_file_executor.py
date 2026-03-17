@@ -38,6 +38,7 @@ class MockImageConvertArgs:
     img_format_custom: str = ""
     img_quality: int = 95
     img_overwrite: bool = False
+    img_skip_same_format: bool = True
     
     def __post_init__(self):
         if self.img_input is None:
@@ -170,7 +171,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_to_png(self, mock_convert, mock_image_files):
         """测试转换为 PNG 格式"""
-        mock_convert.return_value = (3, 0, [])
+        mock_convert.return_value = (3, 0, 0, [])
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -185,7 +186,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_to_jpg(self, mock_convert, mock_image_files):
         """测试转换为 JPG 格式"""
-        mock_convert.return_value = (3, 0, [])
+        mock_convert.return_value = (3, 0, 0, [])
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -200,7 +201,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_custom_format(self, mock_convert, mock_image_files):
         """测试自定义格式"""
-        mock_convert.return_value = (3, 0, [])
+        mock_convert.return_value = (3, 0, 0, [])
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -216,7 +217,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_quality(self, mock_convert, mock_image_files):
         """测试质量参数传递"""
-        mock_convert.return_value = (3, 0, [])
+        mock_convert.return_value = (3, 0, 0, [])
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -239,3 +240,35 @@ class TestExecuteImageConvert:
         
         captured = capsys.readouterr()
         assert "错误" in captured.out or "必须输入扩展名" in captured.out
+
+    @patch('src.executors.file_executor.batch_convert_images')
+    def test_execute_image_convert_skip_same_format(self, mock_convert, mock_image_files):
+        """测试默认跳过同格式文件"""
+        mock_convert.return_value = (2, 0, 1, [])
+
+        args = MockImageConvertArgs()
+        args.img_input = mock_image_files
+        args.img_format = "PNG (无损)"
+        args.img_skip_same_format = True
+
+        execute_image_convert(args)
+
+        mock_convert.assert_called_once()
+        call_kwargs = mock_convert.call_args.kwargs
+        assert call_kwargs["skip_same_format"] is True
+
+    @patch('src.executors.file_executor.batch_convert_images')
+    def test_execute_image_convert_no_skip(self, mock_convert, mock_image_files):
+        """测试关闭跳过同格式时正常转换"""
+        mock_convert.return_value = (3, 0, 0, [])
+
+        args = MockImageConvertArgs()
+        args.img_input = mock_image_files
+        args.img_format = "PNG (无损)"
+        args.img_skip_same_format = False
+
+        execute_image_convert(args)
+
+        mock_convert.assert_called_once()
+        call_kwargs = mock_convert.call_args.kwargs
+        assert call_kwargs["skip_same_format"] is False

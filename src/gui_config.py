@@ -93,47 +93,47 @@ def _get_menu_config() -> list:
             "items": [
                 {
                     "type": "Link",
-                    "menuTitle": "使用手册首页 (Home)",
+                    "menuTitle": "使用手册首页" ,
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Home",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "安装与环境 (Installation)",
+                    "menuTitle": "安装与环境",
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Installation",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "视频压制 (Video Encode)",
+                    "menuTitle": "视频压制",
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Video-Encode",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "音频工具 (Audio Tools)",
-                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Tools",
+                    "menuTitle": "音视频工具",
+                    "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Video-Tools",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "封装与图片 (Remux & Image)",
+                    "menuTitle": "封装与图片",
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "素材质量检测 (QC)",
+                    "menuTitle": "素材质量检测",
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Quality-Control",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "批量与效率工具 (Batch Tools)",
+                    "menuTitle": "批量与效率工具",
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "通知设置 (Notification)",
+                    "menuTitle": "通知设置",
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Notification",
                 },
                 {
                     "type": "Link",
-                    "menuTitle": "常见问题 (FAQ)",
+                    "menuTitle": "常见问题",
                     "url": "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/FAQ",
                 },
             ],

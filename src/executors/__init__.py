@@ -10,7 +10,7 @@ from .common import print_task_header
 from .video_executor import (
     execute_encode,
     execute_replace_audio,
-    execute_extract_audio,
+    execute_extract_av,
 )
 
 from .file_executor import (
@@ -42,7 +42,7 @@ __all__ = [
     # 视频
     "execute_encode",
     "execute_replace_audio",
-    "execute_extract_audio",
+    "execute_extract_av",
     # 文件
     "execute_remux",
     "execute_image_convert",

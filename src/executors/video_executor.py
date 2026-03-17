@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-视频执行器模块：包含视频压制、音频替换、音频抽取相关执行函数。
+视频执行器模块：包含视频压制、音频替换、音视频抽取相关执行函数。
 """
 import os
 
@@ -11,6 +11,7 @@ from ..core import (
     build_2pass_commands,
     build_replace_audio_command,
     build_extract_audio_command,
+    build_extract_video_command,
     run_ffmpeg_command,
     run_2pass_encode,
 )
@@ -20,6 +21,7 @@ from ..presets import (
     AUDIO_ENCODERS,
     ENCODERS,
     RATE_CONTROL_MODES,
+    EXTRACT_MODES,
 )
 from ..utils import generate_output_path, auto_generate_output_path
 from ..post_transfer import transfer_file
@@ -189,35 +191,65 @@ def execute_replace_audio(args):
     run_ffmpeg_command(cmd)
 
 
-def execute_extract_audio(args):
+def execute_extract_av(args):
     """
-    执行音频抽取任务。
+    执行音视频抽取任务。
     
+    根据用户选择的抽取模式，分离输出纯音频和/或纯视频。
+
     Args:
         args: argparse 解析后的参数对象
     """
-    print_task_header("音频抽取")
+    print_task_header("音视频抽取")
 
-    output_path = args.extract_output
-    if not output_path:
-        # 简单推断扩展名
-        encoder_key = args.extract_encoder
-        ext = ".m4a"
-        if "MP3" in encoder_key:
-            ext = ".mp3"
-        elif "WAV" in encoder_key:
-            ext = ".wav"
-        elif "FLAC" in encoder_key:
-            ext = ".flac"
-        
-        output_path = auto_generate_output_path(args.extract_input, "_extract", ext)
-        print(f"[自动生成输出路径] {output_path}", flush=True)
+    # 获取抽取模式
+    extract_mode_key = getattr(args, 'extract_mode', '仅音频')
+    extract_mode = EXTRACT_MODES.get(extract_mode_key, 'audio_only')
 
-    cmd = build_extract_audio_command(
-        input_path=args.extract_input,
-        output_path=output_path,
-        audio_encoder=AUDIO_ENCODERS.get(args.extract_encoder, "aac"),
-        audio_bitrate=args.extract_bitrate,
-    )
+    # ---- 音频抽取逻辑 ----
+    if extract_mode in ("audio_only", "both"):
+        print(f"\n{Fore.CYAN}[音频抽取]{Style.RESET_ALL}")
 
-    run_ffmpeg_command(cmd)
+        audio_output = args.extract_output
+        if not audio_output:
+            # 推断音频扩展名
+            encoder_key = args.extract_encoder
+            ext = ".m4a"
+            if "MP3" in encoder_key:
+                ext = ".mp3"
+            elif "WAV" in encoder_key:
+                ext = ".wav"
+            elif "FLAC" in encoder_key:
+                ext = ".flac"
+
+            audio_output = auto_generate_output_path(
+                args.extract_input, "_extract", ext
+            )
+            print(f"[自动生成音频输出路径] {audio_output}", flush=True)
+
+        cmd = build_extract_audio_command(
+            input_path=args.extract_input,
+            output_path=audio_output,
+            audio_encoder=AUDIO_ENCODERS.get(args.extract_encoder, "aac"),
+            audio_bitrate=args.extract_bitrate,
+        )
+        run_ffmpeg_command(cmd)
+
+    # ---- 视频抽取逻辑 ----
+    if extract_mode in ("video_only", "both"):
+        print(f"\n{Fore.CYAN}[视频抽取]{Style.RESET_ALL}")
+
+        video_output = getattr(args, 'extract_video_output', '')
+        if not video_output:
+            # 保持原视频的容器格式
+            input_ext = os.path.splitext(args.extract_input)[1]
+            video_output = auto_generate_output_path(
+                args.extract_input, "_noaudio", input_ext
+            )
+            print(f"[自动生成视频输出路径] {video_output}", flush=True)
+
+        cmd = build_extract_video_command(
+            input_path=args.extract_input,
+            output_path=video_output,
+        )
+        run_ffmpeg_command(cmd)

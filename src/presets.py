@@ -117,6 +117,13 @@ RESOLUTION_PRESETS = {
     "自定义": "custom"
 }
 
+# 音视频抽取模式
+EXTRACT_MODES = {
+    "仅音频": "audio_only",
+    "仅视频": "video_only",
+    "音频+视频": "both",
+}
+
 # 封装转换预设 (Remux)
 REMUX_PRESETS = {
     "MP4 (H.264 兼容)": {

@@ -290,6 +290,31 @@ def build_extract_audio_command(
     return cmd
 
 
+def build_extract_video_command(
+    input_path: str,
+    output_path: str,
+) -> List[str]:
+    """
+    构建纯视频提取命令（剥离音频流）。
+
+    Args:
+        input_path: 输入视频路径。
+        output_path: 输出视频路径 (通过扩展名决定容器)。
+
+    Returns:
+        FFmpeg 命令列表。
+    """
+    ffmpeg = get_ffmpeg_path()
+    cmd = [
+        ffmpeg, "-y",
+        "-i", input_path,
+        "-an",          # 剥离音频流
+        "-c:v", "copy",  # 视频流直接复制
+    ]
+    cmd.append(output_path)
+    return cmd
+
+
 def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = False) -> int:
     """
     执行 FFmpeg 命令，实时打印输出。
