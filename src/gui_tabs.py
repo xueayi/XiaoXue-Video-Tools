@@ -340,13 +340,22 @@ def register_remux_tab(subs) -> None:
         help="选择要转换的文件 (可批量选择多个)",
     )
     
-    remux_preset = remux_parser.add_argument_group("输出格式")
+    remux_preset = remux_parser.add_argument_group(
+        "输出格式",
+        description="【自定义格式说明】\n如果您需要转换为未在列表中的格式，请将“封装预设”选为【自定义】，并在下方输入目标后缀名（如 m2）。",
+    )
     remux_preset.add_argument(
         "--remux-preset",
         metavar="封装预设",
         choices=list(REMUX_PRESETS.keys()),
         default="MP4 (H.264 兼容)",
         help="选择目标封装格式预设",
+    )
+    remux_preset.add_argument(
+        "--remux-format-custom",
+        metavar="自定义后缀名",
+        default="",
+        help="当上方预设选择 '自定义' 时，在此输入扩展名 (如 m2, avi)",
     )
     remux_preset.add_argument(
         "--remux-output",

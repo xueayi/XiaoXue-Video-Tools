@@ -24,7 +24,17 @@ def execute_remux(args):
 
     preset_name = getattr(args, 'remux_preset', 'MP4 (H.264 兼容)')
     preset = REMUX_PRESETS.get(preset_name, {})
-    extension = preset.get("extension", ".mp4")
+    
+    if preset_name == "自定义":
+        extension = getattr(args, 'remux_format_custom', '')
+        if not extension:
+            print(f"{Fore.RED}[错误] 选择自定义格式时必须输入自定义后缀名{Style.RESET_ALL}")
+            return
+        if not extension.startswith('.'):
+            extension = '.' + extension
+    else:
+        extension = preset.get("extension", ".mp4")
+        
     overwrite = getattr(args, 'remux_overwrite', False)
     
     # 获取输入文件列表

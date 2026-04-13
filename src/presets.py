@@ -154,9 +154,21 @@ REMUX_PRESETS = {
         "extension": ".avi",
         "description": "传统 Windows 视频格式",
     },
+    "M2 (MPEG-2)": {
+        "extension": ".m2",
+        "description": "MPEG-2 视频流",
+    },
+    "M2TS (BDAV 蓝光)": {
+        "extension": ".m2ts",
+        "description": "蓝光光盘音视频封装格式",
+    },
+    "M4V (Apple MP4)": {
+        "extension": ".m4v",
+        "description": "Apple 开发的类似 MP4 的格式",
+    },
     "自定义": {
         "extension": None,
-        "description": "手动指定输出路径和扩展名",
+        "description": "使用下方输入框手动指定扩展名",
     },
 }
 
