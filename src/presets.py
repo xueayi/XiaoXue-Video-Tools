@@ -124,6 +124,22 @@ EXTRACT_MODES = {
     "音频+视频": "both",
 }
 
+# 音轨保留选项 (快捷模式 + 自定义)
+AUDIO_TRACK_OPTIONS = {
+    "全部保留": "all",
+    "仅保留第 1 条 (#0)": "0",
+    "不保留音轨": "none",
+    "自定义选择 (填写编号)": "custom",
+}
+
+# 字幕流保留选项 (快捷模式 + 自定义)
+SUBTITLE_TRACK_OPTIONS = {
+    "全部保留": "all",
+    "不保留字幕": "none",
+    "仅保留第 1 条 (#0)": "0",
+    "自定义选择 (填写编号)": "custom",
+}
+
 # 封装转换预设 (Remux)
 REMUX_PRESETS = {
     "MP4 (H.264 兼容)": {

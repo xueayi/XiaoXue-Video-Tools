@@ -51,6 +51,7 @@ from src.gui_tabs import (
     register_folder_creator_tab,
     register_batch_rename_tab,
     register_shield_tab,
+    register_media_probe_tab,
 )
 
 # 执行器模块
@@ -66,6 +67,7 @@ from src.executors import (
     execute_notification,
     execute_help,
     execute_shield,
+    execute_media_probe,
     SHIELD_AVAILABLE,
 )
 
@@ -88,6 +90,7 @@ def main():
     register_replace_audio_tab(subs)
     register_remux_tab(subs)
     register_qc_tab(subs)
+    register_media_probe_tab(subs)
     register_extract_av_tab(subs)
     register_image_convert_tab(subs)
     register_folder_creator_tab(subs)
@@ -124,6 +127,7 @@ def dispatch_command(args):
         "图片转换": execute_image_convert,
         "文件夹创建": execute_folder_creator,
         "批量重命名": execute_batch_rename,
+        "媒体元数据检测": execute_media_probe,
     }
     
     # 不需要自动通知的任务

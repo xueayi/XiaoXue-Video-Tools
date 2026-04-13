@@ -58,6 +58,12 @@ class EncodeParams:
     is_custom: bool = False
     preset_name: Optional[str] = None
     
+    # 流选择参数
+    audio_tracks: str = "0"            # 音轨选择模式
+    audio_tracks_custom: str = ""       # 自定义音轨编号 (逗号分隔)
+    subtitle_tracks: str = "none"       # 字幕选择模式
+    subtitle_tracks_custom: str = ""    # 自定义字幕编号 (逗号分隔)
+    
     def get_encode_mode(self) -> EncodeMode:
         """
         根据参数确定编码模式。
@@ -183,6 +189,17 @@ def resolve_encoder_params(
     if not output_path or output_path.strip() == "":
         output_path = generate_output_path_func(args.input, encoder)
     
+    # 解析流选择参数
+    from .presets import AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS
+    
+    audio_track_key = getattr(args, 'audio_tracks', '仅保留第 1 条 (#0)')
+    audio_tracks_val = AUDIO_TRACK_OPTIONS.get(audio_track_key, "0")
+    audio_tracks_custom_val = getattr(args, 'audio_tracks_custom', '')
+    
+    subtitle_track_key = getattr(args, 'subtitle_tracks', '不保留字幕')
+    subtitle_tracks_val = SUBTITLE_TRACK_OPTIONS.get(subtitle_track_key, "none")
+    subtitle_tracks_custom_val = getattr(args, 'subtitle_tracks_custom', '')
+
     # 构建参数对象
     return EncodeParams(
         input_path=args.input,
@@ -202,6 +219,10 @@ def resolve_encoder_params(
         dry_run=getattr(args, 'debug_mode', False),
         is_custom=is_custom,
         preset_name=preset_name,
+        audio_tracks=audio_tracks_val,
+        audio_tracks_custom=audio_tracks_custom_val,
+        subtitle_tracks=subtitle_tracks_val,
+        subtitle_tracks_custom=subtitle_tracks_custom_val,
     )
 
 

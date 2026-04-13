@@ -107,6 +107,10 @@ def execute_encode(args) -> int:
             audio_bitrate=params.audio_bitrate if params.is_custom else None,
             subtitle_path=params.subtitle_path,
             extra_args=params.extra_args,
+            audio_tracks=params.audio_tracks,
+            audio_tracks_custom=params.audio_tracks_custom,
+            subtitle_tracks=params.subtitle_tracks,
+            subtitle_tracks_custom=params.subtitle_tracks_custom,
         )
         return_code = run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=params.dry_run)
     
@@ -127,6 +131,10 @@ def execute_encode(args) -> int:
             subtitle_path=params.subtitle_path,
             extra_args=params.extra_args,
             rc_mode=params.rc_mode,
+            audio_tracks=params.audio_tracks,
+            audio_tracks_custom=params.audio_tracks_custom,
+            subtitle_tracks=params.subtitle_tracks,
+            subtitle_tracks_custom=params.subtitle_tracks_custom,
         )
         return_code = run_ffmpeg_command(cmd, dry_run=params.dry_run)
     

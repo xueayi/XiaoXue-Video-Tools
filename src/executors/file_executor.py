@@ -7,7 +7,7 @@ import os
 from colorama import Fore, Style
 
 from ..core import build_remux_command, run_ffmpeg_command
-from ..presets import REMUX_PRESETS, IMAGE_FORMATS
+from ..presets import REMUX_PRESETS, IMAGE_FORMATS, AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS
 from ..utils import auto_generate_output_path
 from ..image_converter import batch_convert_images
 from .common import print_task_header
@@ -37,6 +37,15 @@ def execute_remux(args):
         
     overwrite = getattr(args, 'remux_overwrite', False)
     
+    # 解析流选择参数
+    audio_track_key = getattr(args, 'remux_audio_tracks', '全部保留')
+    audio_tracks = AUDIO_TRACK_OPTIONS.get(audio_track_key, "all")
+    audio_tracks_custom = getattr(args, 'remux_audio_tracks_custom', '')
+    
+    subtitle_track_key = getattr(args, 'remux_subtitle_tracks', '全部保留')
+    subtitle_tracks = SUBTITLE_TRACK_OPTIONS.get(subtitle_track_key, "all")
+    subtitle_tracks_custom = getattr(args, 'remux_subtitle_tracks_custom', '')
+    
     # 获取输入文件列表
     input_files = args.remux_input
     if isinstance(input_files, str):
@@ -48,6 +57,20 @@ def execute_remux(args):
     print(f"[输入文件数] {len(input_files)}")
     if output_dir:
         print(f"[输出目录] {output_dir}")
+    if audio_tracks != "all":
+        if audio_tracks == "custom":
+            print(f"[音轨] 自定义选择: #{audio_tracks_custom}")
+        elif audio_tracks == "none":
+            print(f"[音轨] 不保留")
+        else:
+            print(f"[音轨] 仅保留 #{audio_tracks}")
+    if subtitle_tracks != "all":
+        if subtitle_tracks == "custom":
+            print(f"[字幕] 自定义选择: #{subtitle_tracks_custom}")
+        elif subtitle_tracks == "none":
+            print(f"[字幕] 不保留")
+        else:
+            print(f"[字幕] 仅保留 #{subtitle_tracks}")
     if overwrite:
         print(f"{Fore.YELLOW}[警告] 覆盖模式已开启，原文件将被删除{Style.RESET_ALL}")
     print("-" * 50)
@@ -71,6 +94,10 @@ def execute_remux(args):
         cmd = build_remux_command(
             input_path=input_path,
             output_path=output_path,
+            audio_tracks=audio_tracks,
+            audio_tracks_custom=audio_tracks_custom,
+            subtitle_tracks=subtitle_tracks,
+            subtitle_tracks_custom=subtitle_tracks_custom,
         )
 
         result = run_ffmpeg_command(cmd)

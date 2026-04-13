@@ -17,6 +17,52 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _build_stream_map_args(
+    stream_type: str,
+    track_option: str,
+    custom_indices: str = "",
+) -> List[str]:
+    """
+    根据用户选择生成 -map 参数。
+
+    Args:
+        stream_type: 流类型 ("a"=音频, "s"=字幕)
+        track_option: 选择模式 ("all"=全部, "none"=不保留, "custom"=自定义, 数字=单条快捷)
+        custom_indices: 自定义模式下的编号字符串 (如 "0,2,3")
+
+    Returns:
+        FFmpeg 参数列表
+    """
+    args = []
+
+    if track_option == "none":
+        # 不保留: 音频用 -an，字幕用 -sn
+        if stream_type == "a":
+            args.append("-an")
+        else:
+            args.append("-sn")
+
+    elif track_option == "all":
+        # 全部保留
+        args.extend(["-map", f"0:{stream_type}?"])
+
+    elif track_option == "custom" and custom_indices.strip():
+        # 自定义模式: 按编号精确选择
+        indices = [idx.strip() for idx in custom_indices.split(",") if idx.strip().isdigit()]
+        for idx in indices:
+            args.extend(["-map", f"0:{stream_type}:{idx}?"])
+
+    else:
+        # 单条快捷模式 (track_option 是数字字符串，如 "0")
+        if track_option.isdigit():
+            args.extend(["-map", f"0:{stream_type}:{track_option}?"])
+        else:
+            # 兜底: 保留全部
+            args.extend(["-map", f"0:{stream_type}?"])
+
+    return args
+
+
 def build_encode_command(
     input_path: str,
     output_path: str,
@@ -32,6 +78,10 @@ def build_encode_command(
     subtitle_path: Optional[str] = None,
     extra_args: Optional[str] = None,
     rc_mode: Optional[str] = None,
+    audio_tracks: str = "0",
+    audio_tracks_custom: str = "",
+    subtitle_tracks: str = "none",
+    subtitle_tracks_custom: str = "",
 ) -> List[str]:
     """
     构建视频编码 FFmpeg 命令。
@@ -51,12 +101,27 @@ def build_encode_command(
         subtitle_path: 字幕文件路径 (可选，用于烧录)。
         extra_args: 额外的 FFmpeg 参数 (字符串)。
         rc_mode: NVENC 码率控制模式 (如 constqp, vbr, cbr)。
+        audio_tracks: 音轨选择模式 ("all"/"none"/"custom"/数字)。
+        audio_tracks_custom: 自定义音轨编号 (逗号分隔，如 "0,2")。
+        subtitle_tracks: 字幕选择模式 ("all"/"none"/"custom"/数字)。
+        subtitle_tracks_custom: 自定义字幕编号 (逗号分隔)。
 
     Returns:
         FFmpeg 命令列表。
     """
     ffmpeg = get_ffmpeg_path()
     cmd = [ffmpeg, "-y", "-i", input_path]
+
+    # 显式映射视频流 (始终保留第一条)
+    cmd.extend(["-map", "0:v:0"])
+
+    # 映射音频流 (根据用户选择)
+    audio_map_args = _build_stream_map_args("a", audio_tracks, audio_tracks_custom)
+    cmd.extend(audio_map_args)
+
+    # 映射字幕流 (根据用户选择)
+    subtitle_map_args = _build_stream_map_args("s", subtitle_tracks, subtitle_tracks_custom)
+    cmd.extend(subtitle_map_args)
 
     # 如果使用预设, 加载预设参数
     if preset_name and preset_name in QUALITY_PRESETS and preset_name != "自定义 (Custom)":
@@ -195,10 +260,15 @@ def build_encode_command(
     if fps:
         cmd.extend(["-r", str(fps)])
 
-    # 音频
-    cmd.extend(["-c:a", audio_encoder])
-    if audio_encoder != "copy":
-        cmd.extend(["-b:a", audio_bitrate])
+    # 音频编码 (仅在保留音轨时添加)
+    if audio_tracks != "none" and "-an" not in cmd:
+        cmd.extend(["-c:a", audio_encoder])
+        if audio_encoder != "copy":
+            cmd.extend(["-b:a", audio_bitrate])
+
+    # 字幕编码 (内封字幕直接复制)
+    if subtitle_tracks != "none" and "-sn" not in cmd:
+        cmd.extend(["-c:s", "copy"])
 
     # 额外参数
     if extra_args:
@@ -244,19 +314,45 @@ def build_replace_audio_command(
     return cmd
 
 
-def build_remux_command(input_path: str, output_path: str) -> List[str]:
+def build_remux_command(
+    input_path: str,
+    output_path: str,
+    audio_tracks: str = "all",
+    audio_tracks_custom: str = "",
+    subtitle_tracks: str = "all",
+    subtitle_tracks_custom: str = "",
+) -> List[str]:
     """
     构建转封装命令 (不重新编码)。
 
     Args:
         input_path: 输入文件路径。
         output_path: 输出文件路径 (通过扩展名决定容器)。
+        audio_tracks: 音轨选择模式。
+        audio_tracks_custom: 自定义音轨编号。
+        subtitle_tracks: 字幕选择模式。
+        subtitle_tracks_custom: 自定义字幕编号。
 
     Returns:
         FFmpeg 命令列表。
     """
     ffmpeg = get_ffmpeg_path()
-    return [ffmpeg, "-y", "-i", input_path, "-c", "copy", output_path]
+    cmd = [ffmpeg, "-y", "-i", input_path]
+
+    # 映射视频流 (全部)
+    cmd.extend(["-map", "0:v"])
+
+    # 映射音频流
+    audio_map_args = _build_stream_map_args("a", audio_tracks, audio_tracks_custom)
+    cmd.extend(audio_map_args)
+
+    # 映射字幕流
+    subtitle_map_args = _build_stream_map_args("s", subtitle_tracks, subtitle_tracks_custom)
+    cmd.extend(subtitle_map_args)
+
+    cmd.extend(["-c", "copy"])
+    cmd.append(output_path)
+    return cmd
 
 
 def build_extract_audio_command(
@@ -497,6 +593,10 @@ def build_2pass_commands(
     audio_bitrate: str = "192k",
     subtitle_path: Optional[str] = None,
     extra_args: Optional[str] = None,
+    audio_tracks: str = "0",
+    audio_tracks_custom: str = "",
+    subtitle_tracks: str = "none",
+    subtitle_tracks_custom: str = "",
 ) -> Tuple[List[str], List[str]]:
     """
     构建真正的两遍编码 FFmpeg 命令。
@@ -600,10 +700,22 @@ def build_2pass_commands(
         # CPU 编码器
         pass2_cmd.extend(["-pass", "2"])
 
+    # 流映射 (Pass 2)
+    pass2_cmd.extend(["-map", "0:v:0"])
+    audio_map_args = _build_stream_map_args("a", audio_tracks, audio_tracks_custom)
+    pass2_cmd.extend(audio_map_args)
+    subtitle_map_args = _build_stream_map_args("s", subtitle_tracks, subtitle_tracks_custom)
+    pass2_cmd.extend(subtitle_map_args)
+
     # 音频设置
-    pass2_cmd.extend(["-c:a", audio_encoder])
-    if audio_encoder != "copy":
-        pass2_cmd.extend(["-b:a", audio_bitrate])
+    if audio_tracks != "none" and "-an" not in pass2_cmd:
+        pass2_cmd.extend(["-c:a", audio_encoder])
+        if audio_encoder != "copy":
+            pass2_cmd.extend(["-b:a", audio_bitrate])
+
+    # 字幕编码
+    if subtitle_tracks != "none" and "-sn" not in pass2_cmd:
+        pass2_cmd.extend(["-c:s", "copy"])
 
     pass2_cmd.append(output_path)
 

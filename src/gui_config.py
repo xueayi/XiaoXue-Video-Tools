@@ -82,7 +82,7 @@ def _get_menu_config() -> list:
                     "menuTitle": "关于小雪工具箱",
                     "name": "小雪工具箱",
                     "description": "一个简单的视频压制与检测工具",
-                    "version": "1.8.2",
+                    "version": "1.9.0",
                     "developer": "雪阿宜",
                     "website": "https://github.com/xueayi/XiaoXue-Video-Tools",
                 },

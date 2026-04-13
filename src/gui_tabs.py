@@ -28,6 +28,8 @@ from .presets import (
     SHIELD_MOSAIC_SIZES,
     SHIELD_EXPAND_OPTIONS,
     EXTRACT_MODES,
+    AUDIO_TRACK_OPTIONS,
+    SUBTITLE_TRACK_OPTIONS,
 )
 from .notify import FEISHU_COLORS
 
@@ -194,6 +196,58 @@ def register_encode_tab(subs) -> None:
         default="192k",
         help="音频码率",
     )
+    audio_group.add_argument(
+        "--audio-tracks",
+        metavar="保留音轨",
+        choices=list(AUDIO_TRACK_OPTIONS.keys()),
+        default="仅保留第 1 条 (#0)",
+        help=(
+            "快捷选择保留的音轨。选择「自定义」后在下方填写编号。\n"
+            "注意：MP4 格式不支持多音轨，若源文件有多音轨，请选择「不保留字幕」或手动指定输出格式为 MKV。"
+        ),
+    )
+    audio_group.add_argument(
+        "--audio-tracks-custom",
+        metavar="音轨编号 (自定义)",
+        default="",
+        help=(
+            "填写要保留的音轨编号，多条用逗号分隔，如: 0,1\n"
+            "编号从 #0 开始，可通过「媒体元数据检测」查看每条音轨的编号和语言。\n"
+            "仅当上方选择「自定义选择」时生效。"
+        ),
+    )
+
+    # ========== 字幕流设置 ==========
+    subtitle_group = encode_parser.add_argument_group(
+        "字幕流设置",
+        description=(
+            "控制保留哪些内封字幕流 (embedded subtitle streams)。\n"
+            "注意：此处的字幕流保留与上方「字幕烧录」是不同的概念。\n"
+            "字幕烧录是硬编码到画面中，内封字幕流是保留在容器中可切换的字幕轨。"
+        ),
+        gooey_options={"columns": 2}
+    )
+    subtitle_group.add_argument(
+        "--subtitle-tracks",
+        metavar="保留字幕",
+        choices=list(SUBTITLE_TRACK_OPTIONS.keys()),
+        default="不保留字幕",
+        help=(
+            "快捷选择保留的字幕流。选择「自定义」后在下方填写编号。\n"
+            "注意：MP4 格式不支持 ASS 等字幕，\n"
+            "若源字幕为 ASS 等格式，请选择「不保留字幕」或手动指定输出格式为 MKV。"
+        ),
+    )
+    subtitle_group.add_argument(
+        "--subtitle-tracks-custom",
+        metavar="字幕编号 (自定义)",
+        default="",
+        help=(
+            "填写要保留的字幕编号，多条用逗号分隔，如: 0,2\n"
+            "编号从 #0 开始，可通过「媒体元数据检测」查看每条字幕的编号和语言。\n"
+            "仅当上方选择「自定义选择」时生效。"
+        ),
+    )
 
     # ========== 压制后分发 ==========
     transfer_group = encode_parser.add_argument_group(
@@ -355,7 +409,7 @@ def register_remux_tab(subs) -> None:
         "--remux-format-custom",
         metavar="自定义后缀名",
         default="",
-        help="当上方预设选择 '自定义' 时，在此输入扩展名 (如 m2, avi)",
+        help="当上方预设选择 '自定义' 时，在此输入扩展名 (如 wmv, ogg)",
     )
     remux_preset.add_argument(
         "--remux-output",
@@ -371,6 +425,43 @@ def register_remux_tab(subs) -> None:
         action="store_true",
         default=False,
         help="⚠️ 危险: 转换后删除原文件，仅保留新文件",
+    )
+
+    # 流选择
+    stream_group = remux_parser.add_argument_group(
+        "流选择",
+        description=(
+            "控制保留哪些音轨和字幕流。默认全部保留。\n"
+            "选择「自定义选择」后，在下方填写要保留的流编号 (如: 0,1)。\n"
+            "可先使用「媒体元数据检测」查看每条流的编号和详细信息。"
+        ),
+        gooey_options={"columns": 2}
+    )
+    stream_group.add_argument(
+        "--remux-audio-tracks",
+        metavar="保留音轨",
+        choices=list(AUDIO_TRACK_OPTIONS.keys()),
+        default="全部保留",
+        help="快捷选择保留的音轨（请注意封装格式对音轨的支持）",
+    )
+    stream_group.add_argument(
+        "--remux-audio-tracks-custom",
+        metavar="音轨编号 (自定义)",
+        default="",
+        help="填写要保留的音轨编号，如: 0,2。仅当上方选择「自定义选择」时生效。",
+    )
+    stream_group.add_argument(
+        "--remux-subtitle-tracks",
+        metavar="保留字幕",
+        choices=list(SUBTITLE_TRACK_OPTIONS.keys()),
+        default="全部保留",
+        help="快捷选择保留的字幕流（请注意封装格式对字幕的支持）",
+    )
+    stream_group.add_argument(
+        "--remux-subtitle-tracks-custom",
+        metavar="字幕编号 (自定义)",
+        default="",
+        help="填写要保留的字幕编号，如: 0,1。仅当上方选择「自定义选择」时生效。",
     )
 
     # 在线文档
@@ -712,6 +803,7 @@ def register_help_tab(subs) -> None:
             "音频替换",
             "封装转换",
             "素材质量检测",
+            "媒体元数据检测",
             "音视频抽取",
             "图片转换",
             "文件夹创建",
@@ -1130,6 +1222,68 @@ def register_shield_tab(subs, shield_available: bool = True) -> None:
         "--wiki-shield",
         metavar="文档链接",
         default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Shield",
+        help="复制此链接到浏览器访问",
+        gooey_options={"visible": True, "full_width": True}
+    )
+
+
+def register_media_probe_tab(subs) -> None:
+    """注册媒体元数据检测标签页。"""
+    probe_parser = subs.add_parser(
+        "媒体元数据检测",
+        help="探测视频/音频/图片的详细流信息"
+    )
+
+    probe_io = probe_parser.add_argument_group(
+        "输入设置",
+        description=(
+            "两种输入方式二选一：\n"
+            "① 直接选择文件 (可多选)\n"
+            "② 选择目录 (自动扫描媒体文件)"
+        ),
+    )
+
+    probe_io.add_argument(
+        "--probe-input-files",
+        metavar="输入文件 (可多选)",
+        nargs="*",
+        widget="MultiFileChooser",
+        gooey_options={"wildcard": "媒体文件 (*.mp4;*.mkv;*.mov;*.avi;*.mp3;*.flac;*.wav)|*.mp4;*.mkv;*.mov;*.avi;*.mp3;*.flac;*.wav|所有文件 (*.*)|*.*"},
+        help="选择要分析的媒体文件",
+    )
+    probe_io.add_argument(
+        "--probe-input-dir",
+        metavar="或选择目录",
+        widget="DirChooser",
+        default="",
+        help="选择要扫描的文件夹",
+    )
+
+    probe_output = probe_parser.add_argument_group("输出设置")
+    probe_output.add_argument(
+        "--probe-report-output",
+        metavar="报告输出路径 (可选)",
+        widget="FileSaver",
+        gooey_options={"wildcard": "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*"},
+        default="",
+        help="留空则仅在控制台显示，填写则额外保存 TXT 报告",
+    )
+
+    probe_options = probe_parser.add_argument_group("扫描选项")
+    probe_options.add_argument(
+        "--probe-recursive",
+        metavar="递归扫描子目录",
+        action="store_true",
+        gooey_options={"initial_value": True},
+        help="目录模式下，勾选后将扫描所有子目录",
+    )
+
+    # 在线文档
+    docs_group = probe_parser.add_argument_group("在线文档")
+    docs_group.add_argument(
+        "--wiki-probe",
+        metavar="文档链接",
+        default="https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Media-Probe",
         help="复制此链接到浏览器访问",
         gooey_options={"visible": True, "full_width": True}
     )
