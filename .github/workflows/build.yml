@@ -23,17 +23,10 @@ jobs:
             requirements: requirements.txt
             suffix: ""
             display_name: "标准版"
-            ffmpeg_type: static
-          - variant: lite
-            requirements: requirements.txt
-            suffix: "_Lite"
-            display_name: "轻量版"
-            ffmpeg_type: shared
           - variant: shield
             requirements: requirements-shield.txt
             suffix: "_Shield"
             display_name: "Shield 增强版"
-            ffmpeg_type: static
     
     steps:
       - name: Checkout code
@@ -50,27 +43,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ${{ matrix.requirements }}
       
-      - name: Download FFmpeg (${{ matrix.ffmpeg_type }})
+      - name: Download FFmpeg
         run: |
-          $ffmpegType = "${{ matrix.ffmpeg_type }}"
-          if ($ffmpegType -eq "shared") {
-            $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
-            $dirName = "ffmpeg-master-latest-win64-gpl-shared"
-          } else {
-            $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-            $dirName = "ffmpeg-master-latest-win64-gpl"
-          }
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          $dirName = "ffmpeg-master-latest-win64-gpl"
           Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip"
           Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
           New-Item -ItemType Directory -Force -Path "bin"
           Copy-Item "ffmpeg_temp\$dirName\bin\ffmpeg.exe" -Destination "bin\"
           Copy-Item "ffmpeg_temp\$dirName\bin\ffprobe.exe" -Destination "bin\"
-          # 共享构建需要同时复制 DLL 文件
-          if ($ffmpegType -eq "shared") {
-            Copy-Item "ffmpeg_temp\$dirName\bin\*.dll" -Destination "bin\"
-            Write-Host "Shared DLLs copied:"
-            Get-ChildItem "bin\*.dll" | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB, 1)) MB)" }
-          }
           Remove-Item -Recurse -Force "ffmpeg_temp"
           Remove-Item "ffmpeg.zip"
       
@@ -149,20 +130,17 @@ jobs:
             
             | 版本 | 说明 |
             |------|------|
-            | `XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip` | 标准版，体积较小 |
-            | `XiaoXueToolbox_${{ github.ref_name }}_Lite_Windows_x64.zip` | 轻量版，动态链接 FFmpeg，体积最小 |
-            | `XiaoXueToolbox_${{ github.ref_name }}_Shield_Windows_x64.zip` | Shield 增强版，含露骨图片识别功能 |
+            | `XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip` | 标准版，包含全部基础功能 |
+            | `XiaoXueToolbox_${{ github.ref_name }}_Shield_Windows_x64.zip` | Shield 增强版，额外包含露骨图片识别功能 |
             
             ### 下载说明
             - 解压后运行 `XiaoXueToolbox.exe` 即可
-            - **标准版**: 内置静态 FFmpeg，体积较大，兼容性最好
-            - **轻量版**: 动态链接 FFmpeg，体积较小，不含 AI 模块
-            - **Shield 增强版**: 含 AI 露骨图片识别，体积最大
+            - **标准版**: 内置静态 FFmpeg，包含全部基础功能
+            - **Shield 增强版**: 额外包含 AI 露骨图片识别功能
             
             ---
             
             ${{ steps.changelog.outputs.BODY }}
             
-            ---
             详细更新日志请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
 

@@ -121,12 +121,7 @@
 #### Release Notes 动态生成
 - GitHub Release 说明不再使用静态文本，自动从 CHANGELOG.md 解析当前版本的更新日志
 - 同时适用于正式版 (build.yml) 和预发布版 (build-beta.yml) 的工作流
-
-#### 轻量版构建 (Lite)
-- 新增 `Lite` 构建变体：使用动态链接 FFmpeg (gpl-shared) 替代静态版，显著减小包体
-- 轻量版不含 Shield (AI 识别) 模块
-- 动态链接 FFmpeg 总体积约 80MB vs 静态版约 260MB
-- 构建矩阵现为三版本：标准版、轻量版、Shield 增强版
+- 构建矩阵提供两版本：标准版、Shield 增强版
 
 
 ---

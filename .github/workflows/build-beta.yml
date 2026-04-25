@@ -27,17 +27,10 @@ jobs:
             requirements: requirements.txt
             suffix: ""
             display_name: "标准版"
-            ffmpeg_type: static
-          - variant: lite
-            requirements: requirements.txt
-            suffix: "_Lite"
-            display_name: "轻量版"
-            ffmpeg_type: shared
           - variant: shield
             requirements: requirements-shield.txt
             suffix: "_Shield"
             display_name: "Shield 增强版"
-            ffmpeg_type: static
     
     steps:
       - name: Checkout code
@@ -54,24 +47,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ${{ matrix.requirements }}
       
-      - name: Download FFmpeg (${{ matrix.ffmpeg_type }})
+      - name: Download FFmpeg
         run: |
-          $ffmpegType = "${{ matrix.ffmpeg_type }}"
-          if ($ffmpegType -eq "shared") {
-            $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
-            $dirName = "ffmpeg-master-latest-win64-gpl-shared"
-          } else {
-            $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-            $dirName = "ffmpeg-master-latest-win64-gpl"
-          }
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+          $dirName = "ffmpeg-master-latest-win64-gpl"
           Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip"
           Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
           New-Item -ItemType Directory -Force -Path "bin"
           Copy-Item "ffmpeg_temp\$dirName\bin\ffmpeg.exe" -Destination "bin\"
           Copy-Item "ffmpeg_temp\$dirName\bin\ffprobe.exe" -Destination "bin\"
-          if ($ffmpegType -eq "shared") {
-            Copy-Item "ffmpeg_temp\$dirName\bin\*.dll" -Destination "bin\"
-          }
           Remove-Item -Recurse -Force "ffmpeg_temp"
           Remove-Item "ffmpeg.zip"
       
@@ -153,5 +137,4 @@ jobs:
             
             ${{ steps.changelog.outputs.BODY }}
             
-            ---
             详见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/dev/CHANGELOG.md)
