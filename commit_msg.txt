@@ -1,0 +1,6 @@
+chore: remove lite variant from build workflows
+
+- Remove lite build variant from build.yml and build-beta.yml
+- Lite variant testing showed no significant size reduction vs standard
+- Build matrix now produces 2 variants: standard + shield
+- Update CHANGELOG.md and wiki docs to reflect this change
