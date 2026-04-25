@@ -7,7 +7,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/FFmpeg-007808?logo=ffmpeg&logoColor=white" alt="FFmpeg">
-  <img src="https://img.shields.io/badge/Gooey-GUI-4B8BBE" alt="Gooey">
+  <img src="https://img.shields.io/badge/PyQt6-GUI-41CD52" alt="PyQt6">
   <img src="https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white" alt="Platform">
   <img src="https://img.shields.io/badge/Maintenance-Active-green.svg" alt="Maintenance">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
@@ -16,7 +16,7 @@
 
 
 <p align="center">
-一个简洁实用的视频压制与素材管理工具。基于 Python + Gooey 图形界面，内置 FFmpeg，开箱即用。
+一个简洁实用的视频压制与素材管理工具。基于 Python + PyQt6 图形界面，内置 FFmpeg，开箱即用。
 </p>
 
 <p align="center">
@@ -153,7 +153,6 @@ python -m pytest tests/test_encode_params.py::TestNvencPresetOverride -v
 | AviSynth     | GPL v2+              | 视频处理框架 (兼容模式) |
 | LSMASHSource | ISC License          | 视频解码插件            |
 | VSFilter     | GPL v2+              | 字幕渲染插件            |
-| Gooey        | MIT                  | Python GUI 框架         |
-| wxPython     | wxWidgets License    | GUI 底层组件            |
+| PyQt6        | GPL v3 / Commercial  | Python GUI 框架         |
 
 **注意**: 兼容模式使用的 AviSynth、LSMASHSource、VSFilter 均为开源组件。相关源代码可从各自的官方仓库获取。
