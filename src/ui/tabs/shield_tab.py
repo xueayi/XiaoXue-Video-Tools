@@ -112,6 +112,23 @@ class ShieldTab(BaseTab):
         )
         self.add_stretch()
 
+        # 控件联动
+        self.enable_censor_cb.toggled.connect(self._on_censor_toggled)
+        self.censor_type_combo.currentTextChanged.connect(self._on_censor_type_changed)
+        self._on_censor_toggled(self.enable_censor_cb.isChecked())
+
+    def _on_censor_toggled(self, enabled):
+        self.censor_type_combo.setEnabled(enabled)
+        self.mosaic_size_combo.setEnabled(enabled)
+        self.expand_pixels_combo.setEnabled(enabled)
+        if enabled:
+            self._on_censor_type_changed(self.censor_type_combo.currentText())
+        else:
+            self.overlay_image_edit.setEnabled(False)
+
+    def _on_censor_type_changed(self, text):
+        self.overlay_image_edit.setEnabled("自定义" in text)
+
     def build_args(self):
         if not self.shield_available:
             return ArgsNamespace(command=self.command_name)

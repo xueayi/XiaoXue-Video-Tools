@@ -38,6 +38,13 @@ class EncodeTab(BaseTab):
             "开启：使用 AviSynth+VSFilter 渲染字幕。\n"
             "关闭 (默认)：使用 FFmpeg 内置 libass 渲染。",
         )
+        self.add_hint(
+            io,
+            "推荐开启: ASS 字幕特效显示错乱、无法调用 TTC/OTF 字体特定字重时\n"
+            "默认关闭 (libass): 速度更快，适合 SRT 及大多数 ASS\n"
+            "注意: 兼容模式需要程序在非中文路径下运行",
+            "info",
+        )
 
         # ---- 预设 ----
         preset = self.add_group("预设选择")
@@ -83,6 +90,13 @@ class EncodeTab(BaseTab):
             quality, "目标码率", VIDEO_BITRATES, "",
             "CRF/CQ 模式留空；VBR/CBR/2-Pass 模式设置码率",
         )
+        self.add_hint(
+            quality,
+            "CRF/CQ: 恒定质量 (推荐)，由上方质量值控制\n"
+            "VBR: 可变码率，设置平均码率  |  CBR: 恒定码率，适合推流\n"
+            "2-Pass: 两遍编码，精确控制目标码率",
+            "info",
+        )
 
         # ---- 视频输出 ----
         vid_out = self.add_group("视频输出")
@@ -113,11 +127,21 @@ class EncodeTab(BaseTab):
             audio, "音轨编号 (自定义)", "",
             "填写要保留的音轨编号，多条用逗号分隔，如: 0,1",
         )
+        self.add_hint(
+            audio,
+            "编号从 #0 开始，可通过「媒体元数据检测」查看各音轨详情\n"
+            "注意: MP4 格式不支持多音轨，需保留多轨请输出 MKV 格式",
+            "warning",
+        )
 
         # ---- 字幕流设置 ----
-        sub = self.add_group(
-            "字幕流设置",
-            "控制保留哪些内封字幕流 (与上方字幕烧录是不同概念)。",
+        sub = self.add_group("字幕流设置")
+        self.add_hint(
+            sub,
+            "「字幕烧录」= 硬编码到画面中，不可关闭\n"
+            "「保留字幕流」= 保留在容器中可切换的字幕轨\n"
+            "两者是不同概念，可同时使用",
+            "info",
         )
         self.subtitle_tracks_combo = self.add_combo(
             sub, "保留字幕",
@@ -127,6 +151,12 @@ class EncodeTab(BaseTab):
         self.subtitle_tracks_custom_edit = self.add_text_input(
             sub, "字幕编号 (自定义)", "",
             "填写要保留的字幕编号，如: 0,2",
+        )
+        self.add_hint(
+            sub,
+            "MP4 格式不支持 ASS 等字幕，若源字幕为 ASS 格式，\n"
+            "请选择「不保留字幕」或手动指定输出格式为 MKV",
+            "warning",
         )
 
         # ---- 压制后分发 ----
@@ -142,15 +172,24 @@ class EncodeTab(BaseTab):
             transfer, "目标目录",
             "选择成品分发的目标目录 (支持已挂载的网络位置)",
         )
+        self.add_hint(
+            transfer,
+            "将 WebDAV / SMB / 网盘 挂载为本地磁盘后，\n"
+            "选择该挂载路径即可实现 压制完成 → 自动上传到 NAS/云端",
+            "tip",
+        )
 
         # ---- 高级选项 ----
-        extra = self.add_group(
-            "高级选项",
-            "额外参数会追加到 FFmpeg 命令末尾。\n示例: -ss 00:01:00 -t 30 -tune animation",
-        )
+        extra = self.add_group("高级选项")
         self.extra_args_edit = self.add_text_input(
             extra, "额外 FFmpeg 参数", "",
             "多个参数用空格分隔",
+        )
+        self.add_hint(
+            extra,
+            "填写示例: -ss 00:01:00 -t 30 -tune animation\n"
+            "参数会追加到 FFmpeg 命令末尾，多个参数用空格分隔",
+            "info",
         )
         self.debug_mode_cb = self.add_checkbox(
             extra, "Debug 模式", False,
@@ -168,15 +207,36 @@ class EncodeTab(BaseTab):
         # ---- 控件联动 ----
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
         self.rate_control_combo.currentTextChanged.connect(self._on_rate_control_changed)
+        self.encoder_combo.currentTextChanged.connect(self._on_encoder_changed)
+        self.audio_tracks_combo.currentTextChanged.connect(self._on_audio_tracks_changed)
+        self.subtitle_tracks_combo.currentTextChanged.connect(self._on_subtitle_tracks_changed)
+        self.post_transfer_mode_combo.currentTextChanged.connect(self._on_transfer_changed)
+
+        self._on_preset_changed(self.preset_combo.currentText())
+        self._on_audio_tracks_changed(self.audio_tracks_combo.currentText())
+        self._on_subtitle_tracks_changed(self.subtitle_tracks_combo.currentText())
+        self._on_transfer_changed(self.post_transfer_mode_combo.currentText())
 
     # ----------------------------------------------------------------
-    # 预设联动
+    # 控件联动
     # ----------------------------------------------------------------
 
     def _on_preset_changed(self, preset_name):
-        """当质量预设切换时，自动填充关联参数。"""
+        """当质量预设切换时，自动填充关联参数并控制可编辑状态。"""
+        is_custom = "自定义" in preset_name or "Custom" in preset_name
+
+        self.encoder_combo.setEnabled(is_custom)
+        self.speed_preset_combo.setEnabled(is_custom)
+        self.nvenc_preset_combo.setEnabled(is_custom)
+        self.rate_control_combo.setEnabled(is_custom)
+        self.crf_spin.setEnabled(is_custom)
+        self.video_bitrate_combo.setEnabled(is_custom)
+
         preset = QUALITY_PRESETS.get(preset_name)
         if not preset or preset.get("encoder") is None:
+            if is_custom:
+                self._on_rate_control_changed(self.rate_control_combo.currentText())
+                self._on_encoder_changed(self.encoder_combo.currentText())
             return
 
         for name, value in ENCODERS.items():
@@ -209,6 +269,20 @@ class EncodeTab(BaseTab):
         is_crf = "CRF" in mode_name or "CQ" in mode_name
         self.crf_spin.setEnabled(is_crf)
         self.video_bitrate_combo.setEnabled(not is_crf)
+
+    def _on_encoder_changed(self, encoder_name):
+        """当编码器切换时，控制 NVENC 档位可用状态。"""
+        is_nvenc = "NVENC" in encoder_name or "nvenc" in encoder_name
+        self.nvenc_preset_combo.setEnabled(is_nvenc)
+
+    def _on_audio_tracks_changed(self, text):
+        self.audio_tracks_custom_edit.setEnabled("自定义" in text)
+
+    def _on_subtitle_tracks_changed(self, text):
+        self.subtitle_tracks_custom_edit.setEnabled("自定义" in text)
+
+    def _on_transfer_changed(self, mode):
+        self.post_transfer_dir_edit.setEnabled("不分发" not in mode)
 
     def build_args(self):
         return ArgsNamespace(

@@ -12,7 +12,8 @@ from .utils import get_base_dir, get_internal_dir
 # 窗口基本配置
 PROGRAM_NAME = "小雪工具箱"
 PROGRAM_DESCRIPTION = "一个简单的视频压制与检测工具"
-VERSION = "1.9.0"
+
+from ._version import __version__ as VERSION
 DEFAULT_SIZE = (960, 720)
 
 

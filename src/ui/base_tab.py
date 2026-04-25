@@ -228,6 +228,33 @@ class BaseTab(QScrollArea):
         link.setOpenExternalLinks(True)
         layout.addRow("", link)
 
+    def add_hint(self, layout, text, hint_type="info"):
+        """添加带样式的内联提示标签。
+
+        hint_type 可选 "info"(蓝), "warning"(橙), "tip"(绿)。
+        """
+        _HINT_STYLES = {
+            "info": (
+                "background-color:#e8f4fd; border-left:3px solid #2196F3; "
+                "padding:8px 12px; border-radius:3px; color:#1565c0;"
+            ),
+            "warning": (
+                "background-color:#fff8e1; border-left:3px solid #ff9800; "
+                "padding:8px 12px; border-radius:3px; color:#e65100;"
+            ),
+            "tip": (
+                "background-color:#e8f5e9; border-left:3px solid #4caf50; "
+                "padding:8px 12px; border-radius:3px; color:#2e7d32;"
+            ),
+        }
+        style = _HINT_STYLES.get(hint_type, _HINT_STYLES["info"])
+        label = QLabel(text)
+        label.setWordWrap(True)
+        label.setStyleSheet(style + " font-size:12px; margin:2px 0;")
+        label.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addRow("", label)
+        return label
+
     def add_stretch(self):
         """在底部添加弹性空间。"""
         self._main_layout.addStretch(1)

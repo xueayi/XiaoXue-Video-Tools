@@ -34,6 +34,13 @@ class ExtractAvTab(BaseTab):
             list(EXTRACT_MODES.keys()), "仅音频",
             "仅音频 / 仅视频 / 同时输出两个文件",
         )
+        self.add_hint(
+            mode,
+            "仅音频: 从视频中提取纯音频文件\n"
+            "仅视频: 输出无音频的纯视频文件\n"
+            "音频+视频: 同时输出纯音频和纯视频两个文件",
+            "info",
+        )
 
         audio = self.add_group("音频设置")
         self.extract_encoder_combo = self.add_combo(
@@ -44,6 +51,12 @@ class ExtractAvTab(BaseTab):
         self.extract_bitrate_combo = self.add_combo(
             audio, "音频码率", AUDIO_BITRATES, "192k",
             "音频码率 (仅转码时生效)",
+        )
+        self.add_hint(
+            audio,
+            "选择「复制 (不重新编码)」可无损提取原始音频，输出格式取决于原始编码\n"
+            "视频抽取不重新编码，速度极快",
+            "tip",
         )
 
         docs = self.add_group("在线文档")

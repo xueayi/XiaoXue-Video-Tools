@@ -56,25 +56,21 @@ jobs:
           Remove-Item -Recurse -Force "ffmpeg_temp"
           Remove-Item "ffmpeg.zip"
       
-      - name: Inject version to main.py
+      - name: Inject version to src/_version.py
         run: |
-          # 从 tag 中获取版本号 (去掉 v 前缀)
           $version = "${{ github.ref_name }}"
           if (-not $version -or $version -eq "") { 
             $version = "dev" 
           } else {
-            # 去掉 v 前缀 (v1.2.0 -> 1.2.0)
             $version = $version -replace '^v', ''
           }
           Write-Host "Injecting version: $version"
           
-          # 替换 main.py 中的版本号
-          $content = Get-Content "main.py" -Raw -Encoding UTF8
-          $content = $content -replace '"version":\s*"[^"]*"', "`"version`": `"$version`""
-          Set-Content "main.py" -Value $content -Encoding UTF8 -NoNewline
+          $content = Get-Content "src/_version.py" -Raw -Encoding UTF8
+          $content = $content -replace '__version__:\s*str\s*=\s*.*', "__version__: str = `"$version`""
+          Set-Content "src/_version.py" -Value $content -Encoding UTF8 -NoNewline
           
-          # 验证替换结果
-          Get-Content "main.py" | Select-String -Pattern '"version"'
+          Get-Content "src/_version.py" | Select-String -Pattern '__version__'
       
       - name: Build with PyInstaller (${{ matrix.display_name }})
         run: |

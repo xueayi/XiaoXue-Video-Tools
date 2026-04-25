@@ -30,8 +30,7 @@ from ..executors import (
     execute_help, execute_shield, execute_media_probe,
 )
 from ..notify_config import send_auto_notification
-
-_VERSION = "1.9.0"
+from .._version import __version__ as _VERSION
 
 _AUTO_NOTIFY_COMMANDS = {
     "视频压制", "音频替换", "封装转换", "素材质量检测",

@@ -28,6 +28,13 @@ class ReplaceAudioTab(BaseTab):
             "留空则自动生成: [原视频名]_replaced.mp4",
         )
 
+        self.add_hint(
+            io,
+            "视频流自动复制，不重新编码\n"
+            "新音频时长建议与视频一致",
+            "info",
+        )
+
         audio = self.add_group("音频设置")
         self.audio_enc_combo = self.add_combo(
             audio, "音频编码器",

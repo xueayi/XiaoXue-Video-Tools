@@ -55,10 +55,22 @@ class QcTab(BaseTab):
         )
         self.check_pr_image_cb = self.add_checkbox(
             pr, "PR 图片兼容性", True,
-            "检测可能会导致 PR 导入问题的图片格式",
+            "检测可能会导致 PR 导入问题的图片格式 (可检测图片和后缀是否匹配)",
+        )
+        self.add_hint(
+            pr,
+            "检测内容: 容器兼容性 (MKV/WEBM/FLV)、编码兼容性 (VP9/AV1)\n"
+            "图片格式检测 (WEBP 等)、扫描完成后生成 TXT 报告",
+            "info",
         )
 
         custom = self.add_group("自定义兼容性规则 (高级)")
+        self.add_hint(
+            custom,
+            "用逗号分隔格式，不含点号\n"
+            "容器示例: mkv,webm,flv  |  编码示例: vp9,av1,theora  |  图片示例: webp,jxl",
+            "info",
+        )
         self.custom_containers_edit = self.add_text_input(
             custom, "不兼容容器", "mkv,webm,ogv,ogg,flv",
             "逗号分隔的不兼容容器扩展名 (不含点号)",
@@ -78,6 +90,18 @@ class QcTab(BaseTab):
             "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Quality-Control",
         )
         self.add_stretch()
+
+        # 控件联动
+        self.max_res_combo.currentTextChanged.connect(self._on_max_res_changed)
+        self.min_res_combo.currentTextChanged.connect(self._on_min_res_changed)
+        self._on_max_res_changed(self.max_res_combo.currentText())
+        self._on_min_res_changed(self.min_res_combo.currentText())
+
+    def _on_max_res_changed(self, text):
+        self.max_res_custom_edit.setEnabled("自定义" in text)
+
+    def _on_min_res_changed(self, text):
+        self.min_res_custom_edit.setEnabled("自定义" in text)
 
     def build_args(self):
         return ArgsNamespace(

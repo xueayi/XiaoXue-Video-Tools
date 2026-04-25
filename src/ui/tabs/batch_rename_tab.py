@@ -47,6 +47,11 @@ class BatchRenameTab(BaseTab):
             sort_group, "关键词提前排序 (可选)", "",
             "文件名包含此关键词的文件会优先排在序列前面，如:主视觉图",
         )
+        self.add_hint(
+            sort_group,
+            "场景示例: 关键词填写「封面」，则包含该词的图片将优先编号为 #1",
+            "tip",
+        )
 
         target = self.add_group("重命名对象")
         self.target_combo = self.add_combo(
@@ -62,13 +67,19 @@ class BatchRenameTab(BaseTab):
             "逗号分隔的视频扩展名 (不含点号)",
         )
 
-        behavior = self.add_group(
-            "重命名行为",
-            "递归模式: 包含子目录并在文件名中带上目录前缀；非递归模式: 仅处理当前目录。",
-        )
+        behavior = self.add_group("重命名行为")
         self.recursive_combo = self.add_combo(
             behavior, "行为模式",
             list(RENAME_BEHAVIORS.keys()), "递归模式（保持目录结构）",
+        )
+        self.add_hint(
+            behavior,
+            "递归模式示例:\n"
+            "  图包/新作/1_新闻/001.png → 新作_1_图片_1.png\n"
+            "  图包/周边/2_采访/clip.mp4 → 周边_2_视频_1.mp4\n"
+            "非递归模式示例:\n"
+            "  图包/001.png → 图片_1.png  (子目录不处理)",
+            "info",
         )
 
         advanced = self.add_group("高级选项")
@@ -83,6 +94,13 @@ class BatchRenameTab(BaseTab):
             "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools",
         )
         self.add_stretch()
+
+        # 控件联动
+        self.mode_combo.currentTextChanged.connect(self._on_mode_changed)
+        self._on_mode_changed(self.mode_combo.currentText())
+
+    def _on_mode_changed(self, mode):
+        self.output_dir_edit.setEnabled("原地" not in mode)
 
     def build_args(self):
         return ArgsNamespace(

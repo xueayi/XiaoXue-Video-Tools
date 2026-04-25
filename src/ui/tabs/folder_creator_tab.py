@@ -21,6 +21,13 @@ class FolderCreatorTab(BaseTab):
             "留空则在 TXT 文件所在目录创建",
         )
 
+        self.add_hint(
+            io,
+            "TXT 文件每行一个文件夹名称，支持 UTF-8/GBK/UTF-16 编码\n"
+            "名称中的非法字符 ( \\ / : * ? \" < > | ) 会自动替换",
+            "info",
+        )
+
         options = self.add_group("选项设置")
         self.auto_number_cb = self.add_checkbox(
             options, "自动排序", True,

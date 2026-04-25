@@ -74,28 +74,17 @@ jobs:
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
           echo "Version: $version"
       
-      - name: Inject version to source
+      - name: Inject version to src/_version.py
         run: |
           $version = "${{ steps.version.outputs.VERSION }}"
-          # 去掉 v 前缀 (v1.5.0-beta.1 -> 1.5.0-beta.1)
           $version_clean = $version -replace '^v', ''
           Write-Host "Injecting version: $version_clean"
           
-          # 替换 gui_config.py 中的版本号 (新结构)
-          if (Test-Path "src\gui_config.py") {
-            $content = Get-Content "src\gui_config.py" -Raw -Encoding UTF8
-            $content = $content -replace '"version":\s*"[^"]*"', "`"version`": `"$version_clean`""
-            Set-Content "src\gui_config.py" -Value $content -Encoding UTF8 -NoNewline
-            Write-Host "Updated src\gui_config.py"
-          }
+          $content = Get-Content "src/_version.py" -Raw -Encoding UTF8
+          $content = $content -replace '__version__:\s*str\s*=\s*.*', "__version__: str = `"$version_clean`""
+          Set-Content "src/_version.py" -Value $content -Encoding UTF8 -NoNewline
           
-          # 兼容旧结构：替换 main.py 中的版本号
-          $content = Get-Content "main.py" -Raw -Encoding UTF8
-          if ($content -match '"version":') {
-            $content = $content -replace '"version":\s*"[^"]*"', "`"version`": `"$version_clean`""
-            Set-Content "main.py" -Value $content -Encoding UTF8 -NoNewline
-            Write-Host "Updated main.py"
-          }
+          Get-Content "src/_version.py" | Select-String -Pattern '__version__'
       
       - name: Build with PyInstaller (${{ matrix.display_name }})
         run: |

@@ -44,6 +44,12 @@ class ImageConvertTab(BaseTab):
             fmt, "忽略同格式文件", True,
             "跳过与目标转换格式相同的图片",
         )
+        self.add_hint(
+            fmt,
+            "质量设置仅对 JPG/WEBP 有效，推荐值 90-95\n"
+            "转 JPG 时透明背景会变为白色",
+            "warning",
+        )
 
         docs = self.add_group("在线文档")
         self.add_link(
@@ -51,6 +57,16 @@ class ImageConvertTab(BaseTab):
             "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image",
         )
         self.add_stretch()
+
+        # 控件联动
+        self.img_format_combo.currentTextChanged.connect(self._on_format_changed)
+        self._on_format_changed(self.img_format_combo.currentText())
+
+    def _on_format_changed(self, fmt):
+        is_custom = "自定义" in fmt
+        self.img_format_custom_edit.setEnabled(is_custom)
+        has_quality = "JPG" in fmt or "WEBP" in fmt or is_custom
+        self.img_quality_spin.setEnabled(has_quality)
 
     def build_args(self):
         return ArgsNamespace(
