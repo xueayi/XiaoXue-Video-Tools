@@ -1,5 +1,51 @@
 # 更新日志
 
+## [2.0.2] - 2026-04-25
+
+### UI 现代化 (Fluent Design 风格)
+
+#### 视觉主题全面升级
+- 采用 Windows 11 Fluent Design 设计语言重写 QSS 主题
+- 全局 8px 圆角、卡片式 GroupBox (左侧蓝色色条 + 轻阴影)
+- 输入控件 Fluent TextBox 风格：底部 2px 重点线，聚焦时变为蓝色
+- 按钮区分主操作 (蓝色 Accent)、停止 (红色 Danger)、清空 (透明次要) 三种样式
+- 侧边栏 WinUI NavigationView 风格，选中项白色背景 + 蓝色文字
+
+#### 侧边栏药丸形指示器
+- 新增 `_PillIndicator` 组件：4px 宽蓝色圆角竖条，随选中项平滑滑动
+- 使用 `QPropertyAnimation` 实现丝滑的 Y 轴位移过渡
+
+#### 页面切换动画
+- 新增 `AnimatedStackedWidget` 组件：切换功能页面时带水平滑动 + 淡入过渡
+- 左右方向自适应（向前/向后切换方向不同）
+- 使用 `QParallelAnimationGroup` 并行运行滑动 + 透明度动画
+
+#### 进度仪表盘
+- 新增 `ProgressDashboard`：4 个指标卡片（进度、速度、帧、剩余时间）+ 渐变色进度条
+- 新增 `FFmpegProgressParser`：实时解析 FFmpeg stderr 输出提取 frame/fps/time/speed 等指标
+- 任务未运行时仪表盘自动隐藏，任务开始时显示不确定进度，获取数据后实时更新
+
+#### 日志面板美化
+- 日志面板改为深色终端风格 (`#1e1e1e` 背景，Cascadia Code 字体)
+- ANSI 颜色映射调整为深色背景适配的高对比度色值
+- 新增平滑滚动效果，使用 `QPropertyAnimation` 缓动到底部
+
+#### 按钮与状态栏动画
+- 执行按钮点击时带微缩弹回动画 (`button_press_anim`)
+- 任务完成/失败时状态栏颜色短暂闪烁反馈 (`status_flash`)
+
+### Bug 修复
+- 修复日志面板滚动动画使用 `DeleteWhenStopped` 导致悬空 C++ 引用，压制开始后崩溃的问题
+- 修复 QSS 中 `font-size: 0px` 导致的 `QFont::setPixelSize: Pixel size <= 0` 警告
+- 日志面板默认高度加高，分割器比例调整，日志区域更加宽敞
+
+### 新增文件
+- `src/ui/animations.py` — 可复用动画工具集 (淡入、页面滑动、按钮脉冲、状态闪烁)
+- `src/ui/ffmpeg_progress.py` — FFmpeg 输出进度解析器
+- `src/ui/progress_dashboard.py` — 进度仪表盘 UI 组件
+
+---
+
 ## [2.0.0] - 2026-04-25
 
 ### 重大更新: GUI 框架迁移 Gooey → PyQt6
