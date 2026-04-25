@@ -1,14 +1,23 @@
 # -*- coding: utf-8 -*-
 """视频压制标签页 —— 最复杂的功能页面。"""
 
+import os
+
+from PyQt6.QtWidgets import (
+    QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton,
+    QWidget,
+)
+from PyQt6.QtCore import Qt
+
 from ..base_tab import BaseTab
 from ..args_builder import ArgsNamespace
 from ...presets import (
     ENCODERS, QUALITY_PRESETS, CPU_PRESETS, NVENC_PRESETS,
     AUDIO_ENCODERS, AUDIO_BITRATES, RATE_CONTROL_MODES,
     VIDEO_BITRATES, AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS,
-    POST_TRANSFER_MODES,
+    POST_TRANSFER_MODES, ENCODE_OUTPUT_FORMATS,
 )
+from ...media_probe import probe_detailed, LANGUAGE_NAMES
 
 
 class EncodeTab(BaseTab):
@@ -51,7 +60,7 @@ class EncodeTab(BaseTab):
         self.preset_combo = self.add_combo(
             preset, "质量预设",
             list(QUALITY_PRESETS.keys()),
-            "【均衡画质】x264常用导出(CRF18)",
+            "【均衡画质】x264 常用导出 (CRF18)",
             "选择预设配置，或选择 '自定义' 手动配置参数",
         )
 
@@ -100,6 +109,15 @@ class EncodeTab(BaseTab):
 
         # ---- 视频输出 ----
         vid_out = self.add_group("视频输出")
+        self.output_format_combo = self.add_combo(
+            vid_out, "输出格式",
+            list(ENCODE_OUTPUT_FORMATS.keys()), "MP4 (默认)",
+            "选择输出容器格式",
+        )
+        self.output_format_custom_edit = self.add_text_input(
+            vid_out, "自定义格式", "",
+            "填写扩展名，如 ts、webm",
+        )
         self.resolution_edit = self.add_text_input(
             vid_out, "分辨率", "",
             "如 1920x1080，留空保持原分辨率",
@@ -107,6 +125,11 @@ class EncodeTab(BaseTab):
         self.fps_spin = self.add_spinbox(
             vid_out, "帧率", 0, 240, 0,
             "如 30、60，填 0 保持原帧率",
+        )
+        self.add_hint(
+            vid_out,
+            "留空分辨率和帧率 (帧率填 0) 时将保持源视频的原始分辨率和帧率，不做任何缩放或变速处理",
+            "info",
         )
 
         # ---- 音频设置 ----
@@ -118,6 +141,8 @@ class EncodeTab(BaseTab):
         self.audio_bitrate_combo = self.add_combo(
             audio, "音频码率", AUDIO_BITRATES, "192k",
         )
+
+        # 音轨选择：静态下拉 (无探测数据时使用)
         self.audio_tracks_combo = self.add_combo(
             audio, "保留音轨",
             list(AUDIO_TRACK_OPTIONS.keys()), "仅保留第 1 条 (#0)",
@@ -129,7 +154,6 @@ class EncodeTab(BaseTab):
         )
         self.add_hint(
             audio,
-            "编号从 #0 开始，可通过「媒体元数据检测」查看各音轨详情\n"
             "注意: MP4 格式不支持多音轨，需保留多轨请输出 MKV 格式",
             "warning",
         )
@@ -158,6 +182,12 @@ class EncodeTab(BaseTab):
             "请选择「不保留字幕」或手动指定输出格式为 MKV",
             "warning",
         )
+
+        # ---- 轨道自动检测面板 ----
+        self._audio_checks: list = []
+        self._sub_checks: list = []
+        self._last_probe_info = None
+        self._build_track_panel()
 
         # ---- 压制后分发 ----
         transfer = self.add_group(
@@ -208,11 +238,14 @@ class EncodeTab(BaseTab):
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
         self.rate_control_combo.currentTextChanged.connect(self._on_rate_control_changed)
         self.encoder_combo.currentTextChanged.connect(self._on_encoder_changed)
+        self.output_format_combo.currentTextChanged.connect(self._on_output_format_changed)
         self.audio_tracks_combo.currentTextChanged.connect(self._on_audio_tracks_changed)
         self.subtitle_tracks_combo.currentTextChanged.connect(self._on_subtitle_tracks_changed)
         self.post_transfer_mode_combo.currentTextChanged.connect(self._on_transfer_changed)
+        self.input_edit.textChanged.connect(self._on_input_changed)
 
         self._on_preset_changed(self.preset_combo.currentText())
+        self._on_output_format_changed(self.output_format_combo.currentText())
         self._on_audio_tracks_changed(self.audio_tracks_combo.currentText())
         self._on_subtitle_tracks_changed(self.subtitle_tracks_combo.currentText())
         self._on_transfer_changed(self.post_transfer_mode_combo.currentText())
@@ -275,6 +308,9 @@ class EncodeTab(BaseTab):
         is_nvenc = "NVENC" in encoder_name or "nvenc" in encoder_name
         self.nvenc_preset_combo.setEnabled(is_nvenc)
 
+    def _on_output_format_changed(self, text):
+        self.output_format_custom_edit.setEnabled("自定义" in text)
+
     def _on_audio_tracks_changed(self, text):
         self.audio_tracks_custom_edit.setEnabled("自定义" in text)
 
@@ -284,7 +320,272 @@ class EncodeTab(BaseTab):
     def _on_transfer_changed(self, mode):
         self.post_transfer_dir_edit.setEnabled("不分发" not in mode)
 
+    # ================================================================
+    # 轨道自动检测
+    # ================================================================
+
+    def _build_track_panel(self):
+        self._track_group = QGroupBox("轨道选择 (自动检测)")
+        outer = QVBoxLayout()
+        outer.setContentsMargins(12, 8, 12, 8)
+        outer.setSpacing(6)
+        self._track_group.setLayout(outer)
+
+        self._track_status = QLabel("选择输入视频后自动检测音频/字幕轨道")
+        self._track_status.setWordWrap(True)
+        self._track_status.setStyleSheet(
+            "color:#888; font-style:italic; padding:4px 0;"
+        )
+        outer.addWidget(self._track_status)
+
+        self._track_audio_container = QWidget()
+        self._track_audio_layout = QVBoxLayout(self._track_audio_container)
+        self._track_audio_layout.setContentsMargins(0, 0, 0, 0)
+        self._track_audio_layout.setSpacing(3)
+        self._track_audio_container.setVisible(False)
+        outer.addWidget(self._track_audio_container)
+
+        self._track_sub_container = QWidget()
+        self._track_sub_layout = QVBoxLayout(self._track_sub_container)
+        self._track_sub_layout.setContentsMargins(0, 0, 0, 0)
+        self._track_sub_layout.setSpacing(3)
+        self._track_sub_container.setVisible(False)
+        outer.addWidget(self._track_sub_container)
+
+        self._track_no_hint = QLabel()
+        self._track_no_hint.setWordWrap(True)
+        self._track_no_hint.setStyleSheet(
+            "color:#888; font-size:12px; padding:2px 0;"
+        )
+        self._track_no_hint.setVisible(False)
+        outer.addWidget(self._track_no_hint)
+
+        btn_row = QHBoxLayout()
+        self._probe_btn = QPushButton("重新检测")
+        self._probe_btn.setFixedWidth(90)
+        self._probe_btn.setVisible(False)
+        self._probe_btn.clicked.connect(self._do_probe)
+        btn_row.addWidget(self._probe_btn)
+        btn_row.addStretch()
+        outer.addLayout(btn_row)
+
+        self._main_layout.addWidget(self._track_group)
+
+    def _on_input_changed(self):
+        self._do_probe()
+
+    def _do_probe(self):
+        path = self.input_edit.text().strip()
+        if not path:
+            self._reset_track_panel()
+            return
+
+        if not os.path.isfile(path):
+            self._track_status.setText(f"文件不存在: {os.path.basename(path)}")
+            self._track_status.setStyleSheet(
+                "color:#c62828; font-style:normal; padding:4px 0;"
+            )
+            self._track_audio_container.setVisible(False)
+            self._track_sub_container.setVisible(False)
+            self._track_no_hint.setVisible(False)
+            self._probe_btn.setVisible(True)
+            self._last_probe_info = None
+            self._update_static_track_visibility(True)
+            return
+
+        info = probe_detailed(path)
+        if info and info.errors:
+            self._track_status.setText(f"检测失败: {info.errors[0]}")
+            self._track_status.setStyleSheet(
+                "color:#c62828; font-style:normal; padding:4px 0;"
+            )
+            self._track_audio_container.setVisible(False)
+            self._track_sub_container.setVisible(False)
+            self._track_no_hint.setVisible(False)
+            self._probe_btn.setVisible(True)
+            self._last_probe_info = None
+            self._update_static_track_visibility(True)
+            return
+
+        if not info:
+            self._reset_track_panel()
+            return
+
+        self._last_probe_info = info
+        self._populate_tracks(info)
+
+    def _reset_track_panel(self):
+        self._last_probe_info = None
+        self._clear_layout(self._track_audio_layout)
+        self._clear_layout(self._track_sub_layout)
+        self._audio_checks.clear()
+        self._sub_checks.clear()
+        self._track_audio_container.setVisible(False)
+        self._track_sub_container.setVisible(False)
+        self._track_no_hint.setVisible(False)
+        self._probe_btn.setVisible(False)
+        self._track_status.setText("选择输入视频后自动检测音频/字幕轨道")
+        self._track_status.setStyleSheet(
+            "color:#888; font-style:italic; padding:4px 0;"
+        )
+        self._update_static_track_visibility(True)
+
+    def _update_static_track_visibility(self, show: bool):
+        """显示/隐藏静态音轨和字幕选择控件。"""
+        self.audio_tracks_combo.setVisible(show)
+        self.audio_tracks_custom_edit.setVisible(show)
+        self.subtitle_tracks_combo.setVisible(show)
+        self.subtitle_tracks_custom_edit.setVisible(show)
+
+    def _populate_tracks(self, info):
+        self._clear_layout(self._track_audio_layout)
+        self._clear_layout(self._track_sub_layout)
+        self._audio_checks.clear()
+        self._sub_checks.clear()
+
+        # 文件摘要
+        parts = [info.filename]
+        if info.video_streams:
+            vs = info.video_streams[0]
+            if vs.width and vs.height:
+                parts.append(f"{vs.width}x{vs.height}")
+        if info.duration_sec > 0:
+            dur = self._fmt_dur(info.duration_sec)
+            if dur:
+                parts.append(dur)
+        self._track_status.setText("  |  ".join(parts))
+        self._track_status.setStyleSheet(
+            "color:#333; font-style:normal; font-weight:bold; padding:4px 0;"
+        )
+
+        has_tracks = False
+
+        if info.audio_streams:
+            has_tracks = True
+            header = QLabel("音频轨道:")
+            header.setStyleSheet(
+                "font-weight:bold; color:#1565c0; margin-top:4px;"
+            )
+            self._track_audio_layout.addWidget(header)
+            for stream in info.audio_streams:
+                label = self._build_stream_label(stream, "audio")
+                cb = QCheckBox(label)
+                cb.setChecked(True)
+                cb.setStyleSheet("padding:2px 0; margin-left:8px;")
+                self._track_audio_layout.addWidget(cb)
+                self._audio_checks.append((cb, stream.index))
+            self._track_audio_container.setVisible(True)
+        else:
+            self._track_audio_container.setVisible(False)
+
+        if info.subtitle_streams:
+            has_tracks = True
+            header = QLabel("字幕轨道:")
+            header.setStyleSheet(
+                "font-weight:bold; color:#1565c0; margin-top:4px;"
+            )
+            self._track_sub_layout.addWidget(header)
+            for stream in info.subtitle_streams:
+                label = self._build_stream_label(stream, "subtitle")
+                cb = QCheckBox(label)
+                cb.setChecked(False)
+                cb.setStyleSheet("padding:2px 0; margin-left:8px;")
+                self._track_sub_layout.addWidget(cb)
+                self._sub_checks.append((cb, stream.index))
+            self._track_sub_container.setVisible(True)
+        else:
+            self._track_sub_container.setVisible(False)
+
+        if not has_tracks:
+            self._track_no_hint.setText("此文件未检测到音频或字幕轨道。")
+            self._track_no_hint.setVisible(True)
+        else:
+            self._track_no_hint.setText(
+                "勾选需要保留的轨道 (音频默认全选，字幕默认不选)"
+            )
+            self._track_no_hint.setStyleSheet(
+                "color:#666; font-size:12px; font-style:italic; padding:2px 0;"
+            )
+            self._track_no_hint.setVisible(True)
+
+        self._probe_btn.setVisible(True)
+        self._update_static_track_visibility(False)
+
+    @staticmethod
+    def _build_stream_label(stream, stream_type):
+        parts = [f"#{stream.index}  {stream.codec_name}"]
+        if stream_type == "audio":
+            if stream.channels:
+                ch = f"{stream.channels}ch"
+                if stream.channel_layout:
+                    ch += f" ({stream.channel_layout})"
+                parts.append(ch)
+            if stream.sample_rate:
+                parts.append(f"{stream.sample_rate}Hz")
+            if stream.bitrate_kbps:
+                parts.append(f"{stream.bitrate_kbps}kbps")
+        lang_code = stream.language
+        if lang_code:
+            name = LANGUAGE_NAMES.get(lang_code, "")
+            lang_str = f"[{lang_code}] {name}" if name else f"[{lang_code}]"
+            parts.append(lang_str)
+        if stream.title:
+            parts.append(stream.title)
+        return "  ·  ".join(parts)
+
+    @staticmethod
+    def _fmt_dur(seconds: float) -> str:
+        if seconds <= 0:
+            return ""
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        if h:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
+
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+    @staticmethod
+    def _resolve_track_selection(checks, all_key, none_key):
+        """将复选框状态转换为 executor 兼容的 (key, custom_string)。"""
+        if not checks:
+            return all_key, ""
+        checked = [idx for cb, idx in checks if cb.isChecked()]
+        total = len(checks)
+        if len(checked) == total:
+            return all_key, ""
+        if len(checked) == 0:
+            return none_key, ""
+        return "自定义选择 (填写编号)", ",".join(str(i) for i in checked)
+
+    # ================================================================
+    # build_args
+    # ================================================================
+
     def build_args(self):
+        # 轨道选择：优先使用自动检测的复选框，否则用静态下拉
+        if self._audio_checks:
+            audio_key, audio_custom = self._resolve_track_selection(
+                self._audio_checks, "全部保留", "不保留音轨"
+            )
+        else:
+            audio_key = self.audio_tracks_combo.currentText()
+            audio_custom = self.audio_tracks_custom_edit.text()
+
+        if self._sub_checks:
+            sub_key, sub_custom = self._resolve_track_selection(
+                self._sub_checks, "全部保留", "不保留字幕"
+            )
+        else:
+            sub_key = self.subtitle_tracks_combo.currentText()
+            sub_custom = self.subtitle_tracks_custom_edit.text()
+
         return ArgsNamespace(
             command=self.command_name,
             input=self.input_edit.text(),
@@ -298,14 +599,16 @@ class EncodeTab(BaseTab):
             rate_control=self.rate_control_combo.currentText(),
             crf=self.crf_spin.value(),
             video_bitrate=self.video_bitrate_combo.currentText(),
+            output_format=self.output_format_combo.currentText(),
+            output_format_custom=self.output_format_custom_edit.text(),
             resolution=self.resolution_edit.text(),
             fps=self.fps_spin.value(),
             audio_encoder=self.audio_encoder_combo.currentText(),
             audio_bitrate=self.audio_bitrate_combo.currentText(),
-            audio_tracks=self.audio_tracks_combo.currentText(),
-            audio_tracks_custom=self.audio_tracks_custom_edit.text(),
-            subtitle_tracks=self.subtitle_tracks_combo.currentText(),
-            subtitle_tracks_custom=self.subtitle_tracks_custom_edit.text(),
+            audio_tracks=audio_key,
+            audio_tracks_custom=audio_custom,
+            subtitle_tracks=sub_key,
+            subtitle_tracks_custom=sub_custom,
             post_transfer_mode=self.post_transfer_mode_combo.currentText(),
             post_transfer_dir=self.post_transfer_dir_edit.text(),
             extra_args=self.extra_args_edit.text(),

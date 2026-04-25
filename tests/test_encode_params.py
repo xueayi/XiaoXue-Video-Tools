@@ -217,7 +217,7 @@ class TestResolveEncoderParams:
         
         # 基本信息
         assert params.is_custom is False
-        assert params.preset_name == "【均衡画质】x264常用导出(CRF18)"
+        assert params.preset_name == "【均衡画质】x264 常用导出 (CRF18)"
         
         # 视频编码参数
         assert params.encoder == "libx264"
@@ -593,7 +593,7 @@ class TestPresetModes:
         
         args = MockArgs(
             input=mock_video_file,
-            preset="【均衡画质】x264常用导出(CRF18)",
+            preset="【均衡画质】x264 常用导出 (CRF18)",
         )
         
         params = resolve_encoder_params(
@@ -618,7 +618,7 @@ class TestPresetModes:
         
         args = MockArgs(
             input=mock_video_file,
-            preset="【极致画质】4K/高动态/AMV",
+            preset="【极致画质】x264 4K/高动态/AMV (CRF16)",
         )
         
         params = resolve_encoder_params(
@@ -691,7 +691,7 @@ class TestPresetModes:
         """测试预设模式音频编码器"""
         from tests.conftest import MockArgs
         
-        for preset_name in ["【均衡画质】x264常用导出(CRF18)", "【极致画质】4K/高动态/AMV",
+        for preset_name in ["【均衡画质】x264 常用导出 (CRF18)", "【极致画质】x264 4K/高动态/AMV (CRF16)",
                            "【速度优先】NVIDIA 显卡加速", "【画质优先】NVIDIA 显卡加速 (HQ)"]:
             args = MockArgs(
                 input=mock_video_file,
@@ -767,7 +767,7 @@ class TestNvencPresetOverride:
         
         args = MockArgs(
             input=mock_video_file,
-            preset="【均衡画质】x264常用导出(CRF18)",
+            preset="【均衡画质】x264 常用导出 (CRF18)",
             nvenc_preset="p7",
         )
         

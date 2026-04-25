@@ -27,10 +27,17 @@ jobs:
             requirements: requirements.txt
             suffix: ""
             display_name: "标准版"
+            ffmpeg_type: static
+          - variant: lite
+            requirements: requirements.txt
+            suffix: "_Lite"
+            display_name: "轻量版"
+            ffmpeg_type: shared
           - variant: shield
             requirements: requirements-shield.txt
             suffix: "_Shield"
             display_name: "Shield 增强版"
+            ffmpeg_type: static
     
     steps:
       - name: Checkout code
@@ -47,16 +54,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r ${{ matrix.requirements }}
       
-      - name: Download FFmpeg (GPL 完整版)
+      - name: Download FFmpeg (${{ matrix.ffmpeg_type }})
         run: |
-          # 下载 FFmpeg GPL 完整版 (包含 libx264/libx265 编码器)
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile "ffmpeg.zip"
+          $ffmpegType = "${{ matrix.ffmpeg_type }}"
+          if ($ffmpegType -eq "shared") {
+            $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl-shared.zip"
+            $dirName = "ffmpeg-master-latest-win64-gpl-shared"
+          } else {
+            $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+            $dirName = "ffmpeg-master-latest-win64-gpl"
+          }
+          Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip"
           Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
-          # 复制到 bin 目录
           New-Item -ItemType Directory -Force -Path "bin"
-          Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe" -Destination "bin\"
-          Copy-Item "ffmpeg_temp\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe" -Destination "bin\"
-          # 清理临时文件
+          Copy-Item "ffmpeg_temp\$dirName\bin\ffmpeg.exe" -Destination "bin\"
+          Copy-Item "ffmpeg_temp\$dirName\bin\ffprobe.exe" -Destination "bin\"
+          if ($ffmpegType -eq "shared") {
+            Copy-Item "ffmpeg_temp\$dirName\bin\*.dll" -Destination "bin\"
+          }
           Remove-Item -Recurse -Force "ffmpeg_temp"
           Remove-Item "ffmpeg.zip"
       
@@ -101,14 +116,32 @@ jobs:
           path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
           retention-days: 14
       
+      - name: Extract changelog
+        if: startsWith(github.ref, 'refs/tags/')
+        id: changelog
+        shell: python
+        run: |
+          import re, os
+          tag = os.environ.get("GITHUB_REF_NAME", "").lstrip("v")
+          text = open("CHANGELOG.md", encoding="utf-8").read()
+          pattern = r'(## \[' + re.escape(tag) + r'\].*?)(?=\n## \[|\Z)'
+          m = re.search(pattern, text, re.DOTALL)
+          if not m:
+              m = re.search(r'(## \[\d+\.\d+\.\d+\].*?)(?=\n## \[|\Z)', text, re.DOTALL)
+          body = m.group(1).strip() if m else "详见 CHANGELOG.md"
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write("BODY<<CHANGELOG_EOF\n")
+              f.write(body + "\n")
+              f.write("CHANGELOG_EOF\n")
+
       - name: Create Pre-release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
-          generate_release_notes: true
+          generate_release_notes: false
           draft: false
-          prerelease: true  # 标记为预发布版本
+          prerelease: true
           name: "小雪工具箱 ${{ steps.version.outputs.VERSION }} (测试版)"
           body: |
             ## 小雪工具箱 ${{ steps.version.outputs.VERSION }} (测试版)
@@ -116,17 +149,9 @@ jobs:
             > **这是一个测试版本 (Pre-release)**，可能包含未完成的功能或已知问题。
             > 仅供测试使用，不建议在生产环境中使用。
             
-            ### 版本选择
+            ---
             
-            | 版本 | 说明 |
-            |------|------|
-            | `XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip` | 标准版 |
-            | `XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Shield_Windows_x64.zip` | Shield 增强版 |
+            ${{ steps.changelog.outputs.BODY }}
             
-            ### 测试说明
-            - 这是基于 `dev` 分支构建的测试版本
-            - 请在测试环境中使用
-            - 发现问题请在 [Issues](https://github.com/${{ github.repository }}/issues) 反馈
-            
-            ### 变更内容
-            详见自动生成的 Release Notes 或查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/dev/CHANGELOG.md)
+            ---
+            详见 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/dev/CHANGELOG.md)

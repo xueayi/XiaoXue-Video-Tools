@@ -184,10 +184,20 @@ def resolve_encoder_params(
     rc_mode = rate_control_modes.get(rc_mode_name, "crf")
     video_bitrate = getattr(args, 'video_bitrate', '') or None
     
+    # 解析输出格式
+    from .presets import ENCODE_OUTPUT_FORMATS
+    output_format_key = getattr(args, 'output_format', 'MP4 (默认)')
+    output_ext = ENCODE_OUTPUT_FORMATS.get(output_format_key, ".mp4")
+    if output_ext is None:
+        custom_fmt = getattr(args, 'output_format_custom', '').strip()
+        output_ext = custom_fmt if custom_fmt else ".mp4"
+        if output_ext and not output_ext.startswith('.'):
+            output_ext = '.' + output_ext
+
     # 自动生成输出路径
     output_path = args.output
     if not output_path or output_path.strip() == "":
-        output_path = generate_output_path_func(args.input, encoder)
+        output_path = generate_output_path_func(args.input, encoder, output_ext or None)
     
     # 解析流选择参数
     from .presets import AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS

@@ -27,7 +27,7 @@ class MockArgs:
     output: str = ""
     
     # 视频压制
-    preset: str = "【均衡画质】x264常用导出(CRF18)"
+    preset: str = "【均衡画质】x264 常用导出 (CRF18)"
     encoder: str = "H.264 (CPU - libx264)"
     crf: int = 18
     bitrate: str = ""
@@ -96,7 +96,7 @@ class TestExecuteEncode:
         args = MockArgs()
         args.input = mock_video_file
         args.output = ""  # 自动生成
-        args.preset = "【均衡画质】x264常用导出(CRF18)"
+        args.preset = "【均衡画质】x264 常用导出 (CRF18)"
         args.dry_run = True
         
         result = execute_encode(args)

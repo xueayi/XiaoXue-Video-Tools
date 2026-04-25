@@ -117,13 +117,17 @@ def escape_path_for_ffmpeg(path: str) -> str:
     return path
 
 
-def generate_output_path(input_path: str, encoder: str) -> str:
+def generate_output_path(input_path: str, encoder: str, output_ext: str = None) -> str:
     """
     根据输入路径和编码器生成输出路径。
     例如: input.mp4 + libx264 -> input_libx264.mp4
+
+    Args:
+        output_ext: 可选的输出扩展名 (如 ".mkv")，为空则保持输入扩展名。
     """
     base, ext = os.path.splitext(input_path)
-    # 简化编码器名称
+    if output_ext:
+        ext = output_ext if output_ext.startswith('.') else '.' + output_ext
     encoder_short = encoder.replace('lib', '').replace('_', '')
     return f"{base}_{encoder_short}{ext}"
 

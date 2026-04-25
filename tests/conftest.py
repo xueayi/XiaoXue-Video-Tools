@@ -20,7 +20,7 @@ class MockArgs:
     output: str = ""
     
     # 预设
-    preset: str = "【均衡画质】x264常用导出(CRF18)"
+    preset: str = "【均衡画质】x264 常用导出 (CRF18)"
     
     # 编码器设置
     encoder: str = "H.264 (CPU - libx264)"

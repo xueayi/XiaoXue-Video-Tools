@@ -17,17 +17,27 @@ ENCODERS = {
 # 质量预设
 # 每个预设包含: encoder, crf, preset (速度), 分辨率, 帧率, 音频编码器, 音频码率
 QUALITY_PRESETS = {
-    "【均衡画质】x264常用导出(CRF18)": {
+    "【均衡画质】x264 常用导出 (CRF18)": {
         "encoder": "libx264",
         "crf": 18,
         "preset": "medium",
         "resolution": None,
         "fps": None,
-        "audio_encoder": "copy",  # 默认复制音频流
-        "audio_bitrate": "192k",  # 仅在需要转码时使用
+        "audio_encoder": "copy",
+        "audio_bitrate": "192k",
         "description": "适合日常 B 站投稿，画质与文件大小均衡。"
     },
-    "【极致画质】4K/高动态/AMV": {
+    "【较小体积】x264 快速导出 (CRF22)": {
+        "encoder": "libx264",
+        "crf": 22,
+        "preset": "medium",
+        "resolution": None,
+        "fps": None,
+        "audio_encoder": "copy",
+        "audio_bitrate": "192k",
+        "description": "CRF22 体积更小，适合对画质要求不高、需要快速出片的场景。"
+    },
+    "【极致画质】x264 4K/高动态/AMV (CRF16)": {
         "encoder": "libx264",
         "crf": 16,
         "preset": "slow",
@@ -37,11 +47,21 @@ QUALITY_PRESETS = {
         "audio_bitrate": "320k",
         "description": "高码率极致画质，适合 AMV 或对画质要求极高的投稿。"
     },
+    "【均衡画质】x265/HEVC 高效压缩 (CRF20)": {
+        "encoder": "libx265",
+        "crf": 20,
+        "preset": "medium",
+        "resolution": None,
+        "fps": None,
+        "audio_encoder": "copy",
+        "audio_bitrate": "192k",
+        "description": "HEVC 编码，同等画质下体积约为 x264 的 60-70%。"
+    },
     "【速度优先】NVIDIA 显卡加速": {
         "encoder": "h264_nvenc",
-        "crf": None,  # NVENC 使用 cq 而非 crf
+        "crf": None,
         "cq": 23,
-        "preset": "p4",  # NVENC preset
+        "preset": "p4",
         "resolution": None,
         "fps": None,
         "audio_encoder": "copy",
@@ -67,7 +87,7 @@ QUALITY_PRESETS = {
         "preset": None,
         "resolution": None,
         "fps": None,
-        "audio_encoder": None,  # 自定义模式由用户选择
+        "audio_encoder": None,
         "audio_bitrate": None,
         "description": "手动指定所有参数。"
     }
@@ -229,6 +249,15 @@ RENAME_SORT_METHODS = {
 RENAME_SORT_ORDERS = {
     "升序（从小到大）": "asc",
     "降序（从大到小）": "desc",
+}
+
+# 视频压制输出格式选项
+ENCODE_OUTPUT_FORMATS = {
+    "MP4 (默认)": ".mp4",
+    "MKV (多轨封装)": ".mkv",
+    "MOV (Apple 生态)": ".mov",
+    "与输入相同": "",
+    "自定义": None,
 }
 
 # 压制后分发模式
