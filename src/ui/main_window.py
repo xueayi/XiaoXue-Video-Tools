@@ -15,6 +15,7 @@ from ..gui_config import get_icon_path
 
 from . import theme
 from . import icons
+from .base_tab import CONTENT_MAX_WIDTH
 from .sidebar import Sidebar
 from .log_panel import LogPanel
 from .task_runner import TaskRunner
@@ -44,6 +45,43 @@ _AUTO_NOTIFY_COMMANDS = {
 }
 
 _REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
+
+
+class _CenteredColumnWidget(QWidget):
+    """宽度上限受限的内容列容器: 列宽 = min(max_width, 可用宽度), 水平居中。
+
+    用于让底部按钮区/仪表盘/日志区与上方页面内容列保持同宽对齐。
+    """
+
+    def __init__(self, max_width: int, margins, spacing: int, parent=None):
+        super().__init__(parent)
+        self._max_width = max_width
+
+        outer = QHBoxLayout(self)
+        # 右侧预留 8px (与页面滚动区常驻滚动条同宽), 居中基准一致
+        outer.setContentsMargins(0, 0, 8, 0)
+        outer.setSpacing(0)
+
+        self._column = QWidget()
+        self._column_layout = QVBoxLayout(self._column)
+        self._column_layout.setContentsMargins(*margins)
+        self._column_layout.setSpacing(spacing)
+
+        outer.addStretch(1)
+        outer.addWidget(self._column)
+        outer.addStretch(1)
+
+    def column(self) -> QWidget:
+        return self._column
+
+    def column_layout(self) -> QVBoxLayout:
+        return self._column_layout
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 列宽确定性计算, 两侧 stretch 均分剩余空间实现居中
+        available = max(self.width() - 8, 100)
+        self._column.setFixedWidth(min(self._max_width, available))
 
 
 def _tab_defs(shield_available: bool, notify_config):
@@ -184,11 +222,10 @@ class MainWindow(QMainWindow):
         self._stack = AnimatedStackedWidget()
         right_splitter.addWidget(self._stack)
 
-        # 底部：按钮行 + 仪表盘 + 日志
-        bottom = QWidget()
-        bottom_layout = QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(10, 6, 10, 6)
-        bottom_layout.setSpacing(6)
+        # 底部：按钮行 + 仪表盘 + 日志 (与页面内容列同宽居中)
+        bottom = _CenteredColumnWidget(
+            CONTENT_MAX_WIDTH, (24, 6, 24, 10), 6)
+        bottom_layout = bottom.column_layout()
 
         # 按钮行
         btn_row = QHBoxLayout()

@@ -97,6 +97,9 @@ class BaseTab(QScrollArea):
         self.command_name = command_name
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.Shape.NoFrame)
+        # 常驻滚动条: 视口宽度不随内容增减变化, 保证页面内容列
+        # 与主窗口底部内容列 (预留同样 8px) 像素级对齐
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         self._container = QWidget()
         self._container.setMaximumWidth(CONTENT_MAX_WIDTH)

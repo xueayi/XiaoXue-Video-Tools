@@ -41,7 +41,6 @@ _LIGHT = dict(
     card_bg="#ffffff",
     card_border="#e8e8e8",
     card_title="#1a1a1a",
-    accent_bar="#005fb8",
     # 侧边栏
     sidebar_item_text="#1a1a1a",
     sidebar_item_bg_selected="#ffffff",
@@ -135,7 +134,6 @@ _DARK = dict(
     card_bg="#2b2b2b",
     card_border="#383838",
     card_title="#f5f5f5",
-    accent_bar="#4cc2ff",
     sidebar_item_text="#e8e8e8",
     sidebar_item_bg_selected="rgba(255, 255, 255, 0.055)",
     sidebar_item_text_selected="#4cc2ff",
@@ -350,24 +348,23 @@ QPushButton#sidebar_footer_btn:hover {
 }
 
 /* ================================================================
-   分组框  —— 卡片式 (左侧强调色条, 标题内嵌)
+   分组框  —— 卡片式 (统一细描边, 无装饰条, 标题内嵌)
    ================================================================ */
 QGroupBox {
     font-weight: 600;
     font-size: 13px;
     border: 1px solid $card_border;
-    border-left: 3px solid $accent_bar;
-    border-radius: 8px;
+    border-radius: 10px;
     margin-top: 10px;
-    padding: 34px 16px 14px 16px;
+    padding: 36px 18px 16px 18px;
     background-color: $card_bg;
     color: $text_primary;
 }
 QGroupBox::title {
     subcontrol-origin: border;
     subcontrol-position: top left;
-    left: 14px;
-    top: 10px;
+    left: 16px;
+    top: 12px;
     padding: 0 4px;
     color: $card_title;
 }
@@ -598,7 +595,7 @@ QTextEdit#log_panel {
     background-color: $log_bg;
     color: $log_text;
     border: 1px solid $log_border;
-    border-radius: 8px;
+    border-radius: 10px;
     font-family: $mono_family;
     font-size: 12px;
     padding: 10px;
