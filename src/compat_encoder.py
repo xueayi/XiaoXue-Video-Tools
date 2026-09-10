@@ -38,11 +38,8 @@ def get_bin_dir() -> str:
     if os.path.isdir(internal_bin):
         return internal_bin
     
-    # 开发环境: 项目根目录/bin
+    # 开发环境: 项目根目录/bin (存在与否都返回, 由调用方处理)
     base_bin = os.path.join(get_base_dir(), 'bin')
-    if os.path.isdir(base_bin):
-        return base_bin
-    
     return base_bin
 
 
@@ -167,12 +164,9 @@ def build_compat_encode_command(
     # 视频滤镜 (仅分辨率缩放，字幕已由 AVS 处理)
     vf_filters = []
     if resolution and isinstance(resolution, str) and "x" in resolution:
-        try:
-            w, h = resolution.split("x")
-            vf_filters.append(f"scale={w}:{h}")
-        except ValueError:
-            pass
-    
+        w, h = resolution.split("x")
+        vf_filters.append(f"scale={w}:{h}")
+
     if vf_filters:
         cmd.extend(["-vf", ",".join(vf_filters)])
     

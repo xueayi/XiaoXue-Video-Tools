@@ -71,6 +71,10 @@ class _CenteredColumnWidget(QWidget):
         outer.addWidget(self._column)
         outer.addStretch(1)
 
+        # 列的定宽会经布局抬高容器最小宽度导致窗口无法收窄,
+        # 显式给出较小的最小尺寸打断该反馈, 列宽在 resizeEvent 中重算
+        self.setMinimumSize(240, 100)
+
     def column(self) -> QWidget:
         return self._column
 
@@ -82,6 +86,7 @@ class _CenteredColumnWidget(QWidget):
         # 列宽确定性计算, 两侧 stretch 均分剩余空间实现居中
         available = max(self.width() - 8, 100)
         self._column.setFixedWidth(min(self._max_width, available))
+
 
 
 def _tab_defs(shield_available: bool, notify_config):

@@ -34,6 +34,15 @@
 - 底部按钮区/进度仪表盘/日志区与页面内容列同宽居中 (像素级对齐)
 - 页面滚动条常驻细轨, 视口宽度稳定以支撑对齐
 
+### 测试覆盖率 100%
+- 新增 `tools/test_coverage.sh`: 每个测试文件独立进程运行 + `--cov-append` 合并,
+  `coverage report --fail-under=100` 强制 100% 覆盖率门槛
+- 移除无引用的 Gooey 遗留模块 `src/gui_tabs.py`
+- 清理 `core.py` / `compat_encoder.py` 中永不可触发的死代码 try/except
+- 修复批量补丁引入的 remux 轨道面板属性名错误 (槽内异常会导致进程 abort)
+- 新增约 300 个测试: UI 全组件 (离屏渲染)、命令构建矩阵、执行器编排、
+  通知发送 (mock requests)、NSFW 检测 (注入假 imgutils 模块)
+
 ### 打包与依赖
 - 新增依赖: qtawesome (图标库)
 - PyInstaller spec 打入 qtawesome 字体数据与 image 品牌资源

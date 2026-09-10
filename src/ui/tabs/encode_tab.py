@@ -485,7 +485,7 @@ class EncodeTab(BaseTab):
             self._track_no_hint.setText(
                 "勾选需要保留的轨道 (音频默认全选，字幕默认不选)"
             )
-            self._track_no_hint.set_label_kind(self._track_no_hint, "muted")
+            set_label_kind(self._track_no_hint, "muted")
             self._track_no_hint.setVisible(True)
 
         self._probe_btn.setVisible(True)

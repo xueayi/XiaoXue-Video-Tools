@@ -280,7 +280,7 @@ class RemuxTab(BaseTab):
             self._no_track_hint.setVisible(True)
         else:
             self._no_track_hint.setText("取消勾选不需要保留的轨道")
-            self._no_track_hint.set_label_kind(self._track_no_hint, "muted")
+            set_label_kind(self._no_track_hint, "muted")
             self._no_track_hint.setVisible(True)
 
         self._probe_btn.setVisible(True)

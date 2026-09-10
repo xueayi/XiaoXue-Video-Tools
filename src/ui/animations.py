@@ -34,12 +34,8 @@ class AnimatedStackedWidget(QStackedWidget):
             return
 
         going_right = index > self.currentIndex()
-
         current_w = self.currentWidget()
         next_w = self.widget(index)
-        if not current_w or not next_w:
-            self.setCurrentIndex(index)
-            return
 
         width = self.width()
         offset = width if going_right else -width
