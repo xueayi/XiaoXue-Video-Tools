@@ -11,9 +11,20 @@ from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 
 from .args_builder import ArgsNamespace
 
+# 表单内容列的最大宽度: 避免宽窗口下输入框被无限拉长
+CONTENT_MAX_WIDTH = 860
+
+
+def _set_drag_over(widget, over: bool):
+    """切换拖放高亮态 (QSS QLineEdit[dragOver="true"])。"""
+    if widget.property("dragOver") != over:
+        widget.setProperty("dragOver", over)
+        widget.style().unpolish(widget)
+        widget.style().polish(widget)
+
 
 class FileDropLineEdit(QLineEdit):
-    """支持文件拖放的 QLineEdit。拖入文件时自动填入路径。"""
+    """支持文件拖放的 QLineEdit。拖入文件时自动填入路径，拖悬时高亮。"""
 
     def __init__(self, multi=False, parent=None):
         super().__init__(parent)
@@ -24,11 +35,17 @@ class FileDropLineEdit(QLineEdit):
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
+            _set_drag_over(self, True)
             event.acceptProposedAction()
         else:
             super().dragEnterEvent(event)
 
+    def dragLeaveEvent(self, event):
+        _set_drag_over(self, False)
+        super().dragLeaveEvent(event)
+
     def dropEvent(self, event: QDropEvent):
+        _set_drag_over(self, False)
         urls = event.mimeData().urls()
         if not urls:
             return
@@ -56,10 +73,12 @@ class BaseTab(QScrollArea):
         self.setFrameShape(QScrollArea.Shape.NoFrame)
 
         self._container = QWidget()
+        self._container.setMaximumWidth(CONTENT_MAX_WIDTH)
         self._main_layout = QVBoxLayout(self._container)
         self._main_layout.setContentsMargins(20, 16, 20, 16)
         self._main_layout.setSpacing(10)
         self.setWidget(self._container)
+        self.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
     # ----------------------------------------------------------------
     # 分组
@@ -80,7 +99,7 @@ class BaseTab(QScrollArea):
         if description:
             desc = QLabel(description)
             desc.setWordWrap(True)
-            desc.setStyleSheet("color: #666; font-size: 12px; margin-bottom: 4px;")
+            desc.setObjectName("group_desc")
             layout.addRow(desc)
 
         self._main_layout.addWidget(group)
@@ -232,25 +251,12 @@ class BaseTab(QScrollArea):
         """添加带样式的内联提示标签。
 
         hint_type 可选 "info"(蓝), "warning"(橙), "tip"(绿)。
+        颜色由主题 QSS 中的 QLabel#hint_* 规则提供，随亮暗主题联动。
         """
-        _HINT_STYLES = {
-            "info": (
-                "background-color:#e8f4fd; border-left:3px solid #2196F3; "
-                "padding:8px 12px; border-radius:3px; color:#1565c0;"
-            ),
-            "warning": (
-                "background-color:#fff8e1; border-left:3px solid #ff9800; "
-                "padding:8px 12px; border-radius:3px; color:#e65100;"
-            ),
-            "tip": (
-                "background-color:#e8f5e9; border-left:3px solid #4caf50; "
-                "padding:8px 12px; border-radius:3px; color:#2e7d32;"
-            ),
-        }
-        style = _HINT_STYLES.get(hint_type, _HINT_STYLES["info"])
         label = QLabel(text)
         label.setWordWrap(True)
-        label.setStyleSheet(style + " font-size:12px; margin:2px 0;")
+        label.setObjectName(f"hint_{hint_type}" if hint_type in ("info", "warning", "tip")
+                           else "hint_info")
         label.setTextFormat(Qt.TextFormat.PlainText)
         layout.addRow("", label)
         return label
