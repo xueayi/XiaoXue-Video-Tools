@@ -4,7 +4,7 @@
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QGroupBox, QLabel, QLineEdit, QPushButton, QComboBox,
-    QCheckBox, QSpinBox, QPlainTextEdit, QFileDialog,
+    QCheckBox, QSpinBox, QPlainTextEdit, QFileDialog, QToolButton,
 )
 from PyQt6.QtCore import Qt, QMimeData
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
@@ -13,6 +13,26 @@ from .args_builder import ArgsNamespace
 
 # 表单内容列的最大宽度: 避免宽窗口下输入框被无限拉长
 CONTENT_MAX_WIDTH = 860
+
+_STATUS_KINDS = {
+    "muted": ("muted_label", True),
+    "error": ("error_label", False),
+    "strong": ("strong_label", False),
+}
+
+
+def repolish(widget: QWidget):
+    """让 objectName/动态属性变更后的 QSS 重新生效。"""
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
+
+
+def set_label_kind(label: QLabel, kind: str):
+    """将状态标签切换为 muted(灰斜体)/error(红)/strong(粗体) 语义样式。"""
+    object_name, italic = _STATUS_KINDS.get(kind, _STATUS_KINDS["muted"])
+    label.setObjectName(object_name)
+    label.setProperty("italic", italic)
+    repolish(label)
 
 
 def _set_drag_over(widget, over: bool):
@@ -264,6 +284,50 @@ class BaseTab(QScrollArea):
     def add_stretch(self):
         """在底部添加弹性空间。"""
         self._main_layout.addStretch(1)
+
+    def add_collapsible_group(self, title, description=None, expanded=False):
+        """创建可折叠分组 (Win11 展开器风格)，返回内部 QFormLayout。"""
+        header = QToolButton()
+        header.setObjectName("fold_header")
+        header.setCheckable(True)
+        header.setChecked(expanded)
+        header.setText(("▾  " if expanded else "▸  ") + title)
+        header.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        content = QWidget()
+        content.setObjectName("fold_content")
+        layout = QFormLayout(content)
+        layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(8)
+        layout.setContentsMargins(14, 0, 0, 4)
+
+        if description:
+            desc = QLabel(description)
+            desc.setWordWrap(True)
+            desc.setObjectName("group_desc")
+            layout.addRow(desc)
+
+        def _toggle(checked):
+            header.setText(("▾  " if checked else "▸  ") + title)
+            content.setVisible(checked)
+
+        header.toggled.connect(_toggle)
+        content.setVisible(expanded)
+
+        self._main_layout.addWidget(header)
+        self._main_layout.addWidget(content)
+        return layout
+
+    # ----------------------------------------------------------------
+    # 主题联动钩子
+    # ----------------------------------------------------------------
+
+    def on_theme_changed(self):
+        """主题切换后的刷新钩子，子类可覆盖 (如重渲染内嵌 HTML)。"""
 
     # ----------------------------------------------------------------
     # 工具方法

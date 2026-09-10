@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from ..base_tab import BaseTab
+from ..base_tab import BaseTab, set_label_kind
 from ..args_builder import ArgsNamespace
 from ...presets import (
     ENCODERS, QUALITY_PRESETS, CPU_PRESETS, NVENC_PRESETS,
@@ -209,8 +209,8 @@ class EncodeTab(BaseTab):
             "tip",
         )
 
-        # ---- 高级选项 ----
-        extra = self.add_group("高级选项")
+        # ---- 高级选项 (可折叠) ----
+        extra = self.add_collapsible_group("高级选项")
         self.extra_args_edit = self.add_text_input(
             extra, "额外 FFmpeg 参数", "",
             "多个参数用空格分隔",
@@ -333,9 +333,7 @@ class EncodeTab(BaseTab):
 
         self._track_status = QLabel("选择输入视频后自动检测音频/字幕轨道")
         self._track_status.setWordWrap(True)
-        self._track_status.setStyleSheet(
-            "color:#888; font-style:italic; padding:4px 0;"
-        )
+        set_label_kind(self._track_status, "muted")
         outer.addWidget(self._track_status)
 
         self._track_audio_container = QWidget()
@@ -354,9 +352,7 @@ class EncodeTab(BaseTab):
 
         self._track_no_hint = QLabel()
         self._track_no_hint.setWordWrap(True)
-        self._track_no_hint.setStyleSheet(
-            "color:#888; font-size:12px; padding:2px 0;"
-        )
+        self._track_no_hint.setObjectName("muted_label")
         self._track_no_hint.setVisible(False)
         outer.addWidget(self._track_no_hint)
 
@@ -382,9 +378,7 @@ class EncodeTab(BaseTab):
 
         if not os.path.isfile(path):
             self._track_status.setText(f"文件不存在: {os.path.basename(path)}")
-            self._track_status.setStyleSheet(
-                "color:#c62828; font-style:normal; padding:4px 0;"
-            )
+            set_label_kind(self._track_status, "error")
             self._track_audio_container.setVisible(False)
             self._track_sub_container.setVisible(False)
             self._track_no_hint.setVisible(False)
@@ -396,9 +390,7 @@ class EncodeTab(BaseTab):
         info = probe_detailed(path)
         if info and info.errors:
             self._track_status.setText(f"检测失败: {info.errors[0]}")
-            self._track_status.setStyleSheet(
-                "color:#c62828; font-style:normal; padding:4px 0;"
-            )
+            set_label_kind(self._track_status, "error")
             self._track_audio_container.setVisible(False)
             self._track_sub_container.setVisible(False)
             self._track_no_hint.setVisible(False)
@@ -425,9 +417,7 @@ class EncodeTab(BaseTab):
         self._track_no_hint.setVisible(False)
         self._probe_btn.setVisible(False)
         self._track_status.setText("选择输入视频后自动检测音频/字幕轨道")
-        self._track_status.setStyleSheet(
-            "color:#888; font-style:italic; padding:4px 0;"
-        )
+        set_label_kind(self._track_status, "muted")
         self._update_static_track_visibility(True)
 
     def _update_static_track_visibility(self, show: bool):
@@ -454,18 +444,14 @@ class EncodeTab(BaseTab):
             if dur:
                 parts.append(dur)
         self._track_status.setText("  |  ".join(parts))
-        self._track_status.setStyleSheet(
-            "color:#333; font-style:normal; font-weight:bold; padding:4px 0;"
-        )
+        set_label_kind(self._track_status, "strong")
 
         has_tracks = False
 
         if info.audio_streams:
             has_tracks = True
             header = QLabel("音频轨道:")
-            header.setStyleSheet(
-                "font-weight:bold; color:#1565c0; margin-top:4px;"
-            )
+            header.setObjectName("accent_label")
             self._track_audio_layout.addWidget(header)
             for stream in info.audio_streams:
                 label = self._build_stream_label(stream, "audio")
@@ -481,9 +467,7 @@ class EncodeTab(BaseTab):
         if info.subtitle_streams:
             has_tracks = True
             header = QLabel("字幕轨道:")
-            header.setStyleSheet(
-                "font-weight:bold; color:#1565c0; margin-top:4px;"
-            )
+            header.setObjectName("accent_label")
             self._track_sub_layout.addWidget(header)
             for stream in info.subtitle_streams:
                 label = self._build_stream_label(stream, "subtitle")
@@ -503,9 +487,7 @@ class EncodeTab(BaseTab):
             self._track_no_hint.setText(
                 "勾选需要保留的轨道 (音频默认全选，字幕默认不选)"
             )
-            self._track_no_hint.setStyleSheet(
-                "color:#666; font-size:12px; font-style:italic; padding:2px 0;"
-            )
+            self._track_no_hint.set_label_kind(self._track_no_hint, "muted")
             self._track_no_hint.setVisible(True)
 
         self._probe_btn.setVisible(True)

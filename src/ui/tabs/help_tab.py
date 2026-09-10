@@ -8,22 +8,27 @@ from PyQt6.QtGui import QFont
 from ..base_tab import BaseTab
 from ..args_builder import ArgsNamespace
 from ...help_texts import HELP_TEXTS
+from .. import theme
 
 
-_HELP_HTML_STYLE = """
+def _help_html_style() -> str:
+    """随主题联动的帮助页内嵌 CSS。"""
+    p = theme.palette()
+    return f"""
 <style>
-body { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; font-size: 13px; color: #333; }
-h2 { color: #1565c0; margin: 12px 0 6px 0; font-size: 15px; }
-.section-title {
-    color: #1976d2; font-weight: bold; font-size: 13px;
-    border-bottom: 2px solid #bbdefb; padding-bottom: 3px;
+body {{ font-family: "Microsoft YaHei", "Segoe UI", sans-serif; font-size: 13px;
+       color: {p['text_primary']}; }}
+h2 {{ color: {p['accent']}; margin: 12px 0 6px 0; font-size: 15px; }}
+.section-title {{
+    color: {p['accent']}; font-weight: bold; font-size: 13px;
+    border-bottom: 2px solid {p['card_border']}; padding-bottom: 3px;
     margin: 14px 0 6px 0;
-}
-.tip { color: #2e7d32; }
-.warn { color: #e65100; }
-.link { color: #1565c0; }
-ul { margin: 2px 0 2px 16px; padding: 0; }
-li { margin: 2px 0; }
+}}
+.tip {{ color: {p['hint_tip_text']}; }}
+.warn {{ color: {p['hint_warn_text']}; }}
+.link {{ color: {p['accent']}; }}
+ul {{ margin: 2px 0 2px 16px; padding: 0; }}
+li {{ margin: 2px 0; }}
 </style>
 """
 
@@ -31,7 +36,7 @@ li { margin: 2px 0; }
 def _plain_to_html(text: str) -> str:
     """将 help_texts 中的纯文本转换为带样式的 HTML。"""
     lines = text.strip().split("\n")
-    html_parts = [_HELP_HTML_STYLE, "<body>"]
+    html_parts = [_help_html_style(), "<body>"]
 
     for line in lines:
         stripped = line.strip()
@@ -93,10 +98,7 @@ class HelpTab(BaseTab):
         self._help_display = QTextEdit()
         self._help_display.setReadOnly(True)
         self._help_display.setMinimumHeight(380)
-        self._help_display.setStyleSheet(
-            "QTextEdit { background-color: #fafafa; border: 1px solid #e0e0e0; "
-            "border-radius: 4px; padding: 8px; }"
-        )
+        self._help_display.setObjectName("help_view")
         font = QFont("Microsoft YaHei", 10)
         self._help_display.setFont(font)
         help_layout.addWidget(self._help_display)
@@ -109,6 +111,10 @@ class HelpTab(BaseTab):
         self.add_stretch()
 
         self.topic_combo.currentTextChanged.connect(self._on_topic_changed)
+        self._on_topic_changed(self.topic_combo.currentText())
+
+    def on_theme_changed(self):
+        """主题切换后按新配色重渲染帮助内容。"""
         self._on_topic_changed(self.topic_combo.currentText())
 
     def _on_topic_changed(self, topic):

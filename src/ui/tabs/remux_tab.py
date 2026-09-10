@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from ..base_tab import BaseTab
+from ..base_tab import BaseTab, set_label_kind
 from ..args_builder import ArgsNamespace
 from ...presets import REMUX_PRESETS
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
@@ -88,11 +88,7 @@ class RemuxTab(BaseTab):
         self._compat_warn_label = QLabel("")
         self._compat_warn_label.setWordWrap(True)
         self._compat_warn_label.setVisible(False)
-        self._compat_warn_label.setStyleSheet(
-            "background-color:#fff3e0; border-left:3px solid #ff9800; "
-            "padding:8px 12px; border-radius:3px; color:#e65100; "
-            "font-size:12px; margin:2px 0;"
-        )
+        self._compat_warn_label.setObjectName("hint_warning")
         self._main_layout.addWidget(self._compat_warn_label)
 
         # ---- 在线文档 ----
@@ -122,9 +118,7 @@ class RemuxTab(BaseTab):
 
         self._track_status = QLabel("请选择输入文件以自动检测轨道信息")
         self._track_status.setWordWrap(True)
-        self._track_status.setStyleSheet(
-            "color:#888; font-style:italic; padding:4px 0;"
-        )
+        set_label_kind(self._track_status, "muted")
         outer.addWidget(self._track_status)
 
         self._audio_container = QWidget()
@@ -143,7 +137,7 @@ class RemuxTab(BaseTab):
 
         self._no_track_hint = QLabel()
         self._no_track_hint.setWordWrap(True)
-        self._no_track_hint.setStyleSheet("color:#888; font-size:12px; padding:2px 0;")
+        self._no_track_hint.setObjectName("muted_label")
         self._no_track_hint.setVisible(False)
         outer.addWidget(self._no_track_hint)
 
@@ -184,7 +178,7 @@ class RemuxTab(BaseTab):
         first = paths[0]
         if not os.path.isfile(first):
             self._track_status.setText(f"文件不存在: {os.path.basename(first)}")
-            self._track_status.setStyleSheet("color:#c62828; font-style:normal; padding:4px 0;")
+            set_label_kind(self._track_status, "error")
             self._audio_container.setVisible(False)
             self._sub_container.setVisible(False)
             self._no_track_hint.setVisible(False)
@@ -194,7 +188,7 @@ class RemuxTab(BaseTab):
         info = probe_detailed(first)
         if info and info.errors:
             self._track_status.setText(f"检测失败: {info.errors[0]}")
-            self._track_status.setStyleSheet("color:#c62828; font-style:normal; padding:4px 0;")
+            set_label_kind(self._track_status, "error")
             self._audio_container.setVisible(False)
             self._sub_container.setVisible(False)
             self._no_track_hint.setVisible(False)
@@ -220,7 +214,7 @@ class RemuxTab(BaseTab):
         self._no_track_hint.setVisible(False)
         self._probe_btn.setVisible(False)
         self._track_status.setText("请选择输入文件以自动检测轨道信息")
-        self._track_status.setStyleSheet("color:#888; font-style:italic; padding:4px 0;")
+        set_label_kind(self._track_status, "muted")
 
     def _populate_tracks(self, info, is_batch):
         self._clear_container(self._audio_layout)
@@ -241,9 +235,7 @@ class RemuxTab(BaseTab):
         if is_batch:
             summary += "\n(批量模式 — 显示第一个文件的轨道信息，其余文件沿用相同选择)"
         self._track_status.setText(summary)
-        self._track_status.setStyleSheet(
-            "color:#333; font-style:normal; font-weight:bold; padding:4px 0;"
-        )
+        set_label_kind(self._track_status, "strong")
 
         has_tracks = False
 
@@ -251,7 +243,7 @@ class RemuxTab(BaseTab):
         if info.audio_streams:
             has_tracks = True
             header = QLabel("音频轨道:")
-            header.setStyleSheet("font-weight:bold; color:#1565c0; margin-top:4px;")
+            header.setObjectName("accent_label")
             self._audio_layout.addWidget(header)
 
             for stream in info.audio_streams:
@@ -270,7 +262,7 @@ class RemuxTab(BaseTab):
         if info.subtitle_streams:
             has_tracks = True
             header = QLabel("字幕轨道:")
-            header.setStyleSheet("font-weight:bold; color:#1565c0; margin-top:4px;")
+            header.setObjectName("accent_label")
             self._sub_layout.addWidget(header)
 
             for stream in info.subtitle_streams:
@@ -290,9 +282,7 @@ class RemuxTab(BaseTab):
             self._no_track_hint.setVisible(True)
         else:
             self._no_track_hint.setText("取消勾选不需要保留的轨道")
-            self._no_track_hint.setStyleSheet(
-                "color:#666; font-size:12px; font-style:italic; padding:2px 0;"
-            )
+            self._no_track_hint.set_label_kind(self._track_no_hint, "muted")
             self._no_track_hint.setVisible(True)
 
         self._probe_btn.setVisible(True)

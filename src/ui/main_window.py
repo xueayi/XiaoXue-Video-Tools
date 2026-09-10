@@ -122,6 +122,13 @@ class MainWindow(QMainWindow):
         self._theme_action.triggered.connect(self._on_theme_toggle)
         view_menu.addAction(self._theme_action)
 
+        motion_action = QAction("减少动画", self)
+        motion_action.setCheckable(True)
+        motion_action.setChecked(theme.reduced_motion())
+        motion_action.triggered.connect(
+            lambda checked: theme.set_reduced_motion(checked))
+        view_menu.addAction(motion_action)
+
         about_menu = menu_bar.addMenu("关于")
         about_act = QAction("关于小雪工具箱", self)
         about_act.triggered.connect(self._show_about)
@@ -196,13 +203,8 @@ class MainWindow(QMainWindow):
         self._stop_btn.setEnabled(False)
         self._stop_btn.clicked.connect(self._on_stop)
 
-        self._clear_btn = QPushButton("清空日志")
-        self._clear_btn.setObjectName("clear_btn")
-        self._clear_btn.clicked.connect(lambda: self._log_panel.clear_log())
-
         btn_row.addWidget(self._execute_btn)
         btn_row.addWidget(self._stop_btn)
-        btn_row.addWidget(self._clear_btn)
         btn_row.addStretch()
         bottom_layout.addLayout(btn_row)
 
@@ -268,8 +270,10 @@ class MainWindow(QMainWindow):
         """主题切换后刷新图标、Logo、按钮文案、勾选状态。"""
         self._theme_action.setChecked(theme.get_theme() == "dark")
         self._sidebar.set_theme_icons()
-        self._clear_btn.setIcon(icons.secondary("ri.delete-bin-7-line"))
         self._update_run_button_icons()
+        for tab in self._tabs:
+            tab.on_theme_changed()
+        self._log_panel.on_theme_changed()
 
     def _update_run_button_icons(self):
         running = self._runner is not None and self._runner.isRunning()
