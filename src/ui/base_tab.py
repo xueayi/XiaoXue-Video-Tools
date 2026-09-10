@@ -14,6 +14,12 @@ from .args_builder import ArgsNamespace
 # 表单内容列的最大宽度: 避免宽窗口下输入框被无限拉长
 CONTENT_MAX_WIDTH = 860
 
+# 行内动作按钮 (浏览/重新检测) 的统一宽度
+ACTION_BTN_WIDTH = 84
+
+# 数字微调框等短控件的统一宽度
+SPIN_WIDTH = 160
+
 _STATUS_KINDS = {
     "muted": ("muted_label", True),
     "error": ("error_label", False),
@@ -95,8 +101,8 @@ class BaseTab(QScrollArea):
         self._container = QWidget()
         self._container.setMaximumWidth(CONTENT_MAX_WIDTH)
         self._main_layout = QVBoxLayout(self._container)
-        self._main_layout.setContentsMargins(20, 16, 20, 16)
-        self._main_layout.setSpacing(10)
+        self._main_layout.setContentsMargins(24, 20, 24, 20)
+        self._main_layout.setSpacing(12)
         self.setWidget(self._container)
         self.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 
@@ -112,8 +118,8 @@ class BaseTab(QScrollArea):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(8)
+        layout.setHorizontalSpacing(14)
+        layout.setVerticalSpacing(10)
         group.setLayout(layout)
 
         if description:
@@ -135,8 +141,9 @@ class BaseTab(QScrollArea):
         edit = FileDropLineEdit()
         if tooltip:
             edit.setToolTip(tooltip)
-        btn = QPushButton("浏览...")
-        btn.setFixedWidth(70)
+        btn = QPushButton("浏览")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFixedWidth(ACTION_BTN_WIDTH)
         row.addWidget(edit, 1)
         row.addWidget(btn, 0)
 
@@ -155,8 +162,9 @@ class BaseTab(QScrollArea):
         edit = FileDropLineEdit()
         if tooltip:
             edit.setToolTip(tooltip)
-        btn = QPushButton("浏览...")
-        btn.setFixedWidth(70)
+        btn = QPushButton("浏览")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFixedWidth(ACTION_BTN_WIDTH)
         row.addWidget(edit, 1)
         row.addWidget(btn, 0)
 
@@ -175,8 +183,9 @@ class BaseTab(QScrollArea):
         edit = FileDropLineEdit()
         if tooltip:
             edit.setToolTip(tooltip)
-        btn = QPushButton("浏览...")
-        btn.setFixedWidth(70)
+        btn = QPushButton("浏览")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFixedWidth(ACTION_BTN_WIDTH)
         row.addWidget(edit, 1)
         row.addWidget(btn, 0)
 
@@ -195,8 +204,9 @@ class BaseTab(QScrollArea):
         edit = FileDropLineEdit(multi=True)
         if tooltip:
             edit.setToolTip(tooltip)
-        btn = QPushButton("浏览...")
-        btn.setFixedWidth(70)
+        btn = QPushButton("浏览")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFixedWidth(ACTION_BTN_WIDTH)
         row.addWidget(edit, 1)
         row.addWidget(btn, 0)
 
@@ -238,6 +248,7 @@ class BaseTab(QScrollArea):
         spin = QSpinBox()
         spin.setRange(min_val, max_val)
         spin.setValue(default)
+        spin.setFixedWidth(SPIN_WIDTH)
         if tooltip:
             spin.setToolTip(tooltip)
         layout.addRow(label, spin)
@@ -263,7 +274,7 @@ class BaseTab(QScrollArea):
 
     def add_link(self, layout, url, text="查看在线文档"):
         """添加可点击的超链接。"""
-        link = QLabel(f'<a href="{url}">{text}</a>')
+        link = QLabel(f'<a href="{url}" style="text-decoration: none;">{text}</a>')
         link.setOpenExternalLinks(True)
         layout.addRow("", link)
 
@@ -301,9 +312,9 @@ class BaseTab(QScrollArea):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(8)
-        layout.setContentsMargins(14, 0, 0, 4)
+        layout.setHorizontalSpacing(14)
+        layout.setVerticalSpacing(10)
+        layout.setContentsMargins(16, 0, 0, 4)
 
         if description:
             desc = QLabel(description)

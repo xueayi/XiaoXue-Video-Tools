@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from ..base_tab import BaseTab, set_label_kind
+from ..base_tab import BaseTab, set_label_kind, ACTION_BTN_WIDTH
 from ..args_builder import ArgsNamespace
 from ...presets import (
     ENCODERS, QUALITY_PRESETS, CPU_PRESETS, NVENC_PRESETS,
@@ -327,7 +327,7 @@ class EncodeTab(BaseTab):
     def _build_track_panel(self):
         self._track_group = QGroupBox("轨道选择 (自动检测)")
         outer = QVBoxLayout()
-        outer.setContentsMargins(12, 8, 12, 8)
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(6)
         self._track_group.setLayout(outer)
 
@@ -358,7 +358,7 @@ class EncodeTab(BaseTab):
 
         btn_row = QHBoxLayout()
         self._probe_btn = QPushButton("重新检测")
-        self._probe_btn.setFixedWidth(90)
+        self._probe_btn.setFixedWidth(ACTION_BTN_WIDTH)
         self._probe_btn.setVisible(False)
         self._probe_btn.clicked.connect(self._do_probe)
         btn_row.addWidget(self._probe_btn)
@@ -457,7 +457,6 @@ class EncodeTab(BaseTab):
                 label = self._build_stream_label(stream, "audio")
                 cb = QCheckBox(label)
                 cb.setChecked(True)
-                cb.setStyleSheet("padding:2px 0; margin-left:8px;")
                 self._track_audio_layout.addWidget(cb)
                 self._audio_checks.append((cb, stream.index))
             self._track_audio_container.setVisible(True)
@@ -473,7 +472,6 @@ class EncodeTab(BaseTab):
                 label = self._build_stream_label(stream, "subtitle")
                 cb = QCheckBox(label)
                 cb.setChecked(False)
-                cb.setStyleSheet("padding:2px 0; margin-left:8px;")
                 self._track_sub_layout.addWidget(cb)
                 self._sub_checks.append((cb, stream.index))
             self._track_sub_container.setVisible(True)

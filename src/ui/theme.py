@@ -359,17 +359,21 @@ QGroupBox {
     border-left: 3px solid $accent_bar;
     border-radius: 8px;
     margin-top: 10px;
-    padding: 32px 14px 14px 14px;
+    padding: 34px 16px 14px 16px;
     background-color: $card_bg;
     color: $text_primary;
 }
 QGroupBox::title {
     subcontrol-origin: border;
     subcontrol-position: top left;
-    left: 12px;
-    top: 9px;
+    left: 14px;
+    top: 10px;
     padding: 0 4px;
     color: $card_title;
+}
+/* 表单标签统一用次要色, 让字段值成为视觉主角 (ID 选择器的语义样式可覆盖) */
+QGroupBox QLabel {
+    color: $text_secondary;
 }
 
 /* ================================================================
@@ -504,7 +508,8 @@ QPushButton#execute_btn {
     border: none;
     font-weight: bold;
     font-size: 14px;
-    padding: 9px 36px;
+    padding: 9px 28px;
+    min-width: 132px;
     border-radius: 8px;
 }
 QPushButton#execute_btn:hover {
@@ -527,6 +532,7 @@ QPushButton#stop_btn {
     border: none;
     font-size: 14px;
     padding: 9px 28px;
+    min-width: 96px;
     border-radius: 8px;
 }
 QPushButton#stop_btn:hover {
@@ -573,9 +579,14 @@ QPushButton#icon_btn:checked {
     background-color: $accent_tint;
 }
 
-/* Tab 内按钮 (浏览...) */
-QPushButton[text="浏览..."] {
-    padding: 5px 12px;
+/* Tab 内行内动作按钮 (浏览 / 重新检测) —— 统一宽度由代码侧固定 */
+QPushButton[text="浏览"] {
+    padding: 6px 0;
+    font-size: 12px;
+    border-radius: 6px;
+}
+QPushButton[text="重新检测"] {
+    padding: 6px 0;
     font-size: 12px;
     border-radius: 6px;
 }
@@ -774,31 +785,31 @@ QLabel#group_desc {
     margin-bottom: 4px;
 }
 QLabel#hint_info {
-    background-color: $hint_info_bg;
-    border-left: 3px solid $hint_info_border;
-    border-radius: 3px;
-    padding: 8px 12px;
-    color: $hint_info_text;
+    color: $text_tertiary;
     font-size: 12px;
+    line-height: 150%;
+    padding: 1px 0;
     margin: 2px 0;
+    background: transparent;
+    border: none;
 }
 QLabel#hint_warning {
     background-color: $hint_warn_bg;
-    border-left: 3px solid $hint_warn_border;
-    border-radius: 3px;
+    border: 1px solid $hint_warn_border;
+    border-radius: 6px;
     padding: 8px 12px;
     color: $hint_warn_text;
     font-size: 12px;
-    margin: 2px 0;
+    margin: 4px 0;
 }
 QLabel#hint_tip {
     background-color: $hint_tip_bg;
-    border-left: 3px solid $hint_tip_border;
-    border-radius: 3px;
+    border: 1px solid $hint_tip_border;
+    border-radius: 6px;
     padding: 8px 12px;
     color: $hint_tip_text;
     font-size: 12px;
-    margin: 2px 0;
+    margin: 4px 0;
 }
 QLabel#muted_label {
     color: $text_tertiary;
@@ -928,6 +939,8 @@ def apply_theme(app, theme: str = None):
     pal.setColor(QPalette.ColorRole.ToolTipBase, QColor(p["tooltip_bg"]))
     pal.setColor(QPalette.ColorRole.ToolTipText, QColor(p["tooltip_text"]))
     pal.setColor(QPalette.ColorRole.PlaceholderText, QColor(p["input_placeholder"]))
+    pal.setColor(QPalette.ColorRole.Link, QColor(p["accent"]))
+    pal.setColor(QPalette.ColorRole.LinkVisited, QColor(p["accent"]))
     pal.setColor(QPalette.ColorGroup.Disabled,
                  QPalette.ColorRole.WindowText, QColor(p["text_disabled"]))
     pal.setColor(QPalette.ColorGroup.Disabled,

@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 
-from ..base_tab import BaseTab, set_label_kind
+from ..base_tab import BaseTab, set_label_kind, ACTION_BTN_WIDTH
 from ..args_builder import ArgsNamespace
 from ...presets import REMUX_PRESETS
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
@@ -112,7 +112,7 @@ class RemuxTab(BaseTab):
     def _build_track_panel(self):
         self._track_group = QGroupBox("轨道选择 (自动检测)")
         outer = QVBoxLayout()
-        outer.setContentsMargins(12, 8, 12, 8)
+        outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(6)
         self._track_group.setLayout(outer)
 
@@ -143,7 +143,7 @@ class RemuxTab(BaseTab):
 
         btn_row = QHBoxLayout()
         self._probe_btn = QPushButton("重新检测")
-        self._probe_btn.setFixedWidth(90)
+        self._probe_btn.setFixedWidth(ACTION_BTN_WIDTH)
         self._probe_btn.setVisible(False)
         self._probe_btn.clicked.connect(self._do_probe)
         btn_row.addWidget(self._probe_btn)
@@ -250,7 +250,6 @@ class RemuxTab(BaseTab):
                 label = self._build_stream_label(stream, "audio")
                 cb = QCheckBox(label)
                 cb.setChecked(True)
-                cb.setStyleSheet("padding:2px 0; margin-left:8px;")
                 self._audio_layout.addWidget(cb)
                 self._audio_checks.append((cb, stream.index))
 
@@ -269,7 +268,6 @@ class RemuxTab(BaseTab):
                 label = self._build_stream_label(stream, "subtitle")
                 cb = QCheckBox(label)
                 cb.setChecked(True)
-                cb.setStyleSheet("padding:2px 0; margin-left:8px;")
                 self._sub_layout.addWidget(cb)
                 self._sub_checks.append((cb, stream.index))
 
