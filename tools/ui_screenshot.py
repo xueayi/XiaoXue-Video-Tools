@@ -33,12 +33,13 @@ def main():
     parser.add_argument("--out", default=".ui_screens")
     args = parser.parse_args()
 
-    from src.ui.theme import apply_theme, get_theme
+    from src.ui.theme import apply_theme, set_theme
     from src.ui.main_window import MainWindow
     from src._version import __version__
 
     app = QApplication(sys.argv)
-    apply_theme(app, args.theme if args.theme in ("light", "dark") else get_theme())
+    set_theme(args.theme)  # 让代码侧取色 (图标/Logo) 与目标主题一致
+    apply_theme(app, args.theme)
 
     window = MainWindow(shield_available=True, notify_config=None)
     window.resize(1180, 800)
@@ -55,7 +56,7 @@ def main():
     for i in pages:
         window._sidebar.setCurrentRow(i)
         _settle(app)  # 等页面切换动画 (200ms) 和药丸动画 (250ms) 播完
-        name = window._sidebar.item(i).text().replace("/", "_") or f"page{i}"
+        name = window._sidebar.item_text(i).replace("/", "_") or f"page{i}"
         pix = window.grab()
         path = os.path.join(out_dir, f"{i:02d}_{name}_v{__version__}.png")
         pix.save(path)

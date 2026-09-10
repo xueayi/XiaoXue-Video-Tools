@@ -321,6 +321,34 @@ QListWidget#sidebar::item:hover:!selected {
     background-color: $sidebar_hover;
 }
 
+/* 品牌区与底部按钮 */
+QWidget#sidebar_root {
+    background-color: $window_bg;
+    border-right: 1px solid $divider;
+}
+QLabel#brand_title {
+    font-size: 14px;
+    font-weight: bold;
+    color: $text_primary;
+}
+QLabel#brand_version {
+    font-size: 11px;
+    color: $text_tertiary;
+}
+QPushButton#sidebar_footer_btn {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 10px;
+    color: $text_secondary;
+    text-align: left;
+    font-size: 12px;
+}
+QPushButton#sidebar_footer_btn:hover {
+    background-color: $hover_overlay;
+    color: $text_primary;
+}
+
 /* ================================================================
    分组框  —— 卡片式 (左侧强调色条, 标题内嵌)
    ================================================================ */
