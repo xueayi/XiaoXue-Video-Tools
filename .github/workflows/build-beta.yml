@@ -91,7 +91,7 @@ jobs:
       
       - name: Create release package (${{ matrix.display_name }})
         run: |
-          Compress-Archive -Path "dist\XiaoXueToolbox\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
+          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
       
       - name: Upload artifact (${{ matrix.display_name }})
         uses: actions/upload-artifact@v4

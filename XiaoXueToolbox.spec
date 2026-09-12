@@ -34,7 +34,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='XiaoXueToolbox',
+    name='小雪工具箱',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -54,5 +54,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='XiaoXueToolbox',
+    name='小雪工具箱',
 )
