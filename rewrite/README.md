@@ -28,16 +28,22 @@ winget install OpenJS.NodeJS.LTS      # Node 20+
 
 ## 里程碑
 
-### M0 — 引擎 crate 骨架 (本分支已开始)
-- `engine/`: 纯 Rust crate, 零第三方依赖, 承载全部可测业务逻辑
+### M0 — 引擎 crate 骨架 ✅ (已完成)
+- `engine/`: Rust crate, 承载全部可测业务逻辑
 - 已移植: 版本比较 (`version.rs`) / ffmpeg 流映射与编码命令构建 (`ffmpeg.rs`)
 - CI: `.github/workflows/rewrite.yml` — cargo test + clippy
 
-### M1 — 引擎逻辑补全
-- `ffmpeg.rs`: 替换音频/封装/抽取命令, 2-Pass, run_ffmpeg (std::process 流式输出)
-- `probe.rs`: ffprobe JSON 解析 -> MediaInfo (serde_json)
-- `qc.rs` / `batch.rs` / `image.rs` (image crate) / `notify.rs` (ureq)
-- 对齐移植: 每个 Python 测试在 Rust 侧有等价用例
+### M1 — 引擎逻辑补全 ✅ (已完成)
+- `ffmpeg.rs`: 音视频抽取命令 / 真 2-Pass 构建 / run_ffmpeg (流式进度回调) /
+  run_2pass_encode (临时文件清理)
+- `probe.rs`: ffprobe JSON 宽松反序列化 -> MediaInfo / 进程调用 / 报告格式化
+- `folder.rs`: TXT 编码解码 (UTF-8/BOM/GBK) / 批量建目录
+- `batch.rs`: 批量重命名 (收集/排序/分组编号/三种模式/防覆盖)
+- `notify.rs`: 飞书卡片 + Webhook (ureq, 30s 超时)
+- `paths.rs`: ffmpeg/ffprobe 定位
+- 54 个 cargo 测试全绿, clippy 零警告 (本地 GNU + CI MSVC 双工具链验证)
+
+### M2 — Tauri 壳 + 首个页面 (下一步)
 
 ### M2 — Tauri 壳 + 首个页面
 - `app/`: Tauri 2 + Vite + React + TS
