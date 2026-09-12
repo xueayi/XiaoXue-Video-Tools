@@ -280,7 +280,8 @@ def set_skip_version(version: str):
     _settings().setValue("update/skip_version", version)
 
 
-# 更新器: 等主程序退出 -> 备份旧版 -> 换入新版 -> 重启。纯 ASCII, 无需编码处理
+# 更新器: 等主程序退出 -> 备份旧版 -> 换入新版 -> 重启。纯 ASCII, 无需编码处理。
+# 全程写 _update/updater.log (隐藏窗口排障唯一手段); 任一替换失败回滚旧版。
 _UPDATER_PS1 = r"""
 param(
     [int]$ParentPid,
@@ -288,57 +289,87 @@ param(
     [string]$NewDir
 )
 $ErrorActionPreference = "Stop"
+$log = Join-Path $InstallDir "_update/updater.log"
 
-# 1. 等待主程序退出 (最多 60s, 超时则继续尝试)
-$deadline = (Get-Date).AddSeconds(60)
-while ((Get-Date) -lt $deadline) {
-    $p = Get-Process -Id $ParentPid -ErrorAction SilentlyContinue
-    if (-not $p) { break }
-    Start-Sleep -Milliseconds 500
+function Log($msg) {
+    Add-Content -LiteralPath $log -Value ("[{0}] {1}" -f (Get-Date -Format s), $msg) -Encoding UTF8
 }
 
-Set-Location $InstallDir
-
-# 2. 校验新包完整性
-$newExe = Get-ChildItem -Path $NewDir -Filter "*.exe" -File |
-    Select-Object -First 1
-if (-not $newExe -or -not (Test-Path (Join-Path $NewDir "_internal"))) {
-    exit 2
-}
-
-# 3. 备份旧版 (exe + _internal 移动到 _backup)
-$backup = Join-Path $InstallDir "_backup"
-if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-New-Item -ItemType Directory -Path $backup | Out-Null
-
-$oldExe = Get-ChildItem -Path $InstallDir -Filter "*.exe" -File |
-    Where-Object { $_.DirectoryName -eq (Get-Item $InstallDir).FullName } |
-    Select-Object -First 1
-Move-Item -LiteralPath $oldExe.FullName -Destination $backup -Force
-if (Test-Path (Join-Path $InstallDir "_internal")) {
-    Move-Item -LiteralPath (Join-Path $InstallDir "_internal") `
-        -Destination $backup -Force
-}
-
-# 4. 换入新版; 任一步失败立即回滚
 try {
-    Move-Item -LiteralPath $newExe.FullName -Destination $InstallDir -Force
-    Move-Item -LiteralPath (Join-Path $NewDir "_internal") `
-        -Destination $InstallDir -Force
-} catch {
-    Move-Item -LiteralPath (Join-Path $backup $oldExe.Name) `
-        -Destination $InstallDir -Force
-    if (Test-Path (Join-Path $backup "_internal")) {
-        Move-Item -LiteralPath (Join-Path $backup "_internal") `
-            -Destination $InstallDir -Force
+    Log "updater start (parent=$ParentPid)"
+
+    # 1. 等待主程序退出 (最多 60s, 超时则继续尝试)
+    $deadline = (Get-Date).AddSeconds(60)
+    while ((Get-Date) -lt $deadline) {
+        $p = Get-Process -Id $ParentPid -ErrorAction SilentlyContinue
+        if (-not $p) { break }
+        Start-Sleep -Milliseconds 500
     }
-    exit 3
+    Log "parent process exited"
+
+    Set-Location $InstallDir
+
+    # 2. 校验新包完整性
+    $newExe = Get-ChildItem -LiteralPath $NewDir -Filter "*.exe" -File |
+        Select-Object -First 1
+    if (-not $newExe -or -not (Test-Path (Join-Path $NewDir "_internal"))) {
+        Log "invalid new package, abort"
+        exit 2
+    }
+
+    # 3. 备份旧版 (exe + _internal 移动到 _backup)
+    $backup = Join-Path $InstallDir "_backup"
+    if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
+    New-Item -ItemType Directory -Path $backup | Out-Null
+
+    $oldExe = Get-ChildItem -Path $InstallDir -Filter "*.exe" -File |
+        Where-Object { $_.DirectoryName -eq (Get-Item $InstallDir).FullName } |
+        Select-Object -First 1
+    try {
+        Move-Item -LiteralPath $oldExe.FullName -Destination $backup -Force
+        if (Test-Path (Join-Path $InstallDir "_internal")) {
+            Move-Item -LiteralPath (Join-Path $InstallDir "_internal") `
+                -Destination $backup -Force
+        }
+        Log "old version moved to backup"
+    } catch {
+        Log ("backup move failed (will retry inline): " + $_.Exception.Message)
+    }
+
+    # 4. 换入新版; 任一步失败立即回滚旧版
+    try {
+        Move-Item -LiteralPath $newExe.FullName -Destination $InstallDir -Force
+        Move-Item -LiteralPath (Join-Path $NewDir "_internal") `
+            -Destination $InstallDir -Force
+        Log "new version installed"
+    } catch {
+        Log ("install failed, rolling back: " + $_.Exception.Message)
+        if ($oldExe -and (Test-Path (Join-Path $backup $oldExe.Name))) {
+            Move-Item -LiteralPath (Join-Path $backup $oldExe.Name) `
+                -Destination $InstallDir -Force
+        }
+        if (Test-Path (Join-Path $backup "_internal")) {
+            Move-Item -LiteralPath (Join-Path $backup "_internal") `
+                -Destination $InstallDir -Force
+        }
+        exit 3
+    }
+
+    Remove-Item $NewDir -Recurse -Force -ErrorAction SilentlyContinue
+
+    # 5. 重启新版本 (失败不回滚: 更新已生效, 可手动启动)
+    try {
+        Start-Process -FilePath (Join-Path $InstallDir $newExe.Name)
+        Log "new version launched"
+    } catch {
+        Log ("start new version failed (update applied, start manually): " +
+            $_.Exception.Message)
+    }
+    exit 0
+} catch {
+    try { Log ("fatal: " + $_.Exception.Message) } catch {}
+    exit 1
 }
-
-Remove-Item $NewDir -Recurse -Force -ErrorAction SilentlyContinue
-
-# 5. 重启新版本
-Start-Process -FilePath (Join-Path $InstallDir $newExe.Name)
 """
 
 
@@ -376,11 +407,14 @@ def prepare(zip_path: str, install_dir: str, new_version: str) -> str:
 
 
 def launch_updater(install_dir: str, parent_pid: int):
-    """以分离进程启动 PowerShell 更新器 (主程序随后自行退出)。"""
+    """以隐藏进程启动 PowerShell 更新器 (主程序随后自行退出)。
+
+    注意: 只能用 CREATE_NO_WINDOW, 不能加 DETACHED_PROCESS ——
+    PowerShell 在完全脱离控制台时会静默初始化失败直接退出,
+    导致更新器什么都没做 (v2.2.0 实测踩坑)。
+    """
     ps1 = os.path.join(install_dir, STAGING_DIR, "updater.ps1")
-    flags = 0
-    if os.name == "nt":
-        flags = subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS
+    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     subprocess.Popen(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
          "-WindowStyle", "Hidden", "-File", ps1,
@@ -390,9 +424,25 @@ def launch_updater(install_dir: str, parent_pid: int):
         creationflags=flags, close_fds=True)
 
 
+def has_pending_update(install_dir: str) -> bool:
+    """是否有尚未应用的更新 (下载并解压就绪、等待替换)。"""
+    ps1 = os.path.join(install_dir, STAGING_DIR, "updater.ps1")
+    new_dir = os.path.join(install_dir, STAGING_DIR, "new")
+    return os.path.exists(ps1) and os.path.isdir(
+        os.path.join(new_dir, "_internal"))
+
+
 def cleanup_staging(install_dir: str):
-    """新版启动成功后清理备份与暂存 (旧版确认不再需要)。"""
-    for name in (BACKUP_DIR, STAGING_DIR):
-        path = os.path.join(install_dir, name)
-        if os.path.exists(path):
-            shutil.rmtree(path, ignore_errors=True)
+    """新版启动成功后清理备份与暂存。
+
+    - _backup: 旧版已被成功替换, 可安全删除
+    - _update: 仅在没有待应用更新时清理 —— 有待应用更新时保留下载
+      与解压结果, 下次启动会继续完成安装 (而不是清空用户的下载)
+    """
+    backup = os.path.join(install_dir, BACKUP_DIR)
+    if os.path.exists(backup):
+        shutil.rmtree(backup, ignore_errors=True)
+    if not has_pending_update(install_dir):
+        staging = os.path.join(install_dir, STAGING_DIR)
+        if os.path.exists(staging):
+            shutil.rmtree(staging, ignore_errors=True)

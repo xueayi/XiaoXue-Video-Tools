@@ -3,6 +3,7 @@
 
 import io
 import os
+import subprocess
 import zipfile
 
 import pytest
@@ -11,8 +12,9 @@ import src.updater as updater
 from src.updater import (
     ReleaseInfo, UpdateError, cleanup_staging, download, ensure_disk_space,
     fetch_checksum, fetch_latest, get_skip_version, is_dev_version,
-    is_newer, launch_updater, parse_checksums_from_body, parse_version,
-    prepare, resolve_checksum, set_skip_version, sha256_of,
+    has_pending_update, is_newer, launch_updater,
+    parse_checksums_from_body, parse_version, prepare, resolve_checksum,
+    set_skip_version, sha256_of,
     verify_sha256, _pick_asset,
 )
 
@@ -404,6 +406,35 @@ def test_prepare_ok(tmp_path):
     assert (new_dir / "_internal" / "run.py").exists()
 
 
+def test_prepare_ps1_parses_in_powershell(tmp_path):
+    """回归: 嵌入的更新器脚本必须能通过 PowerShell 语法解析
+    (v2.2.1 曾因字符串续行语法错误导致更新器静默失效)。"""
+    if os.name != "nt":
+        pytest.skip("仅 Windows")
+    zip_path = make_update_zip(tmp_path)
+    ps1 = prepare(zip_path, str(tmp_path), "2.2.1")
+    r = subprocess.run(
+        ["powershell", "-NoProfile", "-Command",
+         '$e = $null; '
+         '[void][System.Management.Automation.Language.Parser]::ParseFile('
+         f"'{ps1}', [ref]$null, [ref]$e); "
+         'if ($e -and $e.Count -gt 0) { $e | ForEach-Object { '
+         'Write-Output $_.Message }; exit 1 }'],
+        capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_prepare_ps1_hardened(tmp_path):
+    """更新器脚本必须带日志与回滚 (隐藏窗口下排障唯一手段)。"""
+    zip_path = make_update_zip(tmp_path)
+    ps1 = prepare(zip_path, str(tmp_path), "2.2.1")
+    content = open(ps1, encoding="utf-8-sig").read()
+    assert "updater.log" in content
+    assert content.count("catch") >= 3  # 备份/安装/整体三层兜底
+    assert "rolling back" in content
+    assert "start manually" in content  # 重启失败不回滚, 提示手动启动
+
+
 def test_prepare_removes_stale_new_dir(tmp_path):
     stale = tmp_path / "_update" / "new"
     stale.mkdir(parents=True)
@@ -433,6 +464,8 @@ def test_prepare_missing_internal(tmp_path):
 
 
 def test_launch_updater(monkeypatch, tmp_path):
+    """回归: 不能带 DETACHED_PROCESS (PowerShell 会静默失败, v2.2.0 踩坑)。"""
+    import subprocess
     import src.updater as m
     captured = {}
 
@@ -447,7 +480,8 @@ def test_launch_updater(monkeypatch, tmp_path):
     assert "-File" in args
     assert str(tmp_path / "_update" / "updater.ps1") in args
     assert "12345" in args
-    assert captured["flags"] != 0  # Windows 下带 NO_WINDOW | DETACHED
+    assert captured["flags"] == subprocess.CREATE_NO_WINDOW
+    assert not captured["flags"] & subprocess.DETACHED_PROCESS
 
 
 def test_cleanup_staging(tmp_path):
@@ -458,6 +492,34 @@ def test_cleanup_staging(tmp_path):
     assert not (tmp_path / "_backup").exists()
     assert not (tmp_path / "_update").exists()
     cleanup_staging(str(tmp_path))  # 不存在时也安全
+
+
+def test_has_pending_update(tmp_path):
+    assert not has_pending_update(str(tmp_path))
+    staging = tmp_path / "_update"
+    (staging / "new" / "_internal").mkdir(parents=True)
+    (staging / "updater.ps1").write_text("x")
+    assert has_pending_update(str(tmp_path)) is True
+    (staging / "new" / "_internal" / "x").write_text("x")
+    assert has_pending_update(str(tmp_path)) is True
+    # 缺少 new/_internal 时不算待应用
+    import shutil
+    shutil.rmtree(staging / "new" / "_internal")
+    assert has_pending_update(str(tmp_path)) is False
+
+
+def test_cleanup_staging_keeps_pending_download(tmp_path):
+    """回归: 手动打开旧版不得清空待应用的更新下载 (v2.2.0 踩坑)。"""
+    staging = tmp_path / "_update"
+    (staging / "new" / "_internal").mkdir(parents=True)
+    (staging / "updater.ps1").write_text("x")
+    (staging / "new" / "_internal" / "x").write_text("x")
+    (staging / "update.zip").write_bytes(b"download")
+    (tmp_path / "_backup").mkdir()
+    cleanup_staging(str(tmp_path))
+    assert not (tmp_path / "_backup").exists()  # 旧版备份照常清理
+    assert (staging / "update.zip").exists()  # 待应用下载保留
+    assert (staging / "updater.ps1").exists()
 
 
 def test_release_info_defaults():

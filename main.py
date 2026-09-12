@@ -12,6 +12,7 @@
 - src/presets.py: 预设配置
 """
 
+import os
 import sys
 
 from src.log_utils import setup_logging
@@ -29,8 +30,16 @@ from src.executors import SHIELD_AVAILABLE
 def main():
     """主入口函数，启动 PyQt6 图形界面。"""
     from PyQt6.QtWidgets import QApplication
+    from src import updater
     from src.ui.theme import apply_theme, get_theme
     from src.ui.main_window import MainWindow
+
+    # 有下载就绪但尚未应用的更新 (上次重启安装未完成) 时,
+    # 优先拉起更新器完成替换并重启, 而不是进入主界面
+    if updater.has_pending_update(updater_install_dir()):
+        logger.info("检测到待应用更新, 拉起更新器继续完成安装")
+        updater.launch_updater(updater_install_dir(), os.getpid())
+        sys.exit(0)
 
     load_notify_config()
 
@@ -44,6 +53,11 @@ def main():
     )
     window.show()
     sys.exit(app.exec())
+
+
+def updater_install_dir():
+    from src.utils import get_base_dir
+    return get_base_dir()
 
 
 if __name__ == "__main__":

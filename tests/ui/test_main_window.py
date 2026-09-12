@@ -310,3 +310,52 @@ def test_execute_button_compact_and_fits_min_window(win, qapp):
             + win._stop_btn.minimumSizeHint().width() + 10)
     assert pair <= usable, f"执行区按钮 {pair}px 超出可用宽度 {usable}px"
     assert win._execute_btn.minimumSizeHint().width() <= 160
+
+
+def test_main_exits_to_apply_pending_update(monkeypatch):
+    """回归: 启动时有待应用更新, 应拉起更新器并退出 (不清空下载)。"""
+    import main as entry
+
+    launched = []
+    monkeypatch.setattr(mw.updater, "has_pending_update",
+                        lambda d: True)
+    monkeypatch.setattr(mw.updater, "launch_updater",
+                        lambda d, pid: launched.append((d, pid)))
+
+    with pytest.raises(SystemExit) as exc:
+        entry.main()
+    assert exc.value.code == 0
+    assert len(launched) == 1
+
+
+def test_main_normal_start_no_pending(monkeypatch):
+    import main as entry
+
+    monkeypatch.setattr(mw.updater, "has_pending_update",
+                        lambda d: False)
+    launched = []
+    monkeypatch.setattr(mw.updater, "launch_updater",
+                        lambda d, pid: launched.append(1))
+
+    class FakeApp:
+        def __init__(self, argv):
+            pass
+
+        def exec(self):
+            return 0
+
+    import PyQt6.QtWidgets as QtW
+    monkeypatch.setattr(QtW, "QApplication", FakeApp)
+    monkeypatch.setattr(mw, "MainWindow",
+                        lambda **k: type("W", (), {"show": lambda s: None})())
+    monkeypatch.setattr(entry, "load_notify_config", lambda: None)
+    monkeypatch.setattr(entry, "get_notify_config", lambda: {})
+
+    import src.ui.theme as theme_mod
+    monkeypatch.setattr(theme_mod, "apply_theme", lambda *a, **k: None)
+    monkeypatch.setattr(theme_mod, "get_theme", lambda: "light")
+
+    with pytest.raises(SystemExit) as exc:
+        entry.main()
+    assert exc.value.code == 0
+    assert launched == []
