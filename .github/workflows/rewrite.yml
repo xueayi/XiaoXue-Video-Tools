@@ -1,0 +1,38 @@
+name: Rewrite Engine CI
+
+on:
+  push:
+    branches: ['rewrite/**']
+    paths: ['engine/**', '.github/workflows/rewrite.yml']
+  pull_request:
+    paths: ['engine/**', '.github/workflows/rewrite.yml']
+
+jobs:
+  test:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            engine/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('engine/Cargo.toml') }}
+
+      - name: Test
+        run: cargo test --all
+
+      - name: Clippy
+        run: cargo clippy --all

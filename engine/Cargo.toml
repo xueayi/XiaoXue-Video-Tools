@@ -1,0 +1,8 @@
+[package]
+name = "xiaoxue-engine"
+version = "2.2.1"
+edition = "2021"
+description = "小雪工具箱业务引擎: ffmpeg 编排 / 元数据探测 / 批量工具 (框架无关)"
+
+[lib]
+path = "src/lib.rs"

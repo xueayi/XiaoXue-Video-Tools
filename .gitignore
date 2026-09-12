@@ -62,3 +62,6 @@ notify_config.json
 
 # 便携式配置 (开发模式写在项目根目录)
 /config.ini
+
+# Rust 重写分支
+engine/target/
