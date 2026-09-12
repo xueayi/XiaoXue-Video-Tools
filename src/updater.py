@@ -217,6 +217,39 @@ def verify_sha256(path: str, expected: str) -> bool:
     return sha256_of(path).lower() == str(expected).strip().lower()
 
 
+def parse_checksums_from_body(body: str) -> dict:
+    """从 Release 正文的「### SHA256 校验和」段解析 {文件名: 哈希}。
+
+    CI 在发版后把校验和嵌入正文 (替代独立 .sha256 资产, 保持发行页整洁)。
+    """
+    result = {}
+    in_section = False
+    for line in (body or "").splitlines():
+        stripped = line.strip()
+        if stripped == "### SHA256 校验和":
+            in_section = True
+            continue
+        if in_section:
+            if stripped.startswith("### ") or stripped.startswith("## "):
+                break
+            parts = stripped.split()
+            if (len(parts) >= 2 and re.fullmatch(r"[0-9a-fA-F]{64}", parts[0])
+                    and not stripped.startswith("`")):
+                result[parts[1].strip("`")] = parts[0].lower()
+    return result
+
+
+def resolve_checksum(release: ReleaseInfo):
+    """解析发行包校验和: 优先 Release 正文, 回退独立 .sha256 资产。"""
+    if release.notes:
+        found = parse_checksums_from_body(release.notes).get(release.asset_name)
+        if found:
+            return found
+    if release.sha256_url:
+        return fetch_checksum(release.sha256_url)
+    return None
+
+
 def fetch_checksum(url: str, timeout: float = 15.0):
     """获取发行包的 SHA256; 校验和资产不存在 (旧版发行) 返回 None。"""
     try:
