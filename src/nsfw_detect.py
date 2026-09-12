@@ -43,6 +43,11 @@ RATING_RISK_MAP = {
 # 风险阈值顺序（用于比较）
 RATING_ORDER = ["safe", "general", "sensitive", "questionable", "r15", "explicit", "r18"]
 
+# 规范化风险等级顺序 (RATING_RISK_MAP 的值), should_flag 用它比较,
+# 避免 safe/general、questionable/r15 等同义级别在 RATING_ORDER 中
+# 被排成严格递增而引发的比较歧义
+_RISK_ORDER = {"unknown": 0, "safe": 1, "low": 2, "medium": 3, "high": 4}
+
 
 @dataclass
 class NSFWResult:
@@ -239,17 +244,23 @@ def apply_mosaic(
     block_size: int = 16,
     censor_type: str = "pixelate",
     overlay_path: str = "",
-    expand_pixels: int = 0
+    expand_pixels: int = 0,
+    areas: Optional[List[Tuple]] = None,
 ) -> bool:
     """
     对图片的敏感区域应用打码 (入口函数)。
+    
+    Args:
+        areas: 已检测到的敏感区域。传入可避免内部重复跑一遍
+            censor 检测模型 (scan_image 已检测过, 复用结果省一半推理)。
     """
     if not _check_imgutils():
         raise ImportError("imgutils 未安装，请使用 Shield 增强版")
         
     try:
-        # 1. 检测敏感区域
-        areas = detect_sensitive_areas(image_path)
+        # 1. 检测敏感区域 (优先复用调用方传入的结果)
+        if areas is None:
+            areas = detect_sensitive_areas(image_path)
         if not areas:
             return False
             
@@ -273,7 +284,7 @@ def apply_mosaic(
             if censored_img.mode == "RGBA":
                 censored_img = censored_img.convert("RGB")
                 
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
         censored_img.save(output_path)
         return True
         
@@ -295,13 +306,11 @@ def should_flag(rating: str, threshold: str) -> bool:
     """
     if threshold == "all":
         return True
-    
-    try:
-        rating_idx = RATING_ORDER.index(rating)
-        threshold_idx = RATING_ORDER.index(threshold)
-        return rating_idx >= threshold_idx
-    except ValueError:
-        return False
+
+    rating_rank = _RISK_ORDER[RATING_RISK_MAP.get(rating, "unknown")]
+    threshold_rank = _RISK_ORDER.get(RATING_RISK_MAP.get(threshold, ""), -1)
+    # 未知评级 -> unknown 档, 永不标记; 未知阈值 -> 保守不标记
+    return threshold_rank > 0 and rating_rank >= threshold_rank
 
 
 def scan_image(
@@ -354,10 +363,21 @@ def scan_image(
                     
                     censored_filename = f"censored_{result.filename}"
                     censored_path = os.path.join(output_dir, censored_filename)
+                    # 递归扫描时不同子目录可能存在同名文件, 追加序号防覆盖
+                    _base, _ext = os.path.splitext(censored_path)
+                    _counter = 1
+                    while os.path.exists(censored_path):
+                        censored_path = f"{_base}_{_counter}{_ext}"
+                        _counter += 1
                     
-                    if apply_mosaic(image_path, censored_path, mosaic_size, censor_type, overlay_path, expand_pixels):
+                    if apply_mosaic(image_path, censored_path, mosaic_size,
+                                    censor_type, overlay_path, expand_pixels,
+                                    areas=areas):
                         result.censored_path = censored_path
                         result.warnings.append(f"[已打码] 检测到 {len(areas)} 个敏感区域")
+                    else:
+                        result.warnings.append(
+                            "[打码失败] 打码图片输出失败, 请查看日志")
                 else:
                     result.warnings.append("[提示] 未检测到需要打码的区域")
                     

@@ -421,6 +421,7 @@ def generate_media_report(results: List[DetailedMediaInfo], output_path: str) ->
 
     report_content = "\n".join(lines)
 
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         f.write(report_content)
 
