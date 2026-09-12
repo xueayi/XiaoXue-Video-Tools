@@ -105,7 +105,7 @@ class UpdateDialog(QDialog):
         self.setWindowTitle("检查更新")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 22, 24, 18)
+        layout.setContentsMargins(20, 22, 20, 16)
         layout.setSpacing(10)
 
         self._status_label = QLabel()
@@ -137,7 +137,7 @@ class UpdateDialog(QDialog):
         self._skip_btn.clicked.connect(self._on_skip)
         btn_row.addWidget(self._skip_btn)
 
-        self._browser_btn = QPushButton("在浏览器打开下载页")
+        self._browser_btn = QPushButton("浏览器下载")
         self._browser_btn.setObjectName("clear_btn")
         self._browser_btn.clicked.connect(self._on_open_browser)
         btn_row.addWidget(self._browser_btn)

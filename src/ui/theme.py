@@ -505,8 +505,7 @@ QPushButton#execute_btn {
     border: none;
     font-weight: bold;
     font-size: 14px;
-    padding: 9px 28px;
-    min-width: 132px;
+    padding: 8px 20px;
     border-radius: 8px;
 }
 QPushButton#execute_btn:hover {
@@ -528,8 +527,7 @@ QPushButton#stop_btn {
     color: #ffffff;
     border: none;
     font-size: 14px;
-    padding: 9px 28px;
-    min-width: 96px;
+    padding: 8px 20px;
     border-radius: 8px;
 }
 QPushButton#stop_btn:hover {

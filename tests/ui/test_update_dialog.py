@@ -450,3 +450,27 @@ def test_download_bad_content_length_header(monkeypatch, tmp_path):
     dest = str(tmp_path / "u.zip")
     download("https://dl/x.zip", dest)
     assert open(dest, "rb").read() == b"data"  # total 未知, 不影响落盘
+
+
+def test_dialog_button_row_fits_min_width(qapp, tmp_path):
+    """窄宽度 (480px) 下按钮行不得溢出对话框 (回归: 按钮重叠)。"""
+    d = UpdateDialog(str(tmp_path), release=ReleaseStub())
+    d.setMinimumWidth(0)
+    d.resize(480, d.sizeHint().height())
+    qapp.processEvents()
+
+    buttons = [d._action_btn, d._skip_btn, d._browser_btn, d._close_btn]
+    total = sum(b.minimumSizeHint().width() for b in buttons)
+    total += d.layout().spacing() * (len(buttons) - 1)
+    margins = d.layout().contentsMargins().left() +         d.layout().contentsMargins().right()
+    assert total + margins <= d.width(), (
+        f"按钮行 {total + margins}px 超出对话框宽度 {d.width()}px")
+
+
+def test_dialog_action_button_compact(qapp, tmp_path):
+    """主按钮不应超过 160px (回归: 蓝色大按钮过长)。"""
+    d = UpdateDialog(str(tmp_path), release=ReleaseStub())
+    d.show()
+    qapp.processEvents()
+    assert d._action_btn.width() <= 160
+    assert d._action_btn.text() == "立即更新"

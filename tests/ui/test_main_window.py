@@ -295,3 +295,18 @@ def test_main_entrypoint(monkeypatch, qapp):
         entry.main()
     assert exc.value.code == 0
     assert created["exec"] is True
+
+
+def test_execute_button_compact_and_fits_min_window(win, qapp):
+    """执行/停止按钮紧凑, 且最小窗口宽度下不重叠 (回归)。"""
+    assert win._execute_btn.text() == "开始执行"
+    assert win._stop_btn.text() == "停止"
+    win.show()
+    win.resize(960, 700)  # 窗口最小宽度
+    qapp.processEvents()
+    bottom = win.findChild(_CenteredColumnWidget).column()
+    usable = bottom.width() - 48  # 底部列左右边距
+    pair = (win._execute_btn.minimumSizeHint().width()
+            + win._stop_btn.minimumSizeHint().width() + 10)
+    assert pair <= usable, f"执行区按钮 {pair}px 超出可用宽度 {usable}px"
+    assert win._execute_btn.minimumSizeHint().width() <= 160

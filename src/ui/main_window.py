@@ -297,11 +297,11 @@ class MainWindow(QMainWindow):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
-        self._execute_btn = QPushButton("  开始执行")
+        self._execute_btn = QPushButton("开始执行")
         self._execute_btn.setObjectName("execute_btn")
         self._execute_btn.clicked.connect(self._on_execute)
 
-        self._stop_btn = QPushButton("  停止")
+        self._stop_btn = QPushButton("停止")
         self._stop_btn.setObjectName("stop_btn")
         self._stop_btn.setEnabled(False)
         self._stop_btn.clicked.connect(self._on_stop)
