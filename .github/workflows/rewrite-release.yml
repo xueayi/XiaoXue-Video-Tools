@@ -1,0 +1,74 @@
+name: Rewrite Release
+
+on:
+  push:
+    tags: ['rw-v*']          # 重写版发版 tag: rw-v0.1.0 格式
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version "^2"
+
+      - name: Rust cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/src-tauri/target
+          key: ${{ runner.os }}-tauri-release-${{ hashFiles('app/src-tauri/Cargo.toml', 'app/src-tauri/Cargo.lock') }}
+
+      - name: Build (frontend + rust + nsis)
+        working-directory: app
+        run: |
+          npm install
+          npx tauri build
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $ver = "${{ github.ref_name }}"
+          # 绿色版: exe + 说明 (前端资源已内嵌, 单体可执行)
+          Copy-Item "app\src-tauri\target\release\xiaoxue-app.exe" "release\xiaoxue-native_$ver.exe"
+          if (Test-Path "release\..\app\src-tauri\target\release\bundle\nsis") {
+            Copy-Item "app\src-tauri\target\release\bundle\nsis\*.exe" release\ -ErrorAction SilentlyContinue
+          }
+          Get-ChildItem release
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: true
+          name: "小雪工具箱 原生版 ${{ github.ref_name }}"
+          body: |
+            ## 小雪工具箱 原生版 (Tauri) ${{ github.ref_name }}
+
+            > 实验性预览: 界面与功能仍在向 Python 版对齐 (暂无 Shield 模块)。
+            > 生产环境请继续使用 Python 版发行包。
+
+            - `xiaoxue-native_*.exe`: 绿色单体可执行 (前端已内嵌)
+            - `xiaoxue-app_*_setup.exe`: NSIS 安装包
+
+            启动 <0.5s, 内存约 100MB。更新采用单体替换模型。
+          files: |
+            release/xiaoxue-native_${{ github.ref_name }}.exe
+            release/*.exe

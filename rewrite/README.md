@@ -36,6 +36,10 @@ cd app/src-tauri && cargo run
 cd app && npm run dev                          # 终端 1: vite 服务
 cd app/src-tauri && cargo run --features ...   # 或
 npx tauri dev --config src-tauri/tauri.dev.conf.json   # 挂载 devUrl 覆盖
+
+# 发版打包 (NSIS + 绿色 exe)
+cargo install tauri-cli --version "^2"
+cd app && npx tauri build
 ```
 
 > 注意: 主配置不带 devUrl —— 否则 debug 构建的窗口会去连
@@ -70,9 +74,10 @@ npx tauri dev --config src-tauri/tauri.dev.conf.json   # 挂载 devUrl 覆盖
 ### M3 — 全功能页面
 - 12 个功能页 + 设置 + 更新对话框, 与 Python 版对齐验收
 
-### M4 — 打包与热更新
-- tauri bundler (nsis) + zip 产物; ffmpeg 仍外置 bin/ (体积大头不变, 可后续按需下载)
-- 更新器: 替换单体 exe + resources, 复用「备份-替换-重启」模型
+### M4 — 打包与热更新 (进行中)
+- 本地 `npx tauri build` 出 NSIS 安装包 + 绿色单体 exe (前端已内嵌)
+- 发版工作流: rewrite-release.yml (tag `rw-v*` 触发, prerelease)
+- 热更新: 单体 exe 替换模型 (比 PyInstaller 布局简单)
 
 ## 与 Python 版的对照表
 
