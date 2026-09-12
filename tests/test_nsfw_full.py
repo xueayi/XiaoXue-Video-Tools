@@ -270,3 +270,119 @@ def test_generate_report(fake_imgutils, png_file, tmp_path):
     content = nsfw.generate_report([result], str(out))
     assert out.exists()
     assert "pic.png" in content
+
+
+# ----------------------------------------------------------------
+# 逻辑修复回归: 规范化阈值比较 / 复用检测结果 / 防覆盖 / 失败告警
+# ----------------------------------------------------------------
+
+@pytest.mark.parametrize("rating, threshold, expect", [
+    ("explicit", "questionable", True),
+    ("questionable", "questionable", True),
+    ("sensitive", "questionable", False),
+    ("general", "sensitive", False),
+    ("r15", "questionable", True),      # 同义级别: 与 questionable 同档
+    ("questionable", "r15", True),      # 修复前此处误判 False (别名排序)
+    ("weird-rating", "questionable", False),
+    ("anything", "all", True),
+])
+def test_should_flag_canonical_aliases(rating, threshold, expect):
+    assert nsfw.should_flag(rating, threshold) is expect
+
+
+def test_apply_mosaic_reuses_detected_areas(fake_imgutils, tmp_path,
+                                            monkeypatch):
+    """传入 areas 时不得再次运行 censor 检测 (省一半推理)。"""
+    src = tmp_path / "pic.png"
+    Image.new("RGB", (32, 32), (10, 20, 30)).save(src)
+    fake_imgutils["censors"] = [((5, 5, 20, 20), "censor", 0.9)]
+    calls = []
+
+    def counting_detect(p):
+        calls.append(p)
+        return [((5, 5, 20, 20), "censor", 0.9)]
+    monkeypatch.setattr(nsfw, "detect_sensitive_areas", counting_detect)
+
+    known = [((5, 5, 20, 20), "censor", 0.9)]
+    out = tmp_path / "out" / "censored.png"
+    assert nsfw.apply_mosaic(str(src), str(out), areas=known) is True
+    assert calls == []  # 未重复检测
+    assert out.exists()
+
+
+def test_scan_image_passes_areas_to_mosaic(fake_imgutils, tmp_path,
+                                           monkeypatch):
+    """scan_image 把已检测区域传给打码, 不触发第二次检测。"""
+    src = tmp_path / "p.png"
+    Image.new("RGB", (32, 32), (10, 20, 30)).save(src)
+    fake_imgutils["rating"] = ("explicit", 0.98)
+    fake_imgutils["censors"] = [((5, 5, 20, 20), "censor", 0.9)]
+    calls = []
+
+    def counting_detect(p):
+        calls.append(p)
+        return [((5, 5, 20, 20), "censor", 0.9)]
+    monkeypatch.setattr(nsfw, "detect_sensitive_areas", counting_detect)
+    monkeypatch.setattr(nsfw, "apply_mosaic",
+                        lambda *a, **k: True)  # 拦截真实打码
+
+    result = nsfw.scan_image(str(src), threshold="questionable",
+                             enable_censor=True,
+                             output_dir=str(tmp_path / "out"))
+    assert len(calls) == 1  # 仅 scan_image 检测一次
+    assert result.warnings and "[已打码]" in result.warnings[-1]
+
+
+def test_censored_filename_collision_gets_suffix(fake_imgutils, tmp_path):
+    """不同来源同名文件打码后不互相覆盖。"""
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "censored_pic.png").write_bytes(b"previous result")
+
+    src = tmp_path / "pic.png"
+    Image.new("RGB", (32, 32), (10, 20, 30)).save(src)
+    fake_imgutils["rating"] = ("explicit", 0.98)
+    fake_imgutils["censors"] = [((5, 5, 20, 20), "censor", 0.9)]
+
+    result = nsfw.scan_image(str(src), threshold="questionable",
+                             enable_censor=True, output_dir=str(out))
+    import os
+    assert os.path.basename(result.censored_path) == "censored_pic_1.png"
+    # 旧文件未被覆盖
+    assert (out / "censored_pic.png").read_bytes() == b"previous result"
+
+
+def test_scan_image_censor_failure_warns(fake_imgutils, tmp_path,
+                                         monkeypatch):
+    """打码输出失败时必须有明确告警, 报告原因才不会误标为未启用打码。"""
+    src = tmp_path / "p.png"
+    Image.new("RGB", (32, 32), (10, 20, 30)).save(src)
+    fake_imgutils["rating"] = ("explicit", 0.98)
+    fake_imgutils["censors"] = [((5, 5, 20, 20), "censor", 0.9)]
+    monkeypatch.setattr(nsfw, "apply_mosaic", lambda *a, **k: False)
+
+    result = nsfw.scan_image(str(src), threshold="questionable",
+                             enable_censor=True,
+                             output_dir=str(tmp_path / "out"))
+    assert any("[打码失败]" in w for w in result.warnings)
+    assert result.censored_path == ""
+
+
+def test_apply_mosaic_bare_filename_output(fake_imgutils, tmp_path,
+                                           monkeypatch):
+    """输出为纯文件名 (无目录成分) 时不因 makedirs("") 崩溃。"""
+    src = tmp_path / "p.png"
+    Image.new("RGB", (32, 32), (10, 20, 30)).save(src)
+    fake_imgutils["censors"] = [((2, 2, 12, 12), "censor", 0.9)]
+    monkeypatch.chdir(tmp_path)
+    assert nsfw.apply_mosaic(str(src), "censored_bare.png") is True
+    assert (tmp_path / "censored_bare.png").exists()
+
+
+def test_media_report_creates_missing_dir(tmp_path):
+    from src.media_probe import DetailedMediaInfo, generate_media_report
+    out = tmp_path / "deep" / "dir" / "report.txt"
+    content = generate_media_report([DetailedMediaInfo(path="C:/a.mp4")],
+                                    str(out))
+    assert out.exists()
+    assert "媒体元数据检测报告" in content
