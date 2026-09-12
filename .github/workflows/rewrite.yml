@@ -78,5 +78,11 @@ jobs:
             app/src-tauri/target
           key: ${{ runner.os }}-tauri-${{ hashFiles('app/src-tauri/Cargo.toml', 'app/src-tauri/Cargo.lock') }}
 
+      # generate_context! 宏需要 frontendDist 目录存在
+      - name: Stub frontend dist
+        run: |
+          New-Item -ItemType Directory -Force -Path app/dist | Out-Null
+          Set-Content app/dist/index.html "<!doctype html><html></html>"
+
       - name: Check
         run: cargo check --all
