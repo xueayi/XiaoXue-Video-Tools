@@ -4,8 +4,6 @@
   "version": "2.3.0-dev",
   "identifier": "com.xueayi.xiaoxue",
   "build": {
-    "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:5173",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

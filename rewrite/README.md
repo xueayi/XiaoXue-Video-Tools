@@ -21,10 +21,27 @@
 ## 本地开发前置
 
 ```powershell
-winget install Rustlang.Rustup        # Rust stable + msvc target
+winget install Rustlang.Rustup        # Rust (GNU 工具链, 免 MSVC)
 winget install OpenJS.NodeJS.LTS      # Node 20+
-# Rust 需要 MSVC Build Tools (VS Installer 勾选 C++ 桌面开发)
 ```
+
+## 日常命令
+
+```powershell
+# 构建前端 + 运行应用 (窗口直接加载打包好的静态文件)
+cd app && npm run build
+cd app/src-tauri && cargo run
+
+# 前端热重载开发 (需两个终端)
+cd app && npm run dev                          # 终端 1: vite 服务
+cd app/src-tauri && cargo run --features ...   # 或
+npx tauri dev --config src-tauri/tauri.dev.conf.json   # 挂载 devUrl 覆盖
+```
+
+> 注意: 主配置不带 devUrl —— 否则 debug 构建的窗口会去连
+> localhost:5173, 而 cargo run 单独启动时 vite 并未运行,
+> 窗口报 ERR_CONNECTION_REFUSED (实测踩坑)。热重载用
+> tauri.dev.conf.json 覆盖。
 
 ## 里程碑
 
