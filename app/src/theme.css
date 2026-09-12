@@ -1,0 +1,210 @@
+/* 设计令牌 —— 与 Python 版 theme.PALETTES 对齐 (Fluent 2 语义) */
+
+:root[data-theme="light"] {
+  --bg: #f3f3f3;
+  --card: #ffffff;
+  --card-border: #e8e8e8;
+  --accent: #005fb8;
+  --accent-hover: #1a6fc4;
+  --accent-tint: rgba(0, 95, 184, 0.08);
+  --text: #1a1a1a;
+  --text-secondary: #5a5a5a;
+  --text-tertiary: #8a8a8a;
+  --hover-overlay: rgba(0, 0, 0, 0.045);
+  --divider: #e5e5e5;
+  --input-bg: #fafafa;
+  --input-border: #d6d6d6;
+  --log-bg: #1e1e1e;
+  --log-text: #cccccc;
+  --success: #0f7b0f;
+}
+
+:root[data-theme="dark"] {
+  --bg: #202020;
+  --card: #2b2b2b;
+  --card-border: #383838;
+  --accent: #4cc2ff;
+  --accent-hover: #63cdff;
+  --accent-tint: rgba(76, 194, 255, 0.1);
+  --text: #f5f5f5;
+  --text-secondary: #c0c0c0;
+  --text-tertiary: #8a8a8a;
+  --hover-overlay: rgba(255, 255, 255, 0.06);
+  --divider: #3d3d3d;
+  --input-bg: #333333;
+  --input-border: #3d3d3d;
+  --log-bg: #161616;
+  --log-text: #c8c8c8;
+  --success: #6ccb5f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI",
+    "PingFang SC", sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* ---- 布局壳 ---- */
+.shell {
+  display: flex;
+  height: 100vh;
+}
+
+.sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px 10px 10px;
+  border-right: 1px solid var(--divider);
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 10px 12px 10px;
+}
+
+.brand-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.brand-version {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.nav-section {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  padding: 10px 12px 4px 12px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+  border: none;
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.nav-item:hover {
+  background: var(--hover-overlay);
+}
+
+.nav-item.active {
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 26px 26px 26px;
+}
+
+.page-column {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* ---- 卡片与表单 ---- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+.card-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin: 0 0 12px 0;
+  color: var(--text);
+}
+
+.card-desc {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  margin: -6px 0 12px 0;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.form-label {
+  width: 150px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+.form-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  margin: 2px 0 10px 164px;
+  line-height: 1.5;
+}
+
+.action-row {
+  display: flex;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+/* ---- 命令预览 ---- */
+.cmd-preview {
+  background: var(--log-bg);
+  color: var(--log-text);
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 52px;
+  border: 1px solid var(--divider);
+}

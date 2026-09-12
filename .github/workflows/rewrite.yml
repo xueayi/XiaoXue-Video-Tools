@@ -1,14 +1,14 @@
-name: Rewrite Engine CI
+name: Rewrite CI
 
 on:
   push:
     branches: ['rewrite/**']
-    paths: ['engine/**', '.github/workflows/rewrite.yml']
+    paths: ['engine/**', 'app/**', '.github/workflows/rewrite.yml']
   pull_request:
-    paths: ['engine/**', '.github/workflows/rewrite.yml']
+    paths: ['engine/**', 'app/**', '.github/workflows/rewrite.yml']
 
 jobs:
-  test:
+  engine:
     runs-on: windows-latest
     defaults:
       run:
@@ -29,10 +29,54 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             engine/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('engine/Cargo.toml') }}
+          key: ${{ runner.os }}-engine-${{ hashFiles('engine/Cargo.toml', 'engine/Cargo.lock') }}
 
       - name: Test
         run: cargo test --all
 
       - name: Clippy
         run: cargo clippy --all
+
+  frontend:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build (tsc + vite)
+        run: npm run build
+
+  tauri-shell:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app/src-tauri
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/src-tauri/target
+          key: ${{ runner.os }}-tauri-${{ hashFiles('app/src-tauri/Cargo.toml', 'app/src-tauri/Cargo.lock') }}
+
+      - name: Check
+        run: cargo check --all

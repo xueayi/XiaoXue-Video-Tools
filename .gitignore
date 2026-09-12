@@ -65,3 +65,9 @@ notify_config.json
 
 # Rust 重写分支
 engine/target/
+
+# 前端依赖与构建产物
+app/node_modules/
+app/dist/
+app/src-tauri/target/
+app/src-tauri/gen/

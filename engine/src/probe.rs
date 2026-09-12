@@ -13,7 +13,7 @@ pub fn ffprobe_path() -> String {
     crate::paths::find_tool("ffprobe")
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct StreamInfo {
     pub index: usize,
     pub stream_index: usize,
@@ -31,7 +31,7 @@ pub struct StreamInfo {
     pub pix_fmt: String,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct Chapter {
     pub id: i64,
     pub start_time: f64,
@@ -39,7 +39,7 @@ pub struct Chapter {
     pub title: String,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct MediaInfo {
     pub path: String,
     pub filename: String,

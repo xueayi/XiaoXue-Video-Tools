@@ -95,7 +95,14 @@ pub fn quality_preset(name: &str) -> Option<&'static QualityPreset> {
     QUALITY_PRESETS.iter().find(|(k, _)| *k == name).map(|(_, v)| v)
 }
 
+/// 全部质量预设名称 (GUI 下拉框用)。
+pub fn quality_preset_names() -> Vec<&'static str> {
+    QUALITY_PRESETS.iter().map(|(k, _)| *k).collect()
+}
+
 /// 编码命令参数 (core.build_encode_command 的入参)。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct EncodeOptions {
     pub input: String,
     pub output: String,
