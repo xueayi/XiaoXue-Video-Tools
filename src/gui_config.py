@@ -17,6 +17,17 @@ from ._version import __version__ as VERSION
 DEFAULT_SIZE = (960, 720)
 
 
+def get_qsettings():
+    """统一的 QSettings 入口: 便携式 config.ini (exe / 项目根目录)。
+
+    注意: 必须用「文件路径」构造 QSettings。双参 (org, app) 构造器
+    在 Windows 上永远走注册表 (NativeFormat), setDefaultFormat 对它无效。
+    """
+    from PyQt6.QtCore import QSettings
+    return QSettings(os.path.join(get_base_dir(), "config.ini"),
+                     QSettings.Format.IniFormat)
+
+
 def get_icon_path():
     """
     获取图标路径 (可选)。

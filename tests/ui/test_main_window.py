@@ -197,24 +197,36 @@ def test_about_dialog_opens_and_links(win, qapp, monkeypatch):
 # ----------------------------------------------------------------
 
 def test_geometry_persisted_on_close(qapp):
-    from PyQt6.QtCore import QSettings
+    from src.gui_config import get_qsettings
     w = MainWindow(shield_available=True, notify_config=None)
     w.resize(1000, 700)
     w.close()
-    geo = QSettings("XiaoXue", "XiaoXueToolbox").value("ui/geometry")
+    geo = get_qsettings().value("ui/geometry")
     assert geo is not None
 
 
-def test_geometry_restored_on_reopen(qapp):
-    from PyQt6.QtCore import QSettings
+def test_geometry_restored_on_reopen(qapp, monkeypatch):
+    """关闭保存几何 -> 重新打开时调用 restoreGeometry 恢复。
+
+    离屏平台屏幕过小会钳制恢复后的尺寸, 因此断言「以保存值调用了
+    restoreGeometry」而非最终尺寸。
+    """
+    from src.gui_config import get_qsettings
     w1 = MainWindow(shield_available=True, notify_config=None)
-    w1.resize(1010, 705)  # 离屏屏幕可能钳制尺寸, 保存的是实际几何
-    q1 = w1.size()
+    w1.resize(1010, 705)
     w1.close()
-    saved = QSettings("XiaoXue", "XiaoXueToolbox").value("ui/geometry")
+    saved = get_qsettings().value("ui/geometry")
     assert saved is not None
+
+    calls = []
+    real_restore = MainWindow.restoreGeometry
+
+    def spy(self, geo):
+        calls.append(geo)
+        return real_restore(self, geo)
+    monkeypatch.setattr(MainWindow, "restoreGeometry", spy)
     w2 = MainWindow(shield_available=True, notify_config=None)
-    assert w2.size().width() == min(q1.width(), w2.size().width())         or w2.size().width() >= 960  # restore 受最小尺寸/屏幕约束
+    assert calls and calls[0] == saved
     w2.close()
 
 

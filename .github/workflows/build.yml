@@ -84,8 +84,14 @@ jobs:
       
       - name: Create release package (${{ matrix.display_name }})
         run: |
-          Compress-Archive -Path "dist\XiaoXueToolbox\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
+          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
       
+      - name: Generate SHA256 checksum
+        run: |
+          $zip = "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "$zip.sha256" -Value $hash -Encoding ascii -NoNewline
+
       - name: Upload artifact (${{ matrix.display_name }})
         uses: actions/upload-artifact@v4
         with:
@@ -118,7 +124,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
+          files: |
+            XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
+            XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip.sha256
           generate_release_notes: false
           draft: false
           prerelease: false
@@ -134,7 +142,8 @@ jobs:
             | `XiaoXueToolbox_${{ github.ref_name }}_Shield_Windows_x64.zip` | Shield 增强版，额外包含露骨图片识别功能 |
             
             ### 下载说明
-            - 解压后运行 `XiaoXueToolbox.exe` 即可
+            - 解压后运行 `小雪工具箱.exe` 即可
+- 可将程序解压到任意**非中文路径**目录 (兼容模式字幕渲染的要求)
             - **标准版**: 内置静态 FFmpeg，包含全部基础功能
             - **Shield 增强版**: 额外包含 AI 露骨图片识别功能
             

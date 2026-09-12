@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 # 必须在 QApplication 创建前设置
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# 测试环境禁用启动时的自动更新检查 (避免真实网络请求)
+os.environ["XIAOXUE_NO_UPDATE_CHECK"] = "1"
 
 from PyQt6.QtCore import QSettings  # noqa: E402
 from PyQt6.QtWidgets import QApplication  # noqa: E402
@@ -26,17 +28,21 @@ def qapp():
 
 
 @pytest.fixture(autouse=True)
-def isolated_settings(tmp_path):
-    """把 QSettings 重定向到每测试独立的临时目录 (Ini 格式)。
+def isolated_settings(tmp_path, monkeypatch):
+    """把 QSettings 重定向到每测试独立的临时 ini 文件。
 
-    避免测试读写真实用户注册表/配置 (主题、窗口几何等)。
+    注意: QSettings(org, app) 双参构造在 Windows 上永远走注册表,
+    因此隔离必须 monkeypatch gui_config.get_qsettings 这一个入口。
     """
-    QSettings.setDefaultFormat(QSettings.Format.IniFormat)
-    QSettings.setPath(
-        QSettings.Format.IniFormat,
-        QSettings.Scope.UserScope,
-        str(tmp_path / "settings"),
-    )
+    ini = tmp_path / "settings" / "config.ini"
+    ini.parent.mkdir(parents=True, exist_ok=True)
+    from PyQt6.QtCore import QSettings
+
+    def fake_qsettings():
+        return QSettings(str(ini), QSettings.Format.IniFormat)
+
+    import src.gui_config as gc
+    monkeypatch.setattr(gc, "get_qsettings", fake_qsettings)
     yield
 
 

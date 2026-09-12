@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """主窗口：侧边栏导航 + 功能页面 + 进度仪表盘 + 日志面板。"""
 
+import os
 import webbrowser
 
 from PyQt6.QtWidgets import (
@@ -8,16 +9,19 @@ from PyQt6.QtWidgets import (
     QSplitter, QPushButton, QStatusBar,
     QDialog, QLabel, QDialogButtonBox,
 )
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QAction, QIcon, QShortcut, QKeySequence, QPixmap
 
+from .. import updater
 from ..gui_config import get_icon_path
+from ..utils import get_base_dir
 
 from . import theme
 from . import icons
 from .base_tab import CONTENT_MAX_WIDTH
 from .sidebar import Sidebar
 from .log_panel import LogPanel
+from .update_dialog import UpdateDialog, UpdateWorker
 from .task_runner import TaskRunner
 from .animations import AnimatedStackedWidget, button_press_anim, status_flash
 from .ffmpeg_progress import FFmpegProgressParser
@@ -139,6 +143,9 @@ class MainWindow(QMainWindow):
 
         self._runner = None
         self._btn_anim = None
+        self._shield_available = shield_available
+        self._update_dialog = None
+        self._check_worker = None
 
         self._build_menu_bar()
         self._build_central(shield_available, notify_config)
@@ -150,6 +157,53 @@ class MainWindow(QMainWindow):
         self._ffmpeg_parser.progress_updated.connect(self._dashboard.update_metrics)
 
         self._sidebar.setCurrentRow(0)
+
+        updater.cleanup_staging(get_base_dir())
+        QTimer.singleShot(2500, self._silent_update_check)
+
+    # ================================================================
+    # 检查更新
+    # ================================================================
+
+    def _show_update_dialog(self, manual: bool):
+        """打开更新对话框; manual=True 时模态 (用户主动), 否则非模态。"""
+        dlg = UpdateDialog(get_base_dir(), shield=self._shield_available,
+                           release=None, parent=self)
+        dlg.install_requested.connect(self._apply_update_and_quit)
+        if manual:
+            dlg.exec()
+        else:
+            dlg.show()
+            self._update_dialog = dlg
+
+    def _silent_update_check(self):
+        """启动后静默检查一次; 开发版/已跳过的版本不提示。
+
+        设置环境变量 XIAOXUE_NO_UPDATE_CHECK=1 可完全禁用 (测试/调试用)。
+        """
+        if os.environ.get("XIAOXUE_NO_UPDATE_CHECK"):
+            return
+        if updater.is_dev_version(_VERSION):
+            return
+        self._check_worker = UpdateWorker("check", get_base_dir(),
+                                          shield=self._shield_available)
+        self._check_worker.checked.connect(self._on_silent_checked)
+        self._check_worker.start()
+
+    def _on_silent_checked(self, release):
+        if release is None:
+            return
+        if release.version == updater.get_skip_version():
+            return
+        dlg = UpdateDialog(get_base_dir(), shield=self._shield_available,
+                           release=release, parent=self)
+        dlg.install_requested.connect(self._apply_update_and_quit)
+        dlg.show()
+        self._update_dialog = dlg
+
+    def _apply_update_and_quit(self):
+        """更新器已拉起, 主窗口退出交由其完成替换与重启。"""
+        self.close()
 
     # ================================================================
     # 菜单栏
@@ -173,6 +227,11 @@ class MainWindow(QMainWindow):
         view_menu.addAction(motion_action)
 
         about_menu = menu_bar.addMenu("关于")
+        update_act = QAction("检查更新", self)
+        update_act.setIcon(icons.secondary("ri.download-2-line"))
+        update_act.triggered.connect(
+            lambda: self._show_update_dialog(manual=True))
+        about_menu.addAction(update_act)
         about_act = QAction("关于小雪工具箱", self)
         about_act.triggered.connect(self._show_about)
         about_menu.addAction(about_act)
@@ -217,6 +276,8 @@ class MainWindow(QMainWindow):
         # 侧边栏
         self._sidebar = Sidebar()
         self._sidebar.theme_button().clicked.connect(self._on_theme_toggle)
+        self._sidebar.update_check_requested.connect(
+            lambda: self._show_update_dialog(manual=True))
         root_layout.addWidget(self._sidebar)
 
         # 右侧
@@ -424,7 +485,8 @@ class MainWindow(QMainWindow):
     # ================================================================
 
     def _restore_geometry(self):
-        settings = QSettings("XiaoXue", "XiaoXueToolbox")
+        from ..gui_config import get_qsettings
+        settings = get_qsettings()
         geo = settings.value("ui/geometry")
         if geo is not None:
             self.restoreGeometry(geo)
@@ -435,7 +497,8 @@ class MainWindow(QMainWindow):
                       center.y() - self.height() // 2)
 
     def closeEvent(self, event):
-        settings = QSettings("XiaoXue", "XiaoXueToolbox")
+        from ..gui_config import get_qsettings
+        settings = get_qsettings()
         settings.setValue("ui/geometry", self.saveGeometry())
         if self._runner and self._runner.isRunning():
             self._runner.terminate()
