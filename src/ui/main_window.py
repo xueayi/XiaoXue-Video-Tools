@@ -4,15 +4,18 @@
 import webbrowser
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
+    QMainWindow, QWidget, QApplication, QHBoxLayout, QVBoxLayout,
     QSplitter, QPushButton, QStatusBar,
-    QProgressBar, QMessageBox,
+    QDialog, QLabel, QDialogButtonBox,
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtGui import QAction, QIcon, QShortcut, QKeySequence, QPixmap
 
 from ..gui_config import get_icon_path
 
+from . import theme
+from . import icons
+from .base_tab import CONTENT_MAX_WIDTH
 from .sidebar import Sidebar
 from .log_panel import LogPanel
 from .task_runner import TaskRunner
@@ -41,6 +44,85 @@ _AUTO_NOTIFY_COMMANDS = {
     "媒体元数据检测", "露骨图片识别",
 }
 
+_REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
+
+
+class _CenteredColumnWidget(QWidget):
+    """宽度上限受限的内容列容器: 列宽 = min(max_width, 可用宽度), 水平居中。
+
+    用于让底部按钮区/仪表盘/日志区与上方页面内容列保持同宽对齐。
+    """
+
+    def __init__(self, max_width: int, margins, spacing: int, parent=None):
+        super().__init__(parent)
+        self._max_width = max_width
+
+        outer = QHBoxLayout(self)
+        # 右侧预留 8px (与页面滚动区常驻滚动条同宽), 居中基准一致
+        outer.setContentsMargins(0, 0, 8, 0)
+        outer.setSpacing(0)
+
+        self._column = QWidget()
+        self._column_layout = QVBoxLayout(self._column)
+        self._column_layout.setContentsMargins(*margins)
+        self._column_layout.setSpacing(spacing)
+
+        outer.addStretch(1)
+        outer.addWidget(self._column)
+        outer.addStretch(1)
+
+        # 列的定宽会经布局抬高容器最小宽度导致窗口无法收窄,
+        # 显式给出较小的最小尺寸打断该反馈, 列宽在 resizeEvent 中重算
+        self.setMinimumSize(240, 100)
+
+    def column(self) -> QWidget:
+        return self._column
+
+    def column_layout(self) -> QVBoxLayout:
+        return self._column_layout
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 列宽确定性计算, 两侧 stretch 均分剩余空间实现居中
+        available = max(self.width() - 8, 100)
+        self._column.setFixedWidth(min(self._max_width, available))
+
+
+
+def _tab_defs(shield_available: bool, notify_config):
+    """功能页注册表: (分组标题, [(页面名, 图标名, Tab工厂, executor), ...])"""
+
+    def shield():
+        return ShieldTab(shield_available=shield_available)
+
+    def notification():
+        return NotificationTab(config=notify_config)
+
+    return [
+        ("视频处理", [
+            ("视频压制", "ri.film-line", EncodeTab, execute_encode),
+            ("音频替换", "ri.music-2-line", ReplaceAudioTab, execute_replace_audio),
+            ("音视频抽取", "ri.file-transfer-line", ExtractAvTab, execute_extract_av),
+        ]),
+        ("格式与媒体", [
+            ("封装转换", "ri.exchange-line", RemuxTab, execute_remux),
+            ("媒体元数据检测", "ri.file-info-line", MediaProbeTab, execute_media_probe),
+            ("图片转换", "ri.image-line", ImageConvertTab, execute_image_convert),
+        ]),
+        ("质量与批量", [
+            ("素材质量检测", "ri.file-search-line", QcTab, execute_qc),
+            ("文件夹创建", "ri.folder-add-line", FolderCreatorTab, execute_folder_creator),
+            ("批量重命名", "ri.file-edit-line", BatchRenameTab, execute_batch_rename),
+        ]),
+        ("特色与辅助", [
+            ("露骨图片识别", "ri.shield-check-line", shield, execute_shield),
+            ("通知设置", "ri.notification-3-line", notification, execute_notification),
+        ]),
+        ("帮助", [
+            ("使用说明", "ri.question-line", HelpTab, execute_help),
+        ]),
+    ]
+
 
 class MainWindow(QMainWindow):
     """应用程序主窗口。"""
@@ -48,7 +130,8 @@ class MainWindow(QMainWindow):
     def __init__(self, shield_available=True, notify_config=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("小雪工具箱")
-        self.resize(1000, 740)
+        self.setMinimumSize(960, 640)
+        self.resize(1080, 760)
 
         icon_path = get_icon_path()
         if icon_path:
@@ -60,6 +143,8 @@ class MainWindow(QMainWindow):
         self._build_menu_bar()
         self._build_central(shield_available, notify_config)
         self._build_status_bar()
+        self._build_shortcuts()
+        self._restore_geometry()
 
         self._ffmpeg_parser = FFmpegProgressParser(self)
         self._ffmpeg_parser.progress_updated.connect(self._dashboard.update_metrics)
@@ -73,6 +158,20 @@ class MainWindow(QMainWindow):
     def _build_menu_bar(self):
         menu_bar = self.menuBar()
 
+        view_menu = menu_bar.addMenu("视图")
+        self._theme_action = QAction("深色模式", self)
+        self._theme_action.setCheckable(True)
+        self._theme_action.setChecked(theme.get_theme() == "dark")
+        self._theme_action.triggered.connect(self._on_theme_toggle)
+        view_menu.addAction(self._theme_action)
+
+        motion_action = QAction("减少动画", self)
+        motion_action.setCheckable(True)
+        motion_action.setChecked(theme.reduced_motion())
+        motion_action.triggered.connect(
+            lambda checked: theme.set_reduced_motion(checked))
+        view_menu.addAction(motion_action)
+
         about_menu = menu_bar.addMenu("关于")
         about_act = QAction("关于小雪工具箱", self)
         about_act.triggered.connect(self._show_about)
@@ -80,15 +179,15 @@ class MainWindow(QMainWindow):
 
         help_menu = menu_bar.addMenu("帮助文档")
         _links = [
-            ("使用手册首页", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Home"),
-            ("安装与环境", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Installation"),
-            ("视频压制", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Video-Encode"),
-            ("音视频工具", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Video-Tools"),
-            ("封装与图片", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image"),
-            ("素材质量检测", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Quality-Control"),
-            ("批量与效率工具", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools"),
-            ("通知设置", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Notification"),
-            ("常见问题", "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/FAQ"),
+            ("使用手册首页", f"{_REPO_URL}/wiki/Home"),
+            ("安装与环境", f"{_REPO_URL}/wiki/Installation"),
+            ("视频压制", f"{_REPO_URL}/wiki/Features-Video-Encode"),
+            ("音视频工具", f"{_REPO_URL}/wiki/Features-Audio-Video-Tools"),
+            ("封装与图片", f"{_REPO_URL}/wiki/Features-Remux-Image"),
+            ("素材质量检测", f"{_REPO_URL}/wiki/Features-Quality-Control"),
+            ("批量与效率工具", f"{_REPO_URL}/wiki/Features-Batch-Tools"),
+            ("通知设置", f"{_REPO_URL}/wiki/Features-Notification"),
+            ("常见问题", f"{_REPO_URL}/wiki/FAQ"),
         ]
         for title, url in _links:
             act = QAction(title, self)
@@ -97,7 +196,7 @@ class MainWindow(QMainWindow):
 
         ext_menu = menu_bar.addMenu("主页链接")
         for title, url in [
-            ("GitHub 仓库", "https://github.com/xueayi/XiaoXue-Video-Tools"),
+            ("GitHub 仓库", _REPO_URL),
             ("B站主页", "https://space.bilibili.com/107936977"),
         ]:
             act = QAction(title, self)
@@ -117,6 +216,7 @@ class MainWindow(QMainWindow):
 
         # 侧边栏
         self._sidebar = Sidebar()
+        self._sidebar.theme_button().clicked.connect(self._on_theme_toggle)
         root_layout.addWidget(self._sidebar)
 
         # 右侧
@@ -127,32 +227,26 @@ class MainWindow(QMainWindow):
         self._stack = AnimatedStackedWidget()
         right_splitter.addWidget(self._stack)
 
-        # 底部：按钮行 + 仪表盘 + 日志
-        bottom = QWidget()
-        bottom_layout = QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(10, 6, 10, 6)
-        bottom_layout.setSpacing(6)
+        # 底部：按钮行 + 仪表盘 + 日志 (与页面内容列同宽居中)
+        bottom = _CenteredColumnWidget(
+            CONTENT_MAX_WIDTH, (24, 6, 24, 10), 6)
+        bottom_layout = bottom.column_layout()
 
         # 按钮行
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
 
-        self._execute_btn = QPushButton("  \u25B6  开始执行")
+        self._execute_btn = QPushButton("  开始执行")
         self._execute_btn.setObjectName("execute_btn")
         self._execute_btn.clicked.connect(self._on_execute)
 
-        self._stop_btn = QPushButton("  \u25A0  停止")
+        self._stop_btn = QPushButton("  停止")
         self._stop_btn.setObjectName("stop_btn")
         self._stop_btn.setEnabled(False)
         self._stop_btn.clicked.connect(self._on_stop)
 
-        self._clear_btn = QPushButton("清空日志")
-        self._clear_btn.setObjectName("clear_btn")
-        self._clear_btn.clicked.connect(lambda: self._log_panel.clear_log())
-
         btn_row.addWidget(self._execute_btn)
         btn_row.addWidget(self._stop_btn)
-        btn_row.addWidget(self._clear_btn)
         btn_row.addStretch()
         bottom_layout.addLayout(btn_row)
 
@@ -174,28 +268,25 @@ class MainWindow(QMainWindow):
         self._tabs = []
         self._handlers = {}
 
-        tab_defs = [
-            ("视频压制", EncodeTab(), execute_encode),
-            ("音频替换", ReplaceAudioTab(), execute_replace_audio),
-            ("封装转换", RemuxTab(), execute_remux),
-            ("素材质量检测", QcTab(), execute_qc),
-            ("媒体元数据检测", MediaProbeTab(), execute_media_probe),
-            ("音视频抽取", ExtractAvTab(), execute_extract_av),
-            ("图片转换", ImageConvertTab(), execute_image_convert),
-            ("文件夹创建", FolderCreatorTab(), execute_folder_creator),
-            ("批量重命名", BatchRenameTab(), execute_batch_rename),
-            ("露骨图片识别", ShieldTab(shield_available=shield_available), execute_shield),
-            ("通知设置", NotificationTab(config=notify_config), execute_notification),
-            ("使用说明", HelpTab(), execute_help),
-        ]
-
-        for name, tab_widget, handler in tab_defs:
-            self._sidebar.add_item(name)
-            self._stack.addWidget(tab_widget)
-            self._tabs.append(tab_widget)
-            self._handlers[name] = handler
+        for section_title, items in _tab_defs(shield_available, notify_config):
+            self._sidebar.add_section(section_title)
+            for name, icon_name, tab_factory, handler in items:
+                self._sidebar.add_item(name, icon_name)
+                tab_widget = tab_factory()
+                self._stack.addWidget(tab_widget)
+                self._tabs.append(tab_widget)
+                self._handlers[name] = handler
 
         self._sidebar.tab_changed.connect(self._stack.slide_to)
+        self._refresh_theme_dependent_ui()
+
+    # ================================================================
+    # 快捷键
+    # ================================================================
+
+    def _build_shortcuts(self):
+        exec_sc = QShortcut(QKeySequence("Ctrl+Return"), self)
+        exec_sc.activated.connect(self._on_execute)
 
     # ================================================================
     # 状态栏
@@ -205,6 +296,36 @@ class MainWindow(QMainWindow):
         sb = QStatusBar()
         sb.showMessage(f"就绪  |  v{_VERSION}")
         self.setStatusBar(sb)
+
+    # ================================================================
+    # 主题切换
+    # ================================================================
+
+    def _on_theme_toggle(self):
+        new_theme = "dark" if theme.get_theme() == "light" else "light"
+        theme.set_theme(new_theme)
+        theme.apply_theme(QApplication.instance(), new_theme)
+        self._refresh_theme_dependent_ui()
+        self.statusBar().showMessage(f"就绪  |  v{_VERSION}")
+
+    def _refresh_theme_dependent_ui(self):
+        """主题切换后刷新图标、Logo、按钮文案、勾选状态。"""
+        self._theme_action.setChecked(theme.get_theme() == "dark")
+        self._sidebar.set_theme_icons()
+        self._update_run_button_icons()
+        for tab in self._tabs:
+            tab.on_theme_changed()
+        self._log_panel.on_theme_changed()
+
+    def _update_run_button_icons(self):
+        running = self._runner is not None and self._runner.isRunning()
+        if running:
+            self._execute_btn.setIcon(
+                icons.icon("ri.loader-4-line", "accent_text_disabled"))
+            self._stop_btn.setIcon(icons.icon("ri.stop-fill", "#ffffff"))
+        else:
+            self._execute_btn.setIcon(icons.icon("ri.play-fill", "on_accent"))
+            self._stop_btn.setIcon(icons.icon("ri.stop-fill", "#ffffff"))
 
     # ================================================================
     # 执行与停止
@@ -238,7 +359,7 @@ class MainWindow(QMainWindow):
         self._try_set_duration(args)
 
         self._log_panel.append_log(f"{'=' * 50}\n")
-        self._log_panel.append_log(f"\u25B6 开始执行: {command}\n")
+        self._log_panel.append_log(f"▶ 开始执行: {command}\n")
         self._log_panel.append_log(f"{'=' * 50}\n")
 
         self._runner = TaskRunner(handler, args, command, parent=self)
@@ -266,24 +387,24 @@ class MainWindow(QMainWindow):
         if self._runner and self._runner.isRunning():
             self._runner.terminate()
             self._runner.wait(3000)
-            self._log_panel.append_log("\n\u23F9 任务已停止\n")
+            self._log_panel.append_log("\n⏹ 任务已停止\n")
             self._dashboard.reset()
             self._set_running(False)
 
     def _on_task_finished(self, success, command_name):
         if success:
-            self._log_panel.append_log(f"\n\u2714 {command_name} 执行完成\n")
+            self._log_panel.append_log(f"\n✔ {command_name} 执行完成\n")
             self._dashboard.finish(True)
-            status_flash(self.statusBar(), "#4caf50", 2000)
+            status_flash(self.statusBar(), theme.color("success"), 2000)
             if command_name in _AUTO_NOTIFY_COMMANDS:
                 try:
                     send_auto_notification(command_name)
                 except Exception:
                     pass
         else:
-            self._log_panel.append_log(f"\n\u2718 {command_name} 执行失败\n")
+            self._log_panel.append_log(f"\n✘ {command_name} 执行失败\n")
             self._dashboard.finish(False)
-            status_flash(self.statusBar(), "#c42b1c", 2000)
+            status_flash(self.statusBar(), theme.color("danger"), 2000)
 
         self._set_running(False)
         self.statusBar().showMessage(
@@ -294,21 +415,103 @@ class MainWindow(QMainWindow):
         self._execute_btn.setEnabled(not running)
         self._stop_btn.setEnabled(running)
         self._sidebar.setEnabled(not running)
+        self._update_run_button_icons()
         if running:
             self.statusBar().showMessage(f"执行中...  |  v{_VERSION}")
-        if not running:
-            pass
+
+    # ================================================================
+    # 窗口几何持久化
+    # ================================================================
+
+    def _restore_geometry(self):
+        settings = QSettings("XiaoXue", "XiaoXueToolbox")
+        geo = settings.value("ui/geometry")
+        if geo is not None:
+            self.restoreGeometry(geo)
+        else:
+            # 首次启动居中显示
+            center = self.screen().availableGeometry().center()
+            self.move(center.x() - self.width() // 2,
+                      center.y() - self.height() // 2)
+
+    def closeEvent(self, event):
+        settings = QSettings("XiaoXue", "XiaoXueToolbox")
+        settings.setValue("ui/geometry", self.saveGeometry())
+        if self._runner and self._runner.isRunning():
+            self._runner.terminate()
+            self._runner.wait(2000)
+        super().closeEvent(event)
 
     # ================================================================
     # 关于对话框
     # ================================================================
 
     def _show_about(self):
-        QMessageBox.about(
-            self,
-            "关于小雪工具箱",
-            f"<h3>小雪工具箱 v{_VERSION}</h3>"
-            f"<p>一个简单的视频压制与检测工具</p>"
-            f"<p>作者: 雪阿宜</p>"
-            f'<p><a href="https://github.com/xueayi/XiaoXue-Video-Tools">GitHub</a></p>',
+        dlg = QDialog(self)
+        dlg.setWindowTitle("关于小雪工具箱")
+        dlg.setFixedWidth(430)
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(28, 26, 28, 18)
+        layout.setSpacing(6)
+
+        head = QHBoxLayout()
+        head.setSpacing(14)
+        logo_path = theme.logo_path()
+        if logo_path:
+            logo = QLabel()
+            logo.setPixmap(QPixmap(logo_path).scaled(
+                52, 52,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            ))
+            logo.setFixedSize(52, 52)
+            logo.setScaledContents(True)
+            head.addWidget(logo)
+
+        title_col = QVBoxLayout()
+        title_col.setSpacing(1)
+        title = QLabel(f"小雪工具箱 v{_VERSION}")
+        title.setObjectName("brand_title")
+        subtitle = QLabel("简洁实用的视频压制与素材管理工具")
+        subtitle.setObjectName("muted_label")
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        head.addLayout(title_col, 1)
+        layout.addLayout(head)
+        layout.addSpacing(10)
+
+        desc = QLabel(
+            "基于 FFmpeg 和 PyQt6 构建，内置 FFmpeg，开箱即用。\n作者: 雪阿宜"
         )
+        desc.setWordWrap(True)
+        desc.setObjectName("muted_label")
+        layout.addWidget(desc)
+        layout.addSpacing(6)
+
+        components = QLabel(
+            "开源许可: MIT\n第三方组件: FFmpeg · PyQt6 · AviSynth+ · VSFilter"
+        )
+        components.setWordWrap(True)
+        components.setObjectName("muted_label")
+        layout.addWidget(components)
+        layout.addSpacing(12)
+
+        btn_row = QHBoxLayout()
+        gh_btn = QPushButton("GitHub 仓库")
+        gh_btn.setIcon(icons.secondary("ri.github-line"))
+        gh_btn.clicked.connect(lambda: webbrowser.open(_REPO_URL))
+        btn_row.addWidget(gh_btn)
+
+        bilibili_btn = QPushButton("B站主页")
+        bilibili_btn.clicked.connect(
+            lambda: webbrowser.open("https://space.bilibili.com/107936977"))
+        btn_row.addWidget(bilibili_btn)
+        btn_row.addStretch()
+
+        close_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close_box.rejected.connect(dlg.reject)
+        btn_row.addWidget(close_box)
+        layout.addLayout(btn_row)
+
+        dlg.exec()

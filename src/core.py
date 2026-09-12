@@ -153,11 +153,8 @@ def build_encode_command(
         escaped_sub = escape_path_for_ffmpeg(subtitle_path)
         vf_filters.append(f"subtitles='{escaped_sub}'")
     if resolution and isinstance(resolution, str) and "x" in resolution:
-        try:
-            w, h = resolution.split("x")
-            vf_filters.append(f"scale={w}:{h}")
-        except ValueError:
-            pass  # 无效分辨率格式，跳过
+        w, h = resolution.split("x")
+        vf_filters.append(f"scale={w}:{h}")
 
     if vf_filters:
         cmd.extend(["-vf", ",".join(vf_filters)])
@@ -644,11 +641,8 @@ def build_2pass_commands(
         escaped_sub = escape_path_for_ffmpeg(subtitle_path)
         vf_filters.append(f"subtitles='{escaped_sub}'")
     if resolution and isinstance(resolution, str) and "x" in resolution:
-        try:
-            w, h = resolution.split("x")
-            vf_filters.append(f"scale={w}:{h}")
-        except ValueError:
-            pass
+        w, h = resolution.split("x")
+        vf_filters.append(f"scale={w}:{h}")
 
     # 构建基础命令部分
     base_cmd = [ffmpeg, "-y", "-i", input_path]

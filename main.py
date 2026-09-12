@@ -29,13 +29,13 @@ from src.executors import SHIELD_AVAILABLE
 def main():
     """主入口函数，启动 PyQt6 图形界面。"""
     from PyQt6.QtWidgets import QApplication
-    from src.ui.theme import get_stylesheet
+    from src.ui.theme import apply_theme, get_theme
     from src.ui.main_window import MainWindow
 
     load_notify_config()
 
     app = QApplication(sys.argv)
-    app.setStyleSheet(get_stylesheet())
+    apply_theme(app, get_theme())
 
     notify_config = get_notify_config()
     window = MainWindow(

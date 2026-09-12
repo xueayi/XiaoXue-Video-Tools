@@ -1,11 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_data_files
+
+qtawesome_datas = collect_data_files('qtawesome')
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('bin', 'bin'), ('icon.ico', '.')],
+    datas=[('bin', 'bin'), ('icon.ico', '.'), ('image', 'image')] + qtawesome_datas,
     hiddenimports=[
         'requests',
         'urllib3',
@@ -15,6 +18,7 @@ a = Analysis(
         'PyQt6.QtWidgets',
         'PyQt6.QtCore',
         'PyQt6.QtGui',
+        'qtawesome',
     ],
     hookspath=[],
     hooksconfig={},
