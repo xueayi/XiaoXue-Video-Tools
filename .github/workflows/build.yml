@@ -86,12 +86,6 @@ jobs:
         run: |
           Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
       
-      - name: Generate SHA256 checksum
-        run: |
-          $zip = "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
-          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          Set-Content -Path "$zip.sha256" -Value $hash -Encoding ascii -NoNewline
-
       - name: Upload artifact (${{ matrix.display_name }})
         uses: actions/upload-artifact@v4
         with:
@@ -124,9 +118,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
-            XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip.sha256
+          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
           generate_release_notes: false
           draft: false
           prerelease: false
@@ -153,3 +145,69 @@ jobs:
             
             详细更新日志请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
 
+  # 矩阵完成后: 计算全部 zip 的 SHA256, 幂等地嵌入 Release 正文
+  # (替代独立 .sha256 资产, 保持发行页整洁; 更新器从正文解析校验和)
+  release-finalize:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: XiaoXue-Video-Tools-*
+          merge-multiple: true
+
+      - name: Embed SHA256 into release body
+        shell: python
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          import hashlib
+          import json
+          import os
+          from urllib import request
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          base = f"https://api.github.com/repos/{repo}"
+          headers = {"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                     "Accept": "application/vnd.github+json"}
+
+          def api(url, payload=None):
+              data = json.dumps(payload).encode() if payload else None
+              req = request.Request(url, headers=headers, data=data,
+                                    method="PATCH" if payload else "GET")
+              with request.urlopen(req) as resp:
+                  return json.load(resp)
+
+          hashes = {}
+          for name in sorted(os.listdir(".")):
+              if name.endswith(".zip"):
+                  h = hashlib.sha256()
+                  with open(name, "rb") as f:
+                      for chunk in iter(lambda: f.read(1 << 20), b""):
+                          h.update(chunk)
+                  hashes[name] = h.hexdigest()
+          if not hashes:
+              raise SystemExit("no zip artifacts found")
+
+          release = api(f"{base}/releases/tags/{tag}")
+          lines = (release.get("body") or "").splitlines()
+          out, skip = [], False
+          for line in lines:
+              if line.strip() == "### SHA256 校验和":
+                  skip = True
+                  continue
+              if skip and line.startswith(("### ", "## ")):
+                  skip = False
+              if not skip:
+                  out.append(line)
+
+          nl = chr(10)
+          section = nl * 2 + "### SHA256 校验和" + nl + nl + "```" + nl
+          section += nl.join(f"{h}  {n}" for n, h in hashes.items())
+          section += nl + "```" + nl
+          new_body = nl.join(out).rstrip() + nl + section
+          api(f"{base}/releases/{release['id']}", {"body": new_body})
+          print("embedded", len(hashes), "checksums into release body")

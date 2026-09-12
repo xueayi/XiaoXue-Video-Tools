@@ -11,8 +11,9 @@ import src.updater as updater
 from src.updater import (
     ReleaseInfo, UpdateError, cleanup_staging, download, ensure_disk_space,
     fetch_checksum, fetch_latest, get_skip_version, is_dev_version,
-    is_newer, launch_updater, parse_version, prepare, set_skip_version,
-    sha256_of, verify_sha256, _pick_asset,
+    is_newer, launch_updater, parse_checksums_from_body, parse_version,
+    prepare, resolve_checksum, set_skip_version, sha256_of,
+    verify_sha256, _pick_asset,
 )
 
 
@@ -463,3 +464,84 @@ def test_release_info_defaults():
     info = ReleaseInfo(version="2.2.0", asset_name="a.zip",
                        asset_url="u", asset_size=1, sha256_url="s")
     assert info.notes == "" and info.html_url == ""
+
+
+# ----------------------------------------------------------------
+# Release 正文校验和
+# ----------------------------------------------------------------
+
+BODY_WITH_SHA = (
+    "## 小雪工具箱 v2.2.1" + chr(10) + chr(10) +
+    "### 下载说明" + chr(10) + chr(10) +
+    "- 解压后运行 小雪工具箱.exe" + chr(10) + chr(10) +
+    "### SHA256 校验和" + chr(10) + chr(10) +
+    "```" + chr(10) +
+    "a" * 64 + "  XiaoXueToolbox_v2.2.1_Windows_x64.zip" + chr(10) +
+    "b" * 64 + "  XiaoXueToolbox_v2.2.1_Shield_Windows_x64.zip" + chr(10) +
+    "```" + chr(10)
+)
+
+
+def test_parse_checksums_from_body():
+    from src.updater import parse_checksums_from_body
+    got = parse_checksums_from_body(BODY_WITH_SHA)
+    assert got == {
+        "XiaoXueToolbox_v2.2.1_Windows_x64.zip": "a" * 64,
+        "XiaoXueToolbox_v2.2.1_Shield_Windows_x64.zip": "b" * 64,
+    }
+
+
+def test_parse_checksums_no_section():
+    from src.updater import parse_checksums_from_body
+    assert parse_checksums_from_body("普通说明, 无校验段") == {}
+    assert parse_checksums_from_body("") == {}
+    assert parse_checksums_from_body(None) == {}
+
+
+def test_parse_checksums_stops_at_next_heading():
+    from src.updater import parse_checksums_from_body
+    body = ("### SHA256 校验和" + chr(10) +
+            "c" * 64 + "  a.zip" + chr(10) +
+            "### 下一段" + chr(10) +
+            "d" * 64 + "  b.zip" + chr(10))
+    got = parse_checksums_from_body(body)
+    assert got == {"a.zip": "c" * 64}  # 段落到下一个标题为止
+
+
+def test_parse_checksums_skips_invalid_lines():
+    from src.updater import parse_checksums_from_body
+    body = ("### SHA256 校验和" + chr(10) +
+            "not-a-hash  bad.zip" + chr(10) +
+            "e" * 64 + "  good.zip" + chr(10))
+    got = parse_checksums_from_body(body)
+    assert got == {"good.zip": "e" * 64}
+
+
+def _release(notes, sha_url="https://dl/x.zip.sha256"):
+    return ReleaseInfo(
+        version="2.2.1",
+        asset_name="XiaoXueToolbox_v2.2.1_Windows_x64.zip",
+        asset_url="https://dl/x.zip", asset_size=10,
+        sha256_url=sha_url, notes=notes)
+
+
+def test_resolve_checksum_prefers_body(monkeypatch):
+    called = []
+    monkeypatch.setattr(updater, "fetch_checksum",
+                        lambda url: called.append(url))
+    got = resolve_checksum(_release(BODY_WITH_SHA))
+    assert got == "a" * 64
+    assert called == []  # 正文命中, 不再请求资产
+
+
+def test_resolve_checksum_falls_back_to_asset(monkeypatch):
+    monkeypatch.setattr(updater, "fetch_checksum",
+                        lambda url: "f" * 64)
+    got = resolve_checksum(_release("无校验段的正文"))
+    assert got == "f" * 64
+
+
+def test_resolve_checksum_all_missing(monkeypatch):
+    monkeypatch.setattr(updater, "fetch_checksum",
+                        lambda url: None)
+    assert resolve_checksum(_release("", sha_url="")) is None
