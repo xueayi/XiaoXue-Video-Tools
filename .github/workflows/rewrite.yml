@@ -37,7 +37,7 @@ jobs:
       - name: Clippy
         run: cargo clippy --all
 
-  frontend:
+  app:
     runs-on: windows-latest
     defaults:
       run:
@@ -51,21 +51,6 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build (tsc + vite)
-        run: npm run build
-
-  tauri-shell:
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: app/src-tauri
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -76,13 +61,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             app/src-tauri/target
-          key: ${{ runner.os }}-tauri-${{ hashFiles('app/src-tauri/Cargo.toml', 'app/src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-app-${{ hashFiles('app/src-tauri/Cargo.toml', 'app/src-tauri/Cargo.lock') }}
 
-      # generate_context! 宏需要 frontendDist 目录存在
-      - name: Stub frontend dist
-        run: |
-          New-Item -ItemType Directory -Force -Path app/dist | Out-Null
-          Set-Content app/dist/index.html "<!doctype html><html></html>"
+      - name: Install frontend dependencies
+        run: npm install
 
-      - name: Check
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check Tauri shell
+        working-directory: app/src-tauri
         run: cargo check --all
