@@ -528,6 +528,68 @@ pub fn build_2pass_commands(o: &EncodeOptions) -> (Vec<String>, Vec<String>) {
     (pass1, pass2)
 }
 
+/// 封装转换批量规划 (file_executor.execute_remux 的规划部分)。
+#[derive(Debug, Default, serde::Serialize)]
+pub struct RemuxPlan {
+    pub commands: Vec<Vec<String>>,
+    /// 覆盖模式下, 成功后需要删除的原始文件
+    pub originals_to_delete: Vec<String>,
+    pub outputs: Vec<String>,
+}
+
+pub fn plan_remux_commands(
+    inputs: &[String],
+    output_dir: &str,
+    extension: &str,
+    overwrite: bool,
+    audio_tracks: &str,
+    audio_custom: &str,
+    subtitle_tracks: &str,
+    subtitle_custom: &str,
+) -> RemuxPlan {
+    let mut ext = extension.trim().to_string();
+    if ext.is_empty() {
+        ext = ".mp4".into();
+    }
+    if !ext.starts_with('.') {
+        ext = format!(".{ext}");
+    }
+    ext = ext.to_ascii_lowercase();
+
+    let mut plan = RemuxPlan::default();
+    for input in inputs {
+        let basename = std::path::Path::new(input)
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "output".into());
+        let output_path = if output_dir.trim().is_empty() {
+            let dir = std::path::Path::new(input)
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_default();
+            dir.join(format!("{basename}_remux{ext}"))
+        } else {
+            std::path::Path::new(output_dir)
+                .join(format!("{basename}_remux{ext}"))
+        };
+        let output = output_path.to_string_lossy().into_owned();
+
+        plan.commands.push(build_remux_command(
+            input, &output, audio_tracks, audio_custom,
+            subtitle_tracks, subtitle_custom,
+        ));
+        plan.outputs.push(output.clone());
+        let same = std::path::Path::new(input)
+            .to_string_lossy()
+            .to_lowercase()
+            == output.to_lowercase();
+        if overwrite && !same {
+            plan.originals_to_delete.push(input.clone());
+        }
+    }
+    plan
+}
+
 /// 执行 FFmpeg 命令 (core.run_ffmpeg_command)。
 ///
 /// `progress` 逐行接收 stderr 输出 (ffmpeg 进度写在 stderr)。

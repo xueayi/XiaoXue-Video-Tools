@@ -9,6 +9,7 @@ pub mod batch;
 pub mod ffmpeg;
 pub mod folder;
 pub mod notify;
+pub mod progress;
 pub mod paths;
 pub mod probe;
 pub mod version;

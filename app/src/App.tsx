@@ -32,12 +32,23 @@ import {
   qualityPresetNames,
   EncodeOptions,
 } from "./lib/engine";
+import { ReplaceAudioPage, ExtractAvPage, RemuxPage, FolderPage, RenamePage } from "./pages/task-pages";
+import { NotificationPage, HelpPage } from "./pages/misc-pages";
 
 /* ---- 导航定义 (与 Python 版分组一致) ---- */
 type PageId =
   | "encode"
   | "probe"
+  | "replace_audio"
+  | "extract_av"
+  | "remux"
+  | "folder"
+  | "rename"
+  | "notification"
+  | "help"
   | "placeholder";
+
+const MIGRATING = ["image", "qc"]; // 尚未迁移的页面
 
 const NAV: { section: string; items: { id: PageId | string; label: string; icon: JSX.Element }[] }[] = [
   {
@@ -97,7 +108,7 @@ export default function App() {
             <div key={group.section}>
               <div className="nav-section">{group.section}</div>
               {group.items.map((item) => {
-                const enabled = item.id === "encode" || item.id === "probe";
+                const enabled = !MIGRATING.includes(item.id as string);
                 return (
                   <button
                     key={item.id}
@@ -126,10 +137,17 @@ export default function App() {
           <div className="page-column">
             {page === "encode" && <EncodePage />}
             {page === "probe" && <ProbePage />}
-            {page !== "encode" && page !== "probe" && (
+            {page === "replace_audio" && <ReplaceAudioPage />}
+            {page === "extract_av" && <ExtractAvPage />}
+            {page === "remux" && <RemuxPage />}
+            {page === "folder" && <FolderPage />}
+            {page === "rename" && <RenamePage />}
+            {page === "notification" && <NotificationPage />}
+            {page === "help" && <HelpPage />}
+            {MIGRATING.includes(page as string) && (
               <div className="card">
                 <h3 className="card-title">迁移中</h3>
-                <p className="card-desc">该页面将在 M3 阶段移植。</p>
+                <p className="card-desc">该页面将在后续阶段移植。</p>
               </div>
             )}
           </div>
