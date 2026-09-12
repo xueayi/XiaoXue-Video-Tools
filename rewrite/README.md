@@ -74,8 +74,10 @@ cd app && npx tauri build
 ### M3 — 全功能页面
 - 12 个功能页 + 设置 + 更新对话框, 与 Python 版对齐验收
 
-### M4 — 打包与热更新 (进行中)
-- 本地 `npx tauri build` 出 NSIS 安装包 + 绿色单体 exe (前端已内嵌)
+### M4 — 打包与热更新 ✅ (本地验证完成)
+- `npx tauri build` 实测产出: NSIS 安装包 2.8MB + 绿色单体 exe 11.4MB
+  (前端已内嵌, 体积较 Python 版 190MB 缩小 94%)
+- release 冒烟通过 (启动/运行正常)
 - 发版工作流: rewrite-release.yml (tag `rw-v*` 触发, prerelease)
 - 热更新: 单体 exe 替换模型 (比 PyInstaller 布局简单)
 
