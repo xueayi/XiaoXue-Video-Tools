@@ -56,6 +56,7 @@ class Sidebar(QWidget):
     """
 
     tab_changed = pyqtSignal(int)
+    update_check_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -103,7 +104,14 @@ class Sidebar(QWidget):
         self._pill = _PillIndicator(self._list.viewport())
         self._pill.hide()
 
-        # ---- 底部: 主题切换 ----
+        # ---- 底部: 检查更新 + 主题切换 ----
+        self._update_btn = QPushButton("检查更新")
+        self._update_btn.setObjectName("sidebar_footer_btn")
+        self._update_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._update_btn.setIconSize(QSize(15, 15))
+        self._update_btn.clicked.connect(self.update_check_requested.emit)
+        root.addWidget(self._update_btn)
+
         self._theme_btn = QPushButton()
         self._theme_btn.setObjectName("sidebar_footer_btn")
         self._theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -166,6 +174,7 @@ class Sidebar(QWidget):
     def setEnabled(self, enabled: bool):
         super().setEnabled(enabled)
         self._list.setEnabled(enabled)
+        self._update_btn.setEnabled(enabled)
         self._theme_btn.setEnabled(enabled)
 
     # ----------------------------------------------------------------
@@ -175,6 +184,7 @@ class Sidebar(QWidget):
     def set_theme_icons(self):
         """主题切换后刷新: 图标颜色、Logo、分组标题、按钮文案。"""
         self._pill.set_color(theme.color("icon_color_accent"))
+        self._update_btn.setIcon(icons.secondary("ri.download-2-line"))
 
         logo_path = theme.logo_path()
         if logo_path:

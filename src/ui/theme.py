@@ -861,14 +861,13 @@ QToolButton#fold_header:checked {
 # 主题存取
 # ================================================================
 
-_ORG = "XiaoXue"
-_APP = "XiaoXueToolbox"
 _KEY_THEME = "ui/theme"
 _KEY_REDUCED_MOTION = "ui/reduced_motion"
 
 
 def _settings() -> QSettings:
-    return QSettings(_ORG, _APP)
+    from ..gui_config import get_qsettings
+    return get_qsettings()
 
 
 def get_theme() -> str:

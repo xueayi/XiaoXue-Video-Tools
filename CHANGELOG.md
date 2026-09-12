@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### 热更新 (方案 A: 整包自更新)
+- 启动 2.5s 后静默检查新版本 (GitHub Releases API, 仅正式版通道), 24h 一次;
+  侧边栏底部与「关于 → 检查更新」菜单提供手动入口
+- 更新对话框: 新版本号/更新日志/下载进度/SHA256 校验, 支持「跳过此版本」
+- 下载支持断点续传与取消; 磁盘空间预检; 校验和缺失时优雅降级
+- PowerShell 更新器: 等主程序退出 → 旧版备份 (_backup) → 替换 exe 与
+  _internal → 自动重启; 替换失败自动回滚, 用户配置 (config.ini 等) 天然保留
+- 仅替换 exe 与 _internal, exe 文件名不进入更新路径 (中文名/英文名均兼容)
+- CI 发布流程附带 SHA256 校验和资产 (build.yml / build-beta.yml)
+- 测试环境可用 XIAOXUE_NO_UPDATE_CHECK=1 禁用自动检查
+
+### 配置存储修复
+- 修复 QSettings 误用双参构造导致配置写入 Windows 注册表的问题
+  (setDefaultFormat 对该构造器无效), 现统一为便携式 config.ini
+  (exe / 项目根目录), 并清理了测试污染的注册表残留
+
 ### 启动程序改名
 - 主程序文件名改为中文「小雪工具箱.exe」，更符合软件定位
 - 经评估不影响兼容模式 (AviSynth + VSFilter) 运行: exe 文件名不进入
