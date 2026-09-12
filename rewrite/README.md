@@ -3,6 +3,10 @@
 > 目标: 用 Tauri 2 (Rust 后端 + React/TypeScript 前端) 重写小雪工具箱,
 > 换取 启动 <0.5s / 内存 ~100MB / 壳体积 <20MB / Web 级 UI 上限。
 > 业务本质是「ffmpeg 编排器」, Rust 标准库即可覆盖全部编排逻辑。
+>
+> **范围决定 (2026-09-12): 重写版不包含 Shield (露骨图片识别)**。
+> 该功能依赖 imgutils/onnxruntime 的 Python 生态, 移植成本与收益不成比例;
+> 需要此功能的用户请继续使用 Python 版 (两版长期并存)。
 
 ## 决策记录
 
@@ -12,7 +16,6 @@
 | 前端 | React 18 + TS + Fluent UI React v9 | 与现有 Fluent 设计语言延续, 视觉上限最高 |
 | 后端 | 纯 Rust std + serde_json | ffmpeg 编排/ffprobe 解析无需重依赖 |
 | 仓库形态 | 与 Python 版同仓库, `engine/` + `app/` 共存 | 逻辑可并行对照迁移, Python 版继续作为生产版本 |
-| Shield (NSFW) | **最后移植** (M4) | imgutils 预处理管线移植成本高; 期间由 Python 版承担 |
 | 热更新 | 单体二进制替换 (M5) | 比 PyInstaller 布局更简单; ffmpeg 目录按需更新 |
 
 ## 本地开发前置
@@ -44,12 +47,7 @@ winget install OpenJS.NodeJS.LTS      # Node 20+
 ### M3 — 全功能页面
 - 12 个功能页 + 设置 + 更新对话框, 与 Python 版对齐验收
 
-### M4 — Shield 移植决策
-- 方案 a: onnxruntime Rust 绑定直跑 anime_rating/censor 两个 ONNX 模型
-  (需移植 imgutils 的预处理管线, 工作量最大)
-- 方案 b: 首版不带 Shield, Python 版作为 Shield 伴侣工具并存
-
-### M5 — 打包与热更新
+### M4 — 打包与热更新
 - tauri bundler (nsis) + zip 产物; ffmpeg 仍外置 bin/ (体积大头不变, 可后续按需下载)
 - 更新器: 替换单体 exe + resources, 复用「备份-替换-重启」模型
 
@@ -64,3 +62,4 @@ winget install OpenJS.NodeJS.LTS      # Node 20+
 | `src/image_converter.py` | `engine/src/image.rs` (M1, image crate) |
 | `src/notify*.py` | `engine/src/notify.rs` (M1, ureq) |
 | `src/ui/**` | `app/src/**` (M2-M3) |
+| `src/nsfw_detect.py` (Shield) | **不移植** — Python 版独有功能 |

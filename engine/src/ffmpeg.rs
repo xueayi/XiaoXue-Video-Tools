@@ -389,6 +389,207 @@ pub fn build_replace_audio_command(video: &str, audio: &str, output: &str,
     cmd
 }
 
+/// 构建音频抽取命令 (core.build_extract_audio_command)。
+pub fn build_extract_audio_command(input: &str, output: &str,
+                                   audio_encoder: &str, audio_bitrate: &str) -> Vec<String> {
+    let mut cmd: Vec<String> = vec![
+        "ffmpeg".into(), "-y".into(),
+        "-i".into(), input.into(),
+        "-vn".into(),
+        "-c:a".into(), audio_encoder.into(),
+    ];
+    if audio_encoder != "copy" {
+        cmd.push("-b:a".into());
+        cmd.push(audio_bitrate.into());
+    }
+    cmd.push(output.into());
+    cmd
+}
+
+/// 构建纯视频提取命令, 剥离音频 (core.build_extract_video_command)。
+pub fn build_extract_video_command(input: &str, output: &str) -> Vec<String> {
+    vec![
+        "ffmpeg".into(), "-y".into(),
+        "-i".into(), input.into(),
+        "-an".into(),
+        "-c:v".into(), "copy".into(),
+        output.into(),
+    ]
+}
+
+/// 构建真正的两遍编码命令 (core.build_2pass_commands)。
+/// 返回 (pass1, pass2)。
+pub fn build_2pass_commands(o: &EncodeOptions) -> (Vec<String>, Vec<String>) {
+    let mut encoder = o.encoder.clone();
+    let mut speed_preset = o.speed_preset.clone();
+    let mut audio_bitrate = o.audio_bitrate.clone();
+    if let Some(name) = &o.preset_name {
+        if let Some(preset) = quality_preset(name) {
+            encoder = encoder.or_else(|| Some(preset.encoder.to_string()));
+            speed_preset = speed_preset.or_else(|| Some(preset.speed_preset.to_string()));
+            if o.audio_bitrate.is_empty() {
+                audio_bitrate = preset.audio_bitrate.to_string();
+            }
+        }
+    }
+    let actual_encoder = encoder.unwrap_or_else(|| "libx264".into());
+    let is_nvenc = actual_encoder.contains("nvenc");
+    let is_amf = actual_encoder.contains("amf");
+    let bitrate = o
+        .bitrate
+        .clone()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "10M".into());
+
+    // 视频滤镜链
+    let mut vf: Vec<String> = Vec::new();
+    if let Some(sub) = &o.subtitle_path {
+        vf.push(format!("subtitles='{}'", escape_path_for_ffmpeg(sub)));
+    }
+    if let Some(res) = &o.resolution {
+        if res.contains('x') {
+            let parts: Vec<&str> = res.split('x').collect();
+            if parts.len() == 2 {
+                vf.push(format!("scale={}:{}", parts[0], parts[1]));
+            }
+        }
+    }
+
+    let mut base: Vec<String> = vec![
+        "ffmpeg".into(), "-y".into(), "-i".into(), o.input.clone(),
+    ];
+    if !vf.is_empty() {
+        base.push("-vf".into());
+        base.push(vf.join(","));
+    }
+    base.push("-c:v".into());
+    base.push(actual_encoder.clone());
+    base.push("-b:v".into());
+    base.push(bitrate.clone());
+    if let Some(sp) = &speed_preset {
+        base.push("-preset".into());
+        base.push(sp.clone());
+    }
+    if let Some(fps) = o.fps {
+        if fps > 0 {
+            base.push("-r".into());
+            base.push(fps.to_string());
+        }
+    }
+    if let Some(extra) = &o.extra_args {
+        base.extend(extra.split(' ').filter(|s| !s.is_empty()).map(str::to_string));
+    }
+
+    // Pass 1: 分析阶段, 输出到空设备
+    let mut pass1 = base.clone();
+    if is_nvenc {
+        pass1.extend(["-multipass".into(), "fullres".into(), "-2pass".into(), "1".into()]);
+    } else if is_amf {
+        pass1.extend(["-2pass".into(), "1".into()]);
+    } else {
+        pass1.extend(["-pass".into(), "1".into()]);
+    }
+    let sink = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    pass1.extend(["-an".into(), "-f".into(), "null".into(), sink.into()]);
+
+    // Pass 2: 实际编码
+    let mut pass2 = base.clone();
+    if is_nvenc {
+        pass2.extend(["-multipass".into(), "fullres".into(), "-2pass".into(), "1".into()]);
+    } else if is_amf {
+        pass2.extend(["-2pass".into(), "1".into()]);
+    } else {
+        pass2.extend(["-pass".into(), "2".into()]);
+    }
+    pass2.extend(["-map".into(), "0:v:0".into()]);
+    pass2.extend(stream_map_args("a", &o.audio_tracks, &o.audio_tracks_custom));
+    pass2.extend(stream_map_args("s", &o.subtitle_tracks, &o.subtitle_tracks_custom));
+    if o.audio_tracks != "none" && !pass2.iter().any(|a| a == "-an") {
+        pass2.push("-c:a".into());
+        pass2.push(o.audio_encoder.clone());
+        if o.audio_encoder != "copy" {
+            pass2.push("-b:a".into());
+            pass2.push(audio_bitrate.clone());
+        }
+    }
+    if o.subtitle_tracks != "none" && !pass2.iter().any(|a| a == "-sn") {
+        pass2.push("-c:s".into());
+        pass2.push("copy".into());
+    }
+    pass2.push(o.output.clone());
+
+    (pass1, pass2)
+}
+
+/// 执行 FFmpeg 命令 (core.run_ffmpeg_command)。
+///
+/// `progress` 逐行接收 stderr 输出 (ffmpeg 进度写在 stderr)。
+/// 返回退出码; 找不到可执行文件或进程错误返回 -1。
+pub fn run_ffmpeg_command(cmd: &[String], dry_run: bool,
+                          mut progress: impl FnMut(&str)) -> i32 {
+    let joined = cmd.join(" ");
+    println!("[小雪工具箱] 执行命令:\n{joined}\n{}", "-".repeat(50));
+    if dry_run {
+        println!("[Debug 模式] 仅输出命令，不执行。");
+        return 0;
+    }
+    let spawn = std::process::Command::new(&cmd[0])
+        .args(&cmd[1..])
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::piped())
+        .spawn();
+    let mut child = match spawn {
+        Ok(c) => c,
+        Err(e) => {
+            println!("[错误] 无法启动 FFmpeg: {e}");
+            return -1;
+        }
+    };
+    if let Some(stderr) = child.stderr.take() {
+        use std::io::{BufRead, BufReader};
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            println!("{line}");
+            progress(&line);
+        }
+    }
+    match child.wait() {
+        Ok(status) => status.code().unwrap_or(-1),
+        Err(e) => {
+            println!("[错误] 执行失败: {e}");
+            -1
+        }
+    }
+}
+
+/// 执行两遍编码 (core.run_2pass_encode)。
+pub fn run_2pass_encode(pass1: &[String], pass2: &[String], dry_run: bool,
+                        progress: &mut impl FnMut(&str)) -> i32 {
+    if dry_run {
+        println!("[小雪工具箱] 执行命令 (2-Pass):\nPass 1: {}\nPass 2: {}\n[Debug 模式] 仅输出命令，不执行。",
+                 pass1.join(" "), pass2.join(" "));
+        return 0;
+    }
+    println!("[Pass 1/2] 分析视频...");
+    let r1 = run_ffmpeg_command(pass1, false, |l| progress(l));
+    if r1 != 0 {
+        println!("[错误] Pass 1 失败，终止编码");
+        return r1;
+    }
+    println!("[Pass 2/2] 正式编码...");
+    let r2 = run_ffmpeg_command(pass2, false, |l| progress(l));
+    // 清理 2-pass 临时文件
+    if let Ok(entries) = std::fs::read_dir(".") {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("ffmpeg2pass") {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+    r2
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
