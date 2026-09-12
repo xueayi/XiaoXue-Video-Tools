@@ -537,6 +537,7 @@ pub struct RemuxPlan {
     pub outputs: Vec<String>,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn plan_remux_commands(
     inputs: &[String],
     output_dir: &str,
