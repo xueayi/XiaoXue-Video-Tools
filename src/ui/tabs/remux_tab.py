@@ -92,12 +92,6 @@ class RemuxTab(BaseTab):
         self._compat_warn_label.setObjectName("hint_warning")
         self._main_layout.addWidget(self._compat_warn_label)
 
-        # ---- 在线文档 ----
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image",
-        )
         self.add_stretch()
 
         # ---- 信号 ----

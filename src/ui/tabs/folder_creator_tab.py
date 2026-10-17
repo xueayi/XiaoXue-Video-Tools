@@ -34,9 +34,6 @@ class FolderCreatorTab(BaseTab):
             "开启后自动在文件夹名前添加序号 (如 1_文件夹名)",
         )
 
-        docs = self.add_group("在线文档")
-        self.add_link(docs, "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools")
-
         self.add_stretch()
 
     def build_args(self):

@@ -252,15 +252,6 @@ def test_add_hint_adds_exactly_one_form_row(tab):
     assert io.rowCount() == before + 2
 
 
-def test_add_link(tab):
-    from PyQt6.QtWidgets import QLabel
-    io = tab.add_group("g")
-    tab.add_link(io, "https://example.com", "点我")
-    links = [lb for lb in io.parentWidget().findChildren(QLabel)
-             if lb.text().startswith("<a href")]
-    assert links and "点我" in links[0].text()
-
-
 def test_add_collapsible_group(tab):
     lay = tab.add_collapsible_group("高级", "说明", expanded=True)
     tab.add_text_input(lay, "字段", "")

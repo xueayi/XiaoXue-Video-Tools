@@ -37,11 +37,6 @@ class MediaProbeTab(BaseTab):
             "目录模式下，勾选后将扫描所有子目录",
         )
 
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Media-Probe",
-        )
         self.add_stretch()
 
     def build_args(self):

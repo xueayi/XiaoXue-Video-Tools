@@ -59,11 +59,6 @@ class ExtractAvTab(BaseTab):
             "tip",
         )
 
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Video-Tools",
-        )
         self.add_stretch()
 
     def build_args(self):

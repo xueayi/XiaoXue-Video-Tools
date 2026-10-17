@@ -88,11 +88,6 @@ class BatchRenameTab(BaseTab):
             "递归模式下，忽略文件夹名中第一个下划线后的内容",
         )
 
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Batch-Tools",
-        )
         self.add_stretch()
 
         # 控件联动

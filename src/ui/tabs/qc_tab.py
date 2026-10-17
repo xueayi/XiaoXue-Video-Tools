@@ -84,11 +84,6 @@ class QcTab(BaseTab):
             "逗号分隔的不兼容图片扩展名 (不含点号)",
         )
 
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Quality-Control",
-        )
         self.add_stretch()
 
         # 控件联动

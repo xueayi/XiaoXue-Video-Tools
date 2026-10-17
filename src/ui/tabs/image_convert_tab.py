@@ -51,11 +51,6 @@ class ImageConvertTab(BaseTab):
             "warning",
         )
 
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Remux-Image",
-        )
         self.add_stretch()
 
         # 控件联动

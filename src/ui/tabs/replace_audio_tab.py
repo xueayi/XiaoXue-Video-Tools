@@ -44,11 +44,6 @@ class ReplaceAudioTab(BaseTab):
             audio, "音频码率", AUDIO_BITRATES, "192k",
         )
 
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Audio-Video-Tools",
-        )
         self.add_stretch()
 
     def build_args(self):

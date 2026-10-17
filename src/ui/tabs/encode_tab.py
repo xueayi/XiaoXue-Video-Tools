@@ -8,8 +8,7 @@
     D. 轨道选择     —— 探测到的音频/字幕轨道勾选 (保留既有能力)
     E. 压制后分发   —— 成品自动复制/移动 (文档未提, 保留功能)
     F. 高级设置     —— 默认折叠: encoder/RC/CRF/码率/fps/流编号/extra_args/debug
-    G. 在线文档
-    H. 执行摘要     —— 页尾卡片, 与 executor 同源 (resolve_encoder_params) 实时预览
+    G. 执行摘要     —— 页尾卡片, 与 executor 同源 (resolve_encoder_params) 实时预览
 
 硬约束：所有控件属性名、``build_args()`` 键集与 command 保持不变。
 """
@@ -150,27 +149,31 @@ class EncodeTab(BaseTab):
             "warning",
         )
 
-        # 字幕
-        self._add_section_label(common, "字幕")
+        # 字幕烧录（硬字幕）
+        self._add_section_label(common, "字幕烧录（硬字幕）")
         self.subtitle_edit = self.add_file_chooser(
             common, "字幕文件 (可选)",
             "字幕文件 (*.srt *.ass *.ssa);;所有文件 (*.*)",
-            "选择要烧录的字幕文件 (留空则不烧录)",
+            "选择要烧录的字幕文件 (留空则不烧录)；烧录后字幕会直接画进画面",
         )
         self.compat_mode_cb = self.add_checkbox(
             common, "兼容模式 (字幕)", False, COMPAT_MODE_TOOLTIP,
         )
+
+        # 内封字幕流（软字幕）
+        self._add_section_label(common, "内封字幕流（软字幕）")
         self.subtitle_tracks_combo = self.add_combo(
             common, "保留字幕",
             list(SUBTITLE_TRACK_OPTIONS.keys()), "不保留字幕",
-            "注意：MP4 不支持 ASS 字幕。",
+            "保留源视频容器里已有的字幕轨（播放器可开关/切换）；与上方的字幕烧录互不影响",
         )
         self.add_hint(
             common,
-            "「字幕烧录」= 硬编码到画面中，不可关闭\n"
-            "「保留字幕流」= 保留在容器中可切换的字幕轨\n"
-            "两者是不同概念，可同时使用；MP4 不支持 ASS 字幕，"
-            "需要时请选择「不保留字幕」或输出 MKV 格式。",
+            "两个概念别混：\n"
+            "· 「字幕文件」= 烧录（硬字幕）：把外挂 .srt/.ass 画进画面，播放器无法关闭；\n"
+            "· 「保留字幕」= 内封字幕流（软字幕）：保留源视频里已有的字幕轨，播放器可切换；\n"
+            "两者互不冲突，可同时使用；「兼容模式」只影响烧录的渲染方式（仅 Windows）。\n"
+            "注意：MP4 不支持 ASS 字幕，需要时请把「保留字幕」设为「不保留字幕」或输出 MKV。",
             "info",
         )
 
@@ -284,15 +287,6 @@ class EncodeTab(BaseTab):
         self.debug_mode_cb = self.add_checkbox(
             advanced, "Debug 模式", False,
             "勾选后仅打印 FFmpeg 命令，不执行实际编码",
-        )
-
-        # ================================================================
-        # G. 在线文档
-        # ================================================================
-        docs = self.add_group("在线文档")
-        self.add_link(
-            docs,
-            "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Video-Encode",
         )
 
         # ================================================================

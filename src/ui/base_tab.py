@@ -276,12 +276,6 @@ class BaseTab(QScrollArea):
         layout.addRow(label, edit)
         return edit
 
-    def add_link(self, layout, url, text="查看在线文档"):
-        """添加可点击的超链接。"""
-        link = QLabel(f'<a href="{url}" style="text-decoration: none;">{text}</a>')
-        link.setOpenExternalLinks(True)
-        layout.addRow("", link)
-
     def add_hint(self, layout, text, hint_type="info"):
         """添加带样式的内联提示标签。
 
