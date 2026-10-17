@@ -213,6 +213,43 @@ def make_platform_capabilities(**overrides):
     return PlatformCapabilities(**values)
 
 
+class MutablePlatformCapabilities:
+    """可变平台能力替身 (``is_windows`` / ``is_macos`` 由 ``os_name`` 派生)。
+
+    与 :func:`make_platform_capabilities` 的冻结快照不同, 这个替身允许用例
+    中途改属性 (例如 Windows → darwin), 用于平台矩阵断言。
+    """
+
+    def __init__(self, os_name="win32", ffmpeg_path="", ffprobe_path="",
+                 ffmpeg_caps=None, avisynth_available=True,
+                 self_update_available=True, videotoolbox_available=False):
+        self.os_name = os_name
+        self.ffmpeg_path = ffmpeg_path
+        self.ffprobe_path = ffprobe_path
+        self.ffmpeg_caps = ffmpeg_caps
+        self.avisynth_available = avisynth_available
+        self.self_update_available = self_update_available
+        self.videotoolbox_available = videotoolbox_available
+
+    @property
+    def is_windows(self):
+        return self.os_name == "win32"
+
+    @property
+    def is_macos(self):
+        return self.os_name == "darwin"
+
+    @property
+    def is_linux(self):
+        return self.os_name.startswith("linux")
+
+
+@pytest.fixture
+def platform_caps_stub():
+    """返回可变平台能力替身类, 供平台矩阵用例自行实例化。"""
+    return MutablePlatformCapabilities
+
+
 @pytest.fixture(autouse=True)
 def platform_state_stub(tmp_path, monkeypatch):
     """隔离平台路径与平台能力单例 (M4.4)。

@@ -39,6 +39,7 @@ from ...presets import (
     POST_TRANSFER_MODES, ENCODE_OUTPUT_FORMATS,
 )
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
+from ...platform.capabilities import platform_capabilities
 
 # 默认预设：保持与改造前一致（均衡 H.264 / CRF18）
 DEFAULT_PRESET = "【均衡画质】x264 常用导出 (CRF18)"
@@ -49,6 +50,12 @@ CPU_FALLBACK_ENCODER = "H.264 (CPU - libx264)"
 #: 编码器不可用 / 预设依赖的编码器不可用时的悬停提示
 ENCODER_UNAVAILABLE_HINT = "未检测到该硬件编码器"
 PRESET_ENCODER_UNAVAILABLE_HINT = "依赖的硬件编码器不可用"
+
+#: 「兼容模式 (字幕)」的说明 (AviSynth 不可用时整行隐藏并清空提示, M4.4)
+COMPAT_MODE_TOOLTIP = (
+    "开启：使用 AviSynth+VSFilter 渲染字幕。\n"
+    "关闭 (默认)：使用 FFmpeg 内置 libass 渲染。"
+)
 
 # 预设模式下会被预设覆盖、因而禁用的控件提示
 PRESET_LOCK_HINT = (
@@ -151,9 +158,7 @@ class EncodeTab(BaseTab):
             "选择要烧录的字幕文件 (留空则不烧录)",
         )
         self.compat_mode_cb = self.add_checkbox(
-            common, "兼容模式 (字幕)", False,
-            "开启：使用 AviSynth+VSFilter 渲染字幕。\n"
-            "关闭 (默认)：使用 FFmpeg 内置 libass 渲染。",
+            common, "兼容模式 (字幕)", False, COMPAT_MODE_TOOLTIP,
         )
         self.subtitle_tracks_combo = self.add_combo(
             common, "保留字幕",
@@ -320,6 +325,56 @@ class EncodeTab(BaseTab):
         self._on_transfer_changed(self.post_transfer_mode_combo.currentText())
         self._update_quality_mirror()
         self._refresh_summary()
+
+        # M4.4: AviSynth 不可用的平台隐藏「兼容模式 (字幕)」整行
+        self._sync_avisynth_availability()
+
+    # ----------------------------------------------------------------
+    # 平台能力门禁 (M4.4)
+    # ----------------------------------------------------------------
+
+    def _compat_mode_layout(self):
+        """「兼容模式 (字幕)」所在的 QFormLayout; 找不到返回 None。"""
+        group = getattr(self, "common_group", None)
+        try:
+            return group.layout() if group is not None else None
+        except RuntimeError:  # pragma: no cover - 底层 C++ 对象已释放
+            return None
+
+    def _sync_avisynth_availability(self, state=None):
+        """按 ``platform_capabilities().avisynth_available`` 显示/隐藏兼容模式行。
+
+        AviSynth + VSFilter 只在 Windows 且依赖 DLL 齐全时可用: 不可用时把
+        复选框与表单标签整行收起, 并清空其 tooltip (普通 libass 字幕烧录
+        路径保持不变); 可用时行为与以前完全一致。
+        平台差异一律由平台能力快照给出, 这里不直接判断运行平台。
+        """
+        if state is None:
+            state = platform_capabilities()
+        available = bool(getattr(state, "avisynth_available", False))
+
+        layout = self._compat_mode_layout()
+        if layout is not None and hasattr(layout, "setRowVisible"):
+            try:
+                layout.setRowVisible(self.compat_mode_cb, available)
+            except (TypeError, RuntimeError):  # pragma: no cover - Qt 版本兜底
+                layout = None
+        if layout is None:
+            self.compat_mode_cb.setVisible(available)
+            label = self._compat_mode_label()
+            if label is not None:
+                label.setVisible(available)
+
+        # 隐藏时一并收起说明 (tooltip); 恢复可用时还原
+        self.compat_mode_cb.setToolTip(COMPAT_MODE_TOOLTIP if available else "")
+        return available
+
+    def _compat_mode_label(self):
+        """「兼容模式 (字幕)」的表单标签 (QFormLayout.labelForField)。"""
+        layout = self._compat_mode_layout()
+        if layout is None or not hasattr(layout, "labelForField"):
+            return None
+        return layout.labelForField(self.compat_mode_cb)
 
     # ----------------------------------------------------------------
     # 常用设置辅助
@@ -537,6 +592,10 @@ class EncodeTab(BaseTab):
         self._caps = caps
         self.encoder_capabilities = build_encoder_capabilities(caps)
         by_display = {cap.display: cap for cap in self.encoder_capabilities}
+
+        # 0) M4.4: 平台能力 (AviSynth) 决定兼容模式行是否展示
+        #    (主窗口在推送前已刷新平台能力快照)
+        self._sync_avisynth_availability()
 
         # 1) 编码器下拉: 探测为不可用的项置灰 + 悬停提示
         model = self.encoder_combo.model()

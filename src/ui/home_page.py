@@ -9,11 +9,14 @@
   最多保留 :data:`MAX_RECENT_RECORDS` 条, 用任务卡渲染;
 - 「最近输出」记录真实产出路径, 通过 :meth:`add_recent_outputs` 追加;
 - 「一键清空」同时清空最近任务与最近输出, 两个列表都空时按钮禁用;
-- 环境能力概览展示 FFmpeg 路径与后台能力探测结果 (M3.1)。
+- 环境能力概览展示 FFmpeg 路径与后台能力探测结果 (M3.1), 以及平台能力
+  三行: AviSynth 兼容字幕 / 自动更新 / VideoToolbox (M4.4)。
 
 首页不参与执行 (``is_executable()`` 恒为 False), 底部「开始执行」禁用。
 首页也不发起探测: 探测由主窗口在窗口显示后启动, 结果通过
-:meth:`update_capabilities` 推送过来, 首页只做展示。
+:meth:`update_capabilities` 推送过来, 首页只做展示; 平台能力三行同样
+只读 :func:`src.platform.capabilities.platform_capabilities` 的快照,
+不在 UI 层直接判断运行平台。
 """
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -28,6 +31,7 @@ from ..capabilities import (
     nvenc_available,
     short_probe_error,
 )
+from ..platform.capabilities import platform_capabilities
 from ..utils import get_ffmpeg_path
 from . import icons
 from .base_tab import BaseTab
@@ -36,6 +40,16 @@ from .task_state import TaskStatus, TaskViewState
 
 #: 首页「最近任务 / 最近输出」各自最多保留的条数
 MAX_RECENT_RECORDS = 10
+
+#: 平台能力三行文案 (M4.4)
+PENDING_TEXT = "待检测"
+AVISYNTH_AVAILABLE_TEXT = "可用"
+AVISYNTH_UNAVAILABLE_TEXT = "不可用"
+SELF_UPDATE_AVAILABLE_TEXT = "可用"
+SELF_UPDATE_CHECK_ONLY_TEXT = "仅检查更新"
+VIDEOTOOLBOX_AVAILABLE_TEXT = "可用"
+VIDEOTOOLBOX_UNAVAILABLE_TEXT = "不可用"
+VIDEOTOOLBOX_NOT_MACOS_TEXT = "非 macOS"
 
 
 class HomePage(BaseTab):
@@ -154,6 +168,19 @@ class HomePage(BaseTab):
         self._nvenc_label.setObjectName("muted_label")
         env.addRow("NVENC", self._nvenc_label)
 
+        # M4.4: 平台能力三行 (平台/探测两路来源, 文案见 _refresh_platform_rows)
+        self._avisynth_label = QLabel()
+        self._avisynth_label.setObjectName("muted_label")
+        env.addRow("AviSynth 兼容字幕", self._avisynth_label)
+
+        self._self_update_label = QLabel()
+        self._self_update_label.setObjectName("muted_label")
+        env.addRow("自动更新", self._self_update_label)
+
+        self._videotoolbox_label = QLabel()
+        self._videotoolbox_label.setObjectName("muted_label")
+        env.addRow("VideoToolbox", self._videotoolbox_label)
+
         self.set_probing()
         self.add_hint(
             env,
@@ -253,12 +280,63 @@ class HomePage(BaseTab):
         self._encoder_label.setToolTip("")
         self._nvenc_label.setText("未检测到")
         self._nvenc_label.setToolTip("")
+        self._set_platform_rows_pending()
+
+    def _set_platform_rows_pending(self):
+        """平台能力三行统一显示「待检测」(探测完成前不臆断可用性)。"""
+        for label in (self._avisynth_label, self._self_update_label,
+                      self._videotoolbox_label):
+            label.setText(PENDING_TEXT)
+            label.setToolTip("能力探测完成后显示实际可用性")
+
+    def _refresh_platform_rows(self):
+        """按平台能力快照刷新三行 (M4.4)。
+
+        * AviSynth 兼容字幕: 可用 / 不可用 (Windows + 依赖 DLL);
+        * 自动更新: 可用 / 仅检查更新 (非 Windows 只能在浏览器下载);
+        * VideoToolbox: 可用 / 不可用 / 非 macOS (macOS 专属硬件编码)。
+        """
+        state = platform_capabilities()
+
+        avisynth = bool(getattr(state, "avisynth_available", False))
+        self._avisynth_label.setText(
+            AVISYNTH_AVAILABLE_TEXT if avisynth else AVISYNTH_UNAVAILABLE_TEXT)
+        self._avisynth_label.setToolTip(
+            "已检测到 AviSynth + VSFilter, 压制页可使用「兼容模式 (字幕)」"
+            if avisynth else
+            "当前平台不使用 AviSynth 渲染字幕, 压制页不显示兼容模式选项; "
+            "普通字幕烧录走 FFmpeg 内置 libass")
+
+        self_update = bool(getattr(state, "self_update_available", False))
+        self._self_update_label.setText(
+            SELF_UPDATE_AVAILABLE_TEXT if self_update
+            else SELF_UPDATE_CHECK_ONLY_TEXT)
+        self._self_update_label.setToolTip(
+            "支持在程序内下载并安装新版本"
+            if self_update else
+            "仅提示新版本, 需到 Release 页面手动下载安装")
+
+        if not getattr(state, "is_macos", False):
+            self._videotoolbox_label.setText(VIDEOTOOLBOX_NOT_MACOS_TEXT)
+            self._videotoolbox_label.setToolTip(
+                "VideoToolbox 是 macOS 专属硬件编码, 当前平台不适用")
+        elif getattr(state, "videotoolbox_available", False):
+            self._videotoolbox_label.setText(VIDEOTOOLBOX_AVAILABLE_TEXT)
+            self._videotoolbox_label.setToolTip(
+                "已探测到 h264_videotoolbox / hevc_videotoolbox 硬件编码器")
+        else:
+            self._videotoolbox_label.setText(VIDEOTOOLBOX_UNAVAILABLE_TEXT)
+            self._videotoolbox_label.setToolTip(
+                "macOS 但未探测到 VideoToolbox 编码器")
 
     def update_capabilities(self, caps):
         """接收主窗口推送的探测结果并刷新「环境与能力」区。"""
         if caps is None:
             self.set_probing()
             return
+
+        # M4.4: 平台能力三行与 FFmpeg 探测解耦, 有探测结果就一并刷新
+        self._refresh_platform_rows()
 
         if getattr(caps, "probe_error", None):
             self._capability_label.setText(

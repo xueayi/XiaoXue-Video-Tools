@@ -530,6 +530,9 @@ class MainWindow(QMainWindow):
         self._forward_capabilities_to_tabs(None)
 
     def _apply_capabilities(self, caps):
+        # M4.4: M3 探测完成后刷新平台能力快照 —— VideoToolbox 依赖 M3 的
+        # ffmpeg 能力快照, 首页/设置页/压制页随后读取到的必须是最新结果。
+        platform_capabilities(refresh=True)
         if self._home_page is not None:
             self._home_page.update_capabilities(caps)
         if self._settings_page is not None:
