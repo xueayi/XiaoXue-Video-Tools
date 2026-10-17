@@ -24,20 +24,15 @@ import time
 from dataclasses import dataclass
 from typing import Dict, FrozenSet, Optional, Tuple, Union
 
+from ..presets import ENCODERS
 from ..utils import get_ffmpeg_path
 
 #: 默认单个子进程超时 (秒)
 DEFAULT_TIMEOUT = 15.0
 
-#: UI 展示用的关键编码器 (与 presets.ENCODERS 的 6 个选项保持一致)
-KEY_ENCODERS: Tuple[str, ...] = (
-    "libx264",
-    "libx265",
-    "h264_nvenc",
-    "hevc_nvenc",
-    "h264_qsv",
-    "h264_amf",
-)
+#: UI 展示用的关键编码器 —— 以 presets.ENCODERS 为单一数据源
+#: (新增/删除编码器只需改 presets, 探测层与首页/设置页自动跟随)
+KEY_ENCODERS: Tuple[str, ...] = tuple(ENCODERS.values())
 
 #: 任一命中即视为 NVENC 可用
 NVENC_ENCODERS: FrozenSet[str] = frozenset(
