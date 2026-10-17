@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""主窗口：侧边栏导航 + 功能页面 + 进度仪表盘 + 日志面板。"""
+"""主窗口：侧边栏导航 + 功能页面 + 任务卡执行区 + 可折叠日志。"""
 
 import os
 import webbrowser
@@ -20,12 +20,13 @@ from . import theme
 from . import icons
 from .base_tab import CONTENT_MAX_WIDTH
 from .sidebar import Sidebar
-from .log_panel import LogPanel
+from .collapsible_log import CollapsibleLog
+from .error_card import ErrorCard, classify_log_text
+from .task_card import TaskArea
 from .update_dialog import UpdateDialog, UpdateWorker
 from .task_runner import TaskRunner
 from .animations import AnimatedStackedWidget, button_press_anim, status_flash
 from .ffmpeg_progress import FFmpegProgressParser
-from .progress_dashboard import ProgressDashboard
 from .home_page import HomePage
 from .settings_page import SettingsPage
 from .tabs import (
@@ -43,6 +44,9 @@ from ..executors import (
 from .._version import __version__ as _VERSION
 
 _REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
+
+#: 失败时交给 classify_log_text 的最近日志块数量 (归类函数内部再截取末尾行)
+_ERROR_CONTEXT_CHUNKS = 40
 
 #: 业务键 (Tab.command_name) -> executor 的映射。
 #: 首页/设置页没有命令名, 因此不在其中 (执行按钮对它们禁用)。
@@ -291,10 +295,11 @@ class MainWindow(QMainWindow):
         self._stack = AnimatedStackedWidget()
         right_splitter.addWidget(self._stack)
 
-        # 底部：按钮行 + 仪表盘 + 日志 (与页面内容列同宽居中)
+        # 底部：按钮行 + 任务卡区 + 错误卡 + 折叠日志 (与页面内容列同宽居中)
         bottom = _CenteredColumnWidget(
             CONTENT_MAX_WIDTH, (24, 6, 24, 10), 6)
         bottom_layout = bottom.column_layout()
+        self._bottom = bottom
 
         # 按钮行
         btn_row = QHBoxLayout()
@@ -314,13 +319,24 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
         bottom_layout.addLayout(btn_row)
 
-        # 进度仪表盘
-        self._dashboard = ProgressDashboard()
+        # 任务卡执行区 (替换旧进度仪表盘; 属性名 _dashboard 保持兼容)
+        self._dashboard = TaskArea()
+        self._dashboard.cancel_requested.connect(self._on_stop)
         bottom_layout.addWidget(self._dashboard)
 
-        # 日志面板
-        self._log_panel = LogPanel()
-        bottom_layout.addWidget(self._log_panel, 1)
+        # 错误卡片 (失败时显示在任务区与日志之间, 默认隐藏)
+        self._error_card = ErrorCard()
+        self._error_card.log_requested.connect(self._on_error_log_requested)
+        self._error_card.action_requested.connect(self._on_error_action_requested)
+        bottom_layout.addWidget(self._error_card)
+
+        # 可折叠日志 (默认收起; _log_panel 指向内层 LogPanel 保持旧 API 兼容)
+        self._log_box = CollapsibleLog()
+        self._log_panel = self._log_box.panel
+        bottom_layout.addWidget(self._log_box, 1)
+        # 折叠/展开变化时重算底部最小高度 (展开后需为日志留出空间)
+        self._log_box._toggle.toggled.connect(
+            lambda _checked: self._refresh_bottom_minimum())
 
         right_splitter.addWidget(bottom)
         right_splitter.setStretchFactor(0, 5)
@@ -412,7 +428,7 @@ class MainWindow(QMainWindow):
         self._update_run_button_icons()
         for tab in self._tabs:
             tab.on_theme_changed()
-        self._log_panel.on_theme_changed()
+        self._log_box.on_theme_changed()
 
     def _update_run_button_icons(self):
         running = self._runner is not None and self._runner.isRunning()
@@ -498,8 +514,10 @@ class MainWindow(QMainWindow):
         self._btn_anim = button_press_anim(self._execute_btn)
 
         self._set_running(True)
+        self._error_card.hide()
         self._ffmpeg_parser.reset()
         self._dashboard.show_indeterminate()
+        self._refresh_bottom_minimum()
 
         # 尝试从输入参数获取文件时长
         self._try_set_duration(args)
@@ -535,22 +553,74 @@ class MainWindow(QMainWindow):
             self._runner.wait(3000)
             self._log_panel.append_log("\n⏹ 任务已停止\n")
             self._dashboard.reset()
+            self._error_card.hide()
+            self._refresh_bottom_minimum()
             self._set_running(False)
 
     def _on_task_finished(self, success, command_name):
         if success:
             self._log_panel.append_log(f"\n✔ {command_name} 执行完成\n")
             self._dashboard.finish(True)
+            self._error_card.hide()
             status_flash(self.statusBar(), theme.color("success"), 2000)
         else:
             self._log_panel.append_log(f"\n✘ {command_name} 执行失败\n")
             self._dashboard.finish(False)
+            self._show_error_card()
             status_flash(self.statusBar(), theme.color("danger"), 2000)
 
         self._set_running(False)
         self.statusBar().showMessage(
             f"{'完成' if success else '失败'}  |  v{_VERSION}"
         )
+        self._refresh_bottom_minimum()
+
+    # ----------------------------------------------------------------
+    # 错误卡片 (PR-06; 归类规则后续由 PR-11 迁至 src/ffmpeg/errors.py)
+    # ----------------------------------------------------------------
+
+    def _recent_log_text(self, max_chunks=_ERROR_CONTEXT_CHUNKS) -> str:
+        """最近日志块拼成的文本 (错误归类用)。"""
+        chunks = list(getattr(self._log_panel, "_chunks", []))
+        return "".join(chunks[-max_chunks:])
+
+    def _show_error_card(self):
+        """失败时按最近日志归类, 在任务区与日志之间展示错误卡片。"""
+        self._error_card.show(classify_log_text(self._recent_log_text()))
+        self._refresh_bottom_minimum()
+
+    def _on_error_log_requested(self):
+        """错误卡片「查看完整日志」: 展开底部折叠日志。"""
+        self._log_box.expand()
+        self._refresh_bottom_minimum()
+
+    def _on_error_action_requested(self, action: str):
+        """错误卡片建议操作的 M1 最小实现: 记录提示, 不真正切换编码器。"""
+        self._log_panel.append_log(f"\n💡 建议操作: {action}\n")
+        self.statusBar().showMessage(f"建议操作: {action}  |  v{_VERSION}")
+
+    # ----------------------------------------------------------------
+    # 底部区域尺寸
+    # ----------------------------------------------------------------
+
+    def _refresh_bottom_minimum(self):
+        """按底部可见内容抬升最小高度, 避免任务卡/错误卡被挤压成细条。
+
+        _CenteredColumnWidget 显式设置了 100px 的最小高度 (打断宽度反馈),
+        QSplitter 因此可以压到 100px; 任务卡/错误卡/展开日志需要额外空间。
+        """
+        bottom = getattr(self, "_bottom", None)
+        if bottom is None:
+            return
+        minimum = 100  # 按钮行 + 折叠日志标题行 + 边距的基线高度
+        for widget in (getattr(self, "_dashboard", None),
+                       getattr(self, "_error_card", None)):
+            if widget is not None and not widget.isHidden():
+                minimum += widget.sizeHint().height()
+        log_box = getattr(self, "_log_box", None)
+        if log_box is not None and log_box.is_expanded():
+            minimum += log_box.panel.sizeHint().height()
+        bottom.setMinimumHeight(minimum)
 
     def _set_running(self, running):
         if running:
