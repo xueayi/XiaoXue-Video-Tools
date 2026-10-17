@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""compat_encoder.py 覆盖测试 (mock Popen)。"""
+"""compat_encoder.py 覆盖测试 (mock run_ffmpeg_streaming)。"""
 
 import os
-import subprocess
 
 import pytest
 
@@ -81,22 +80,20 @@ def test_build_compat_command_matrix():
     assert "-b:a" not in audio_copy
 
 
-class FakeProcess:
-    def __init__(self, lines, returncode=0):
-        self._lines = list(lines)
-        self.returncode = returncode
-        self.stdout = self
+def _fake_streaming(lines=(), exit_code=0, cancelled=False):
+    from src.process import CompletedProcess
+    from src.task.context import TaskCancelled
 
-    def readline(self):
-        if self._lines:
-            return self._lines.pop(0)
-        return ""
+    def fake(cmd, on_line=None, env=None):
+        for line in lines:
+            if on_line is not None:
+                on_line(line)
+        if cancelled:
+            # 真实实现被取消时会抛 TaskCancelled, 这里保持同语义
+            raise TaskCancelled("任务已取消")
+        return CompletedProcess(exit_code=exit_code)
 
-    def poll(self):
-        return 0 if not self._lines else None
-
-    def wait(self):
-        return self.returncode
+    return fake
 
 
 def test_run_compat_encode_dry_run(tmp_path, media_files, monkeypatch):
@@ -111,9 +108,9 @@ def test_run_compat_encode_dry_run(tmp_path, media_files, monkeypatch):
 def test_run_compat_encode_success(tmp_path, media_files, monkeypatch):
     video, sub = media_files
     monkeypatch.setattr(ce, "get_bin_dir", lambda: str(tmp_path / "bin"))
+    monkeypatch.setattr(
+        ce, "run_ffmpeg_streaming", _fake_streaming(["encoding...\n"], 0))
 
-    proc = FakeProcess(["encoding...\n"], 0)
-    monkeypatch.setattr(ce.subprocess, "Popen", lambda *a, **k: proc)
     rc = run_compat_encode(video, str(tmp_path / "o.mp4"), sub)
     assert rc == 0
 
@@ -121,10 +118,26 @@ def test_run_compat_encode_success(tmp_path, media_files, monkeypatch):
 def test_run_compat_encode_failure_tips(tmp_path, media_files, monkeypatch):
     video, sub = media_files
     monkeypatch.setattr(ce, "get_bin_dir", lambda: str(tmp_path / "bin"))
-    proc = FakeProcess(["Cannot load AviSynth\n"], 1)
-    monkeypatch.setattr(ce.subprocess, "Popen", lambda *a, **k: proc)
+    monkeypatch.setattr(
+        ce, "run_ffmpeg_streaming",
+        _fake_streaming(["Cannot load AviSynth\n"], 1))
+
     rc = run_compat_encode(video, str(tmp_path / "o.mp4"), sub)
     assert rc == 1
+
+
+def test_run_compat_encode_cancelled_propagates(tmp_path, media_files,
+                                                monkeypatch):
+    import pytest
+    from src.task.context import TaskCancelled
+
+    video, sub = media_files
+    monkeypatch.setattr(ce, "get_bin_dir", lambda: str(tmp_path / "bin"))
+    monkeypatch.setattr(
+        ce, "run_ffmpeg_streaming", _fake_streaming(cancelled=True))
+
+    with pytest.raises(TaskCancelled):
+        run_compat_encode(video, str(tmp_path / "o.mp4"), sub)
 
 
 def test_run_compat_encode_exception(tmp_path, media_files, monkeypatch):

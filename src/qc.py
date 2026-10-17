@@ -10,7 +10,11 @@ from typing import List, Optional, Dict, Any, Tuple
 
 from colorama import Fore, Style
 
+from .task.context import TaskCancelled, current_task
 from .utils import get_ffprobe_path
+
+#: ffprobe 探测超时（秒）—— 避免损坏/网络路径文件无限阻塞
+QC_PROBE_TIMEOUT_SEC = 30
 
 
 # Premiere Pro 不兼容的容器格式
@@ -168,6 +172,10 @@ def probe_media(file_path: str) -> Optional[MediaInfo]:
         file_path
     ]
 
+    context = current_task()
+    if context is not None:
+        context.raise_if_cancelled()
+
     try:
         result = subprocess.run(
             cmd,
@@ -175,8 +183,12 @@ def probe_media(file_path: str) -> Optional[MediaInfo]:
             text=True,
             encoding='utf-8',
             errors='replace',
+            timeout=QC_PROBE_TIMEOUT_SEC,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
         )
+
+        if context is not None:
+            context.raise_if_cancelled()
 
         if result.returncode != 0:
             info = MediaInfo(path=file_path)
@@ -187,6 +199,13 @@ def probe_media(file_path: str) -> Optional[MediaInfo]:
         data = json.loads(result.stdout)
         return _parse_ffprobe_output(file_path, data)
 
+    except TaskCancelled:
+        raise
+    except subprocess.TimeoutExpired:
+        info = MediaInfo(path=file_path)
+        info.is_valid = False
+        info.errors.append(f"ffprobe 探测超时（>{QC_PROBE_TIMEOUT_SEC}s）")
+        return info
     except Exception as e:
         info = MediaInfo(path=file_path)
         info.is_valid = False
