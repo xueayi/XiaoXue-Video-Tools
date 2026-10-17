@@ -8,6 +8,8 @@
     * :class:`QProcessRunner` —— QProcess 后端（GUI 经 TaskContext 注入）；
     * :func:`resolve_runner` —— 按当前 TaskContext 解析后端实例；
     * :func:`run` —— 阻塞式执行并返回 ``CompletedProcess``；
+    * :class:`ProgressEvent` / :class:`FFmpegProgressParser` /
+      :func:`inject_progress` —— FFmpeg 结构化进度解析与命令注入；
     * :class:`ExecutableMissingError` / :class:`ProcessStartError`。
 """
 
@@ -25,6 +27,12 @@ from .base import (
     RunnerFactory,
     kill_process_tree,
 )
+from .progress import (
+    PROGRESS_ARGS,
+    FFmpegProgressParser,
+    ProgressEvent,
+    inject_progress,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - 仅类型检查
     from ..task.context import TaskContext
@@ -33,14 +41,18 @@ __all__ = [
     "CompletedProcess",
     "ExecutableMissingError",
     "FinishedCallback",
+    "FFmpegProgressParser",
     "OutputCallback",
+    "PROGRESS_ARGS",
     "ProcessError",
     "ProcessRunner",
     "ProcessStartError",
     "ProcessState",
+    "ProgressEvent",
     "RunnerFactory",
     "SubprocessRunner",
     "QProcessRunner",
+    "inject_progress",
     "kill_process_tree",
     "resolve_runner",
     "run",
