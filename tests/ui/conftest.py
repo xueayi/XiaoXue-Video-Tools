@@ -175,3 +175,62 @@ def capability_probe_stub(monkeypatch):
     monkeypatch.setattr(mw, "start_capability_probe", stub)
     yield stub
     ffmpeg_probe.set_capabilities(None)
+
+
+# ----------------------------------------------------------------
+# M4.4: 平台路径 / 平台能力替身
+# ----------------------------------------------------------------
+
+def make_platform_paths(base):
+    """构造临时目录下的 PlatformPaths 替身 (UI 测试用, 不创建真实目录)。"""
+    from src.platform.paths import PlatformPaths
+
+    return PlatformPaths(
+        resource_dir=base / "resource",
+        install_dir=base / "install",
+        config_dir=base / "config",
+        data_dir=base / "data",
+        cache_dir=base / "cache",
+        log_dir=base / "logs",
+        temp_dir=base / "temp",
+    )
+
+
+def make_platform_capabilities(**overrides):
+    """构造平台能力快照替身 (默认 Windows: 自更新与 AviSynth 可用)。"""
+    from src.platform.capabilities import PlatformCapabilities
+
+    values = {
+        "os_name": "win32",
+        "ffmpeg_path": "",
+        "ffprobe_path": "",
+        "ffmpeg_caps": None,
+        "avisynth_available": True,
+        "self_update_available": True,
+        "videotoolbox_available": False,
+    }
+    values.update(overrides)
+    return PlatformCapabilities(**values)
+
+
+@pytest.fixture(autouse=True)
+def platform_state_stub(tmp_path, monkeypatch):
+    """隔离平台路径与平台能力单例 (M4.4)。
+
+    设置页存储位置 / 首页环境能力 / 压制页兼容模式门禁都会读取
+    ``platform_paths()`` 与 ``platform_capabilities()``; 测试环境统一换成
+    临时目录 + 固定 Windows 快照, 既不创建仓库内真实目录, 也不做真实
+    平台探测。需要 macOS 等其它场景的用例可再次 monkeypatch ``detect``
+    或直接替换页面模块里的 ``platform_capabilities``。
+    """
+    from src.platform import capabilities as platform_caps
+    from src.platform import paths as platform_paths
+
+    fake_paths = make_platform_paths(tmp_path)
+    monkeypatch.setattr(platform_paths, "detect", lambda: fake_paths)
+    monkeypatch.setattr(platform_caps, "detect", make_platform_capabilities)
+    platform_paths.reset_platform_paths()
+    platform_caps.reset_platform_capabilities()
+    yield fake_paths
+    platform_paths.reset_platform_paths()
+    platform_caps.reset_platform_capabilities()

@@ -310,7 +310,8 @@ def test_settings_page_groups(win):
     assert isinstance(settings, SettingsPage)
     assert settings.is_executable() is False
     titles = [group.title() for group in settings.findChildren(QGroupBox)]
-    assert titles == ["FFmpeg", "外观", "更新", "高级"]
+    # M4.4: FFmpeg 之后新增「存储位置」分组 (配置/数据/缓存/日志 + 打开目录)
+    assert titles == ["FFmpeg", "存储位置", "外观", "更新", "高级"]
     # 通知面板已随功能下线, 设置页不包含
     assert "通知" not in " ".join(titles)
 
