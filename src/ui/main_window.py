@@ -23,12 +23,15 @@ from .sidebar import Sidebar
 from .collapsible_log import CollapsibleLog
 from .error_card import ErrorCard, classify_log_text
 from .task_card import TaskArea
+from .task_state import TaskStatus as ViewTaskStatus
 from .update_dialog import UpdateDialog, UpdateWorker
 from .task_runner import TaskRunner
 from .animations import AnimatedStackedWidget, button_press_anim, status_flash
 from .ffmpeg_progress import FFmpegProgressParser
 from .home_page import HomePage
 from .settings_page import SettingsPage
+from ..task.result import TaskResult
+from ..task.status import TaskStatus as ResultStatus
 from .tabs import (
     EncodeTab, ReplaceAudioTab, RemuxTab, QcTab,
     MediaProbeTab, ExtractAvTab, ImageConvertTab,
@@ -47,6 +50,15 @@ _REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
 
 #: 失败时交给 classify_log_text 的最近日志块数量 (归类函数内部再截取末尾行)
 _ERROR_CONTEXT_CHUNKS = 40
+
+#: 执行层 4 态结果 -> UI 视图层 6 态中的终态。
+#: 两个枚举刻意分离 (执行层没有 QUEUED/RUNNING), 只在此处做一次映射。
+_RESULT_TO_VIEW_STATUS = {
+    ResultStatus.SUCCESS: ViewTaskStatus.SUCCESS,
+    ResultStatus.FAILED: ViewTaskStatus.FAILED,
+    ResultStatus.CANCELLED: ViewTaskStatus.CANCELLED,
+    ResultStatus.PARTIAL: ViewTaskStatus.PARTIAL,
+}
 
 #: 业务键 (Tab.command_name) -> executor 的映射。
 #: 首页/设置页没有命令名, 因此不在其中 (执行按钮对它们禁用)。
@@ -155,6 +167,8 @@ class MainWindow(QMainWindow):
         self._btn_anim = None
         self._update_dialog = None
         self._check_worker = None
+        # 当前任务标题 (结果日志用, _on_execute 时写入)
+        self._task_caption = ""
         # 当前选中页索引 (点击即生效, 不等切换动画播完)
         self._current_page_index = -1
 
@@ -526,10 +540,12 @@ class MainWindow(QMainWindow):
         self._log_panel.append_log(f"▶ 开始执行: {command}\n")
         self._log_panel.append_log(f"{'=' * 50}\n")
 
+        self._task_caption = command
         self._runner = TaskRunner(handler, args, command, parent=self)
         self._runner.log_signal.connect(self._log_panel.append_log)
         self._runner.log_signal.connect(self._ffmpeg_parser.feed_line)
-        self._runner.finished_signal.connect(self._on_task_finished)
+        # 主路径: 接收 TaskResult; finished_signal 只保留给旧槽/旧测试, 不再连接
+        self._runner.result_signal.connect(self._on_task_result)
         self._runner.start()
 
     def _try_set_duration(self, args):
@@ -558,21 +574,69 @@ class MainWindow(QMainWindow):
             self._set_running(False)
 
     def _on_task_finished(self, success, command_name):
+        """deprecated: 旧 bool 结果槽 (保留一版兼容)。
+
+        新路径使用 :meth:`_on_task_result`；这里把 bool 包成 TaskResult 后转发，
+        让旧测试/旧信号在本轮迁移中保持可用。下个版本删除。
+        """
+        self._task_caption = command_name or self._task_caption
         if success:
-            self._log_panel.append_log(f"\n✔ {command_name} 执行完成\n")
-            self._dashboard.finish(True)
+            self._on_task_result(TaskResult.ok(message="任务完成"))
+        else:
+            self._on_task_result(TaskResult.failed("任务失败"))
+
+    def _on_task_result(self, result):
+        """按 TaskResult 更新任务卡 / 错误卡 / 状态栏 (M2.1 主路径)。
+
+        result -> view 映射只在这里发生；FAILED 才展示错误卡片，
+        CANCELLED / PARTIAL 不显示错误卡片。
+        """
+        if not isinstance(result, TaskResult):
+            result = TaskResult.failed(
+                f"未知任务结果: {type(result).__name__}")
+        caption = (
+            self._task_caption
+            or getattr(self._runner, "command_name", "")
+            or "任务"
+        )
+        view_status = _RESULT_TO_VIEW_STATUS[result.status]
+
+        for warning in result.warnings:
+            self._log_panel.append_log(f"\n⚠ {warning}\n")
+
+        if result.status is ResultStatus.SUCCESS:
+            self._log_panel.append_log(f"\n✔ {caption} 执行完成\n")
+            self._dashboard.finish_status(
+                view_status, result.message or "任务完成")
             self._error_card.hide()
             status_flash(self.statusBar(), theme.color("success"), 2000)
-        else:
-            self._log_panel.append_log(f"\n✘ {command_name} 执行失败\n")
-            self._dashboard.finish(False)
+            status_text = "完成"
+        elif result.status is ResultStatus.FAILED:
+            detail = f"：{result.message}" if result.message else ""
+            self._log_panel.append_log(f"\n✘ {caption} 执行失败{detail}\n")
+            self._dashboard.finish_status(
+                view_status, result.message or "任务失败")
             self._show_error_card()
             status_flash(self.statusBar(), theme.color("danger"), 2000)
+            status_text = "失败"
+        elif result.status is ResultStatus.CANCELLED:
+            self._log_panel.append_log(f"\n⏹ {caption} 已取消\n")
+            self._dashboard.finish_status(
+                view_status, result.message or "已取消")
+            self._error_card.hide()
+            status_text = "已取消"
+        else:  # PARTIAL: 有成功也有失败, 不算失败也不发成功通知
+            detail = f"：{result.message}" if result.message else ""
+            self._log_panel.append_log(f"\n⚠ {caption} 部分完成{detail}\n")
+            self._dashboard.finish_status(
+                view_status, result.message or "部分完成")
+            self._error_card.hide()
+            status_flash(self.statusBar(), theme.color("warning"), 2000)
+            status_text = "部分完成"
 
+        self._task_caption = ""
         self._set_running(False)
-        self.statusBar().showMessage(
-            f"{'完成' if success else '失败'}  |  v{_VERSION}"
-        )
+        self.statusBar().showMessage(f"{status_text}  |  v{_VERSION}")
         self._refresh_bottom_minimum()
 
     # ----------------------------------------------------------------

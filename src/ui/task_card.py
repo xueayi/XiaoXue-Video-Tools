@@ -340,19 +340,33 @@ class TaskArea(QWidget):
         失败时不把进度填成 100%（避免「失败 100.0%」的误导），而是清空
         进度值；TaskCard 在终态且无进度时会隐藏进度条。
         """
+        self.finish_status(
+            TaskStatus.SUCCESS if success else TaskStatus.FAILED,
+            "任务完成" if success else "任务失败",
+        )
+
+    def finish_status(self, status, message: str = ""):
+        """按任务结果终态更新当前任务卡 (M2.1)。
+
+        ``status`` 为 :class:`~src.ui.task_state.TaskStatus` 终态
+        （SUCCESS / PARTIAL / FAILED / CANCELLED）；``message`` 为空时用状态
+        的中文标签兜底。SUCCESS / PARTIAL 视为有产出并把进度填满，
+        FAILED / CANCELLED 清空进度（终态卡片会隐藏进度条）。
+        """
+        view_status = TaskStatus.coerce(getattr(status, "value", status))
         current = self._states.get(CURRENT_TASK_ID)
         if current is None:
-            current = TaskViewState(task_id=CURRENT_TASK_ID, title="执行中")
-        status = TaskStatus.SUCCESS if success else TaskStatus.FAILED
+            current = TaskViewState(task_id=CURRENT_TASK_ID, title="任务")
+        completed = view_status in (TaskStatus.SUCCESS, TaskStatus.PARTIAL)
         state = TaskViewState(
             task_id=CURRENT_TASK_ID,
             title=current.title,
-            status=status,
+            status=view_status,
             encoder=current.encoder,
-            progress=100.0 if success else None,
-            speed=current.speed if success else 0.0,
-            eta_sec=0.0 if success else None,
-            message="任务完成" if success else "任务失败",
+            progress=100.0 if completed else None,
+            speed=current.speed if completed else 0.0,
+            eta_sec=0.0 if view_status is TaskStatus.SUCCESS else None,
+            message=message or view_status.label,
             elapsed_sec=current.elapsed_sec,
             output_path=current.output_path,
         )

@@ -161,6 +161,7 @@ def test_execute_routes_to_current_page_command(win, monkeypatch):
             captured.update(handler=handler, args=args, command=command)
             self.log_signal = _Signal()
             self.finished_signal = _Signal()
+            self.result_signal = _Signal()
 
         def isRunning(self):
             return False

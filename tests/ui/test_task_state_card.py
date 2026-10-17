@@ -314,6 +314,64 @@ def test_task_area_finish_failure(qapp):
     assert area._cards[CURRENT_TASK_ID]._progress_bar.isHidden() is True
 
 
+def test_task_area_finish_status_success(qapp):
+    area = TaskArea()
+    area.show_indeterminate()
+    area.update_metrics(_progress_info(percent=50.0))
+    area.finish_status(TaskStatus.SUCCESS, "任务完成")
+
+    state = area._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.SUCCESS
+    assert state.progress == 100.0
+    assert state.message == "任务完成"
+    assert area._cards[CURRENT_TASK_ID]._cancel_btn.isEnabled() is False
+
+
+def test_task_area_finish_status_partial(qapp):
+    area = TaskArea()
+    area.show_indeterminate()
+    area.finish_status(TaskStatus.PARTIAL, "成功 2 个, 失败 1 个")
+
+    state = area._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.PARTIAL
+    assert state.progress == 100.0
+    assert "成功 2 个" in state.message
+
+
+def test_task_area_finish_status_failed_hides_progress(qapp):
+    area = TaskArea()
+    area.show_indeterminate()
+    area.finish_status(TaskStatus.FAILED, "FFmpeg 退出码 1")
+
+    state = area._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.FAILED
+    assert state.progress is None
+    assert state.eta_sec is None
+    assert state.message == "FFmpeg 退出码 1"
+    assert area._cards[CURRENT_TASK_ID]._progress_bar.isHidden() is True
+
+
+def test_task_area_finish_status_cancelled(qapp):
+    area = TaskArea()
+    area.show_indeterminate()
+    area.finish_status(TaskStatus.CANCELLED)
+
+    state = area._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.CANCELLED
+    assert state.progress is None
+    assert state.message == "已取消"  # 空 message 用状态标签兜底
+
+
+def test_task_area_finish_status_accepts_result_enum_value(qapp):
+    """finish_status 兼容执行层同值枚举 (通过 .value 归一)。"""
+    from src.task.status import TaskStatus as ResultStatus
+
+    area = TaskArea()
+    area.show_indeterminate()
+    area.finish_status(ResultStatus.PARTIAL, "")
+    assert area._states[CURRENT_TASK_ID].status is TaskStatus.PARTIAL
+
+
 def test_task_area_reset(qapp):
     area = TaskArea()
     area.show_indeterminate()

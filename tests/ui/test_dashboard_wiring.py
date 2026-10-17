@@ -17,6 +17,7 @@ from src.ui.main_window import MainWindow
 from src.ui.mock_data import MOCK_TASKS
 from src.ui.task_card import CURRENT_TASK_ID, TaskArea, TaskCard
 from src.ui.task_state import TaskStatus
+from src.task.result import TaskResult
 
 import src.ui.main_window as mw
 
@@ -220,6 +221,123 @@ def test_no_new_terminate_call_sites():
         Path(__file__).resolve().parents[2] / "src" / "ui" / "main_window.py")
     source = source_path.read_text(encoding="utf-8")
     assert source.count(".terminate()") == 2
+
+
+# ----------------------------------------------------------------
+# TaskResult -> 视图状态映射 (M2.1)
+# ----------------------------------------------------------------
+
+def test_on_task_result_success_updates_card_and_status(win):
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._task_caption = "视频压制"
+    win._on_task_result(TaskResult.ok(outputs=("out.mp4",)))
+
+    state = win._dashboard._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.SUCCESS
+    assert state.progress == 100.0
+    assert "完成" in win.statusBar().currentMessage()
+    assert win._error_card.isHidden() is True
+    assert win._execute_btn.isEnabled()
+    assert win._stop_btn.isEnabled() is False
+    assert any("执行完成" in chunk for chunk in win._log_panel._chunks)
+
+
+def test_on_task_result_failed_shows_error_card(win):
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._task_caption = "视频压制"
+    win._log_panel.append_log(
+        "[h264_nvenc @ 000001f4] No NVENC capable devices found\n")
+    win._on_task_result(TaskResult.failed("FFmpeg 退出码 1", exit_code=1))
+
+    state = win._dashboard._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.FAILED
+    assert state.progress is None
+    assert win._error_card.isHidden() is False
+    assert win._error_card.error.category is ErrorCategory.ENCODER_UNAVAILABLE
+    assert "失败" in win.statusBar().currentMessage()
+    assert any("FFmpeg 退出码 1" in chunk for chunk in win._log_panel._chunks)
+
+
+def test_on_task_result_cancelled_not_treated_as_failure(win):
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._task_caption = "视频压制"
+    win._on_task_result(TaskResult.cancelled("用户点了停止"))
+
+    state = win._dashboard._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.CANCELLED
+    assert state.progress is None
+    assert "已取消" in win.statusBar().currentMessage()
+    assert win._error_card.isHidden() is True
+    assert any("已取消" in chunk for chunk in win._log_panel._chunks)
+
+
+def test_on_task_result_partial_shows_warning_status(win):
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._task_caption = "封装转换"
+    win._on_task_result(TaskResult.partial("成功 2 个, 失败 1 个"))
+
+    state = win._dashboard._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.PARTIAL
+    assert state.progress == 100.0
+    assert "成功 2 个" in state.message
+    assert "部分完成" in win.statusBar().currentMessage()
+    assert win._error_card.isHidden() is True
+    assert any("部分完成" in chunk for chunk in win._log_panel._chunks)
+
+
+def test_on_task_result_warnings_are_logged(win):
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._task_caption = "视频压制"
+    win._on_task_result(TaskResult.ok(warnings=("分发失败: 目录不可写",)))
+    assert any("分发失败: 目录不可写" in chunk
+               for chunk in win._log_panel._chunks)
+
+
+def test_on_task_result_non_result_payload_is_failed(win):
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._on_task_result(object())
+    state = win._dashboard._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.FAILED
+    assert win._error_card.isHidden() is False
+
+
+def test_execute_connects_result_signal_not_finished(win, monkeypatch):
+    """主路径只接 result_signal; finished_signal 不再连接。"""
+    connected = []
+
+    class _Signal:
+        def __init__(self, name):
+            self.name = name
+
+        def connect(self, slot):
+            connected.append((self.name, slot))
+
+    class FakeRunner:
+        def __init__(self, handler, args, command, parent=None):
+            self.log_signal = _Signal("log")
+            self.result_signal = _Signal("result")
+            self.finished_signal = _Signal("finished")
+
+        def isRunning(self):
+            return False
+
+        def start(self):
+            connected.append(("start", None))
+
+    monkeypatch.setattr(mw, "TaskRunner", FakeRunner)
+    win._sidebar.setCurrentRow(1)
+    win._on_execute()
+
+    names = [name for name, _ in connected]
+    assert "result" in names
+    assert "finished" not in names
+    assert "start" in names
 
 
 # ----------------------------------------------------------------
