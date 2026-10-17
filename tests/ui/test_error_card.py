@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*-
-"""error_card.py 测试: 8 类错误归类、日志尾部、错误卡片渲染与信号。"""
+"""error_card.py 测试: 8 类错误归类 (委托 src.ffmpeg.errors)、日志尾部、卡片渲染与信号。"""
 
 import pytest
 
 from PyQt6.QtWidgets import QLabel
 
+import src.ui.error_card as error_card_module
+from src.ffmpeg.errors import ErrorCategory as DomainCategory
+from src.ffmpeg.errors import UserFacingError
+from src.ffmpeg.errors import classify as domain_classify
 from src.ui.error_card import (
     ErrorCard,
     ErrorCategory,
     ErrorInfo,
     classify_log_text,
+    error_info_from_user,
 )
 
 # (日志文本, 期望分类)
@@ -46,6 +51,64 @@ _CLASSIFY_CASES = [
 def test_error_category_has_eight_members():
     assert len(ErrorCategory) == 8
     assert len({category.value for category in ErrorCategory}) == 8
+
+
+def test_error_category_is_domain_enum():
+    """M2.5: UI 重新导出领域枚举, 不存在两套分类值。"""
+    assert ErrorCategory is DomainCategory
+
+
+def test_classify_log_text_delegates_to_domain_module(monkeypatch):
+    """classify_log_text 必须委托 src.ffmpeg.errors.classify (不再自带规则)。"""
+    calls = []
+
+    def fake_classify(stderr_tail="", exit_code=None, cancelled=False):
+        calls.append((stderr_tail, exit_code, cancelled))
+        return UserFacingError(
+            title="委托标题",
+            category=DomainCategory.FFMPEG_NOT_FOUND,
+            causes=("原因",),
+            actions=("操作",),
+            log_tail="tail",
+        )
+
+    monkeypatch.setattr(error_card_module, "classify", fake_classify)
+    info = classify_log_text("some log")
+
+    assert calls == [("some log", None, False)]
+    assert isinstance(info, ErrorInfo)
+    assert info.title == "委托标题"
+    assert info.category is DomainCategory.FFMPEG_NOT_FOUND
+    assert info.causes == ["原因"]
+    assert info.actions == ["操作"]
+    assert info.log_tail == "tail"
+
+
+def test_classify_log_text_matches_domain_result():
+    text = "[h264_nvenc @ 0000] No NVENC capable devices found"
+    info = classify_log_text(text)
+    expected = domain_classify(text)
+    assert info.title == expected.title
+    assert info.category is expected.category
+    assert info.causes == list(expected.causes)
+    assert info.actions == list(expected.actions)
+    assert info.log_tail == expected.log_tail
+
+
+def test_error_info_from_user_converts_tuples_to_lists():
+    error = UserFacingError(
+        title="标题",
+        category=DomainCategory.INPUT_NOT_FOUND,
+        causes=("原因一", "原因二"),
+        actions=("操作一",),
+        log_tail="tail",
+    )
+    info = error_info_from_user(error)
+    assert info.title == "标题"
+    assert info.category is DomainCategory.INPUT_NOT_FOUND
+    assert info.causes == ["原因一", "原因二"]
+    assert info.actions == ["操作一"]
+    assert info.log_tail == "tail"
 
 
 @pytest.mark.parametrize("text,expected", _CLASSIFY_CASES)

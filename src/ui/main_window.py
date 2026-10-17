@@ -24,7 +24,7 @@ from . import icons
 from .base_tab import CONTENT_MAX_WIDTH
 from .sidebar import Sidebar
 from .collapsible_log import CollapsibleLog
-from .error_card import ErrorCard, classify_log_text
+from .error_card import ErrorCard, error_info_from_user
 from .task_card import TaskArea
 from .task_state import TaskStatus as ViewTaskStatus
 from .update_dialog import UpdateDialog, UpdateWorker
@@ -32,6 +32,7 @@ from .task_runner import TaskRunner
 from .animations import AnimatedStackedWidget, button_press_anim, status_flash
 from .home_page import HomePage
 from .settings_page import SettingsPage
+from ..ffmpeg.errors import classify as classify_ffmpeg_error
 from ..task.result import TaskResult
 from ..task.status import TaskStatus as ResultStatus
 from .tabs import (
@@ -75,7 +76,7 @@ class _ProgressView:
         )
 
 
-#: 失败时交给 classify_log_text 的最近日志块数量 (归类函数内部再截取末尾行)
+#: deprecated 旧 bool 通道兜底: 交给错误分类的最近日志块数量
 _ERROR_CONTEXT_CHUNKS = 40
 
 #: 执行层 4 态结果 -> UI 视图层 6 态中的终态。
@@ -616,13 +617,18 @@ class MainWindow(QMainWindow):
         """deprecated: 旧 bool 结果槽 (保留一版兼容)。
 
         新路径使用 :meth:`_on_task_result`；这里把 bool 包成 TaskResult 后转发，
-        让旧测试/旧信号在本轮迁移中保持可用。下个版本删除。
+        让旧测试/旧信号在本轮迁移中保持可用。失败时用最近日志近似 stderr
+        尾部，保证旧通道也能归类 (新通道由 runner 提供精确 stderr_tail)。
+        下个版本删除。
         """
         self._task_caption = command_name or self._task_caption
         if success:
             self._on_task_result(TaskResult.ok(message="任务完成"))
         else:
-            self._on_task_result(TaskResult.failed("任务失败"))
+            self._on_task_result(TaskResult.failed(
+                "任务失败",
+                details={"stderr_tail": self._recent_log_text()},
+            ))
 
     def _on_task_result(self, result):
         """按 TaskResult 更新任务卡 / 错误卡 / 状态栏 (M2.1 主路径)。
@@ -655,7 +661,7 @@ class MainWindow(QMainWindow):
             self._log_panel.append_log(f"\n✘ {caption} 执行失败{detail}\n")
             self._dashboard.finish_status(
                 view_status, result.message or "任务失败")
-            self._show_error_card()
+            self._show_error_card(result)
             status_flash(self.statusBar(), theme.color("danger"), 2000)
             status_text = "失败"
         elif result.status is ResultStatus.CANCELLED:
@@ -679,17 +685,29 @@ class MainWindow(QMainWindow):
         self._refresh_bottom_minimum()
 
     # ----------------------------------------------------------------
-    # 错误卡片 (PR-06; 归类规则后续由 PR-11 迁至 src/ffmpeg/errors.py)
+    # 错误卡片 (M2.5: TaskResult.stderr_tail + exit_code -> UserFacingError)
     # ----------------------------------------------------------------
 
     def _recent_log_text(self, max_chunks=_ERROR_CONTEXT_CHUNKS) -> str:
-        """最近日志块拼成的文本 (错误归类用)。"""
+        """最近日志块拼成的文本 (仅 deprecated 旧 bool 通道兜底使用)。"""
         chunks = list(getattr(self._log_panel, "_chunks", []))
         return "".join(chunks[-max_chunks:])
 
-    def _show_error_card(self):
-        """失败时按最近日志归类, 在任务区与日志之间展示错误卡片。"""
-        self._error_card.show(classify_log_text(self._recent_log_text()))
+    def _show_error_card(self, result):
+        """失败时按 TaskResult 的 stderr 尾部 + exit_code 归类并展示错误卡片。
+
+        分类规则唯一实现在 :mod:`src.ffmpeg.errors`；这里只做
+        ``TaskResult -> UserFacingError -> ErrorInfo`` 的展示适配。
+        """
+        details = result.details if isinstance(result, TaskResult) else {}
+        stderr_tail = str(details.get("stderr_tail", "") or "")
+        cancelled = bool(details.get("cancelled", False))
+        error = classify_ffmpeg_error(
+            stderr_tail,
+            result.exit_code if isinstance(result, TaskResult) else None,
+            cancelled,
+        )
+        self._error_card.show(error_info_from_user(error))
         self._refresh_bottom_minimum()
 
     def _on_error_log_requested(self):

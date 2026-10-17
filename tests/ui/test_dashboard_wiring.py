@@ -132,10 +132,14 @@ def test_failure_shows_error_card_with_category(win):
 
 
 def test_execute_failure_flow_shows_error_card(win, qapp):
-    """真实执行失败链路: 日志中的 NVENC 关键词被归类为编码器不可用。"""
+    """真实执行失败链路: TaskResult.details 中的 stderr_tail 被归类并展示。"""
     def boom(args):
-        print("[h264_nvenc @ 0000] No NVENC capable devices found")
-        raise RuntimeError("编码失败")
+        return TaskResult.failed(
+            "FFmpeg 退出码 1",
+            exit_code=1,
+            details={"stderr_tail": (
+                "[h264_nvenc @ 0000] No NVENC capable devices found\n")},
+        )
 
     win._handlers["视频压制"] = boom
     win._sidebar.setCurrentRow(1)  # 视频压制
@@ -144,6 +148,7 @@ def test_execute_failure_flow_shows_error_card(win, qapp):
 
     assert win._error_card.isHidden() is False
     assert win._error_card.error.category is ErrorCategory.ENCODER_UNAVAILABLE
+    assert "硬件编码器" in win._error_card._title_label.text()
 
 
 def test_success_hides_error_card(win):
@@ -263,17 +268,66 @@ def test_on_task_result_failed_shows_error_card(win):
     win._sidebar.setCurrentRow(1)
     win._dashboard.show_indeterminate()
     win._task_caption = "视频压制"
-    win._log_panel.append_log(
-        "[h264_nvenc @ 000001f4] No NVENC capable devices found\n")
-    win._on_task_result(TaskResult.failed("FFmpeg 退出码 1", exit_code=1))
+    win._on_task_result(TaskResult.failed(
+        "FFmpeg 退出码 1",
+        exit_code=1,
+        details={"stderr_tail": (
+            "[h264_nvenc @ 000001f4] No NVENC capable devices found\n")},
+    ))
 
     state = win._dashboard._states[CURRENT_TASK_ID]
     assert state.status is TaskStatus.FAILED
     assert state.progress is None
     assert win._error_card.isHidden() is False
     assert win._error_card.error.category is ErrorCategory.ENCODER_UNAVAILABLE
+    assert "硬件编码器" in win._error_card._title_label.text()
+    assert win._error_card._action_buttons  # 建议操作按钮
     assert "失败" in win.statusBar().currentMessage()
     assert any("FFmpeg 退出码 1" in chunk for chunk in win._log_panel._chunks)
+
+
+def test_show_error_card_passes_stderr_tail_exit_code_and_cancelled(win, monkeypatch):
+    """M2.5 接线: classify(stderr_tail, exit_code, cancelled) 由 TaskResult 驱动。"""
+    calls = []
+    real_classify = mw.classify_ffmpeg_error
+
+    def spy(stderr_tail="", exit_code=None, cancelled=False):
+        calls.append((stderr_tail, exit_code, cancelled))
+        return real_classify(stderr_tail, exit_code, cancelled)
+
+    monkeypatch.setattr(mw, "classify_ffmpeg_error", spy)
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._task_caption = "视频压制"
+    stderr_tail = ("[out#0/mp4 @ 0000] Error opening output out.mp4: "
+                   "Permission denied\n")
+    win._on_task_result(TaskResult.failed(
+        "FFmpeg 退出码 2",
+        exit_code=2,
+        details={"stderr_tail": stderr_tail, "cancelled": False},
+    ))
+
+    assert calls == [(stderr_tail, 2, False)]
+    info = win._error_card.error
+    assert info.category is ErrorCategory.OUTPUT_PERMISSION_DENIED
+    assert info.title == "没有文件写入权限"
+    assert info.actions
+    assert "Permission denied" in info.log_tail
+
+
+def test_cancelled_result_with_cancelled_detail_does_not_show_error_card(win):
+    """CANCELLED 不显示错误卡 (即使 details 带 cancelled=True / stderr 文本)。"""
+    win._sidebar.setCurrentRow(1)
+    win._dashboard.show_indeterminate()
+    win._task_caption = "视频压制"
+    win._on_task_result(TaskResult.cancelled(
+        "用户取消",
+        details={"cancelled": True,
+                 "stderr_tail": "Exiting normally, received signal 2.\n"},
+    ))
+    assert win._error_card.isHidden() is True
+    state = win._dashboard._states[CURRENT_TASK_ID]
+    assert state.status is TaskStatus.CANCELLED
 
 
 def test_on_task_result_cancelled_not_treated_as_failure(win):
