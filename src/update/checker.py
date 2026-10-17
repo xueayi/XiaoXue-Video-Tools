@@ -271,16 +271,23 @@ def fetch_checksum(url: str, timeout: float = 15.0):
     return resp.text.strip().split()[0] if resp.text.strip() else None
 
 
-def resolve_checksum(release: ReleaseInfo):
+def resolve_checksum(release: ReleaseInfo, fetch=None):
     """解析发行包校验和: 优先 Release 正文, 回退独立 .sha256 资产。
 
-    返回 None 表示该发行没有可用校验和 (旧版发行), 由调用方显式提示,
-    不得静默跳过。
+    Args:
+        release: 发行信息。
+        fetch: 校验和获取函数, 缺省用本模块 :func:`fetch_checksum`。
+            兼容门面 ``src.updater`` 会传入自己的 ``fetch_checksum``, 使旧
+            代码/测试对 ``src.updater.fetch_checksum`` 的 monkeypatch 依然生效。
+
+    Returns:
+        校验和字符串; None 表示该发行没有可用校验和 (旧版发行),
+        由调用方显式提示, 不得静默跳过。
     """
     if release.notes:
         found = parse_checksums_from_body(release.notes).get(release.asset_name)
         if found:
             return found
     if release.sha256_url:
-        return fetch_checksum(release.sha256_url)
+        return (fetch or fetch_checksum)(release.sha256_url)
     return None

@@ -25,6 +25,8 @@
 ``get_update_backend()`` 与 ``PlatformCapabilities.self_update_available``。
 """
 
+import subprocess  # noqa: F401 - 既有 monkeypatch 入口 (src.updater.subprocess.Popen)
+
 import requests  # noqa: F401 - 保留为既有 monkeypatch 入口 (src.updater.requests)
 
 from .update import (
@@ -102,8 +104,12 @@ def parse_checksums_from_body(body: str) -> dict:
 
 
 def resolve_checksum(release: ReleaseInfo):
-    """统一校验和解析入口 (正文优先, 回退 .sha256 资产)。"""
-    return _resolve_checksum(release)
+    """统一校验和解析入口 (正文优先, 回退 .sha256 资产)。
+
+    显式把本模块的 ``fetch_checksum`` 传给实现: 旧代码/测试对
+    ``src.updater.fetch_checksum`` 的 monkeypatch 继续生效。
+    """
+    return _resolve_checksum(release, fetch=fetch_checksum)
 
 
 def fetch_checksum(url: str, timeout: float = 15.0):

@@ -18,6 +18,7 @@ Windows-only 操作 (``prepare``/``launch_updater`` 等) 在其它平台会:
 import os
 import shutil
 import subprocess
+import webbrowser
 import zipfile
 from pathlib import Path
 from typing import Callable, Optional
@@ -25,6 +26,7 @@ from typing import Callable, Optional
 from ..platform.paths import platform_paths
 from ..platform.process import no_window_kwargs
 from .checker import (
+    REPO_URL,
     WINDOWS_ASSET_SUFFIX,
     ReleaseInfo,
     UpdateError,
@@ -308,6 +310,8 @@ class WindowsUpdateBackend:
         _stage(stage_cb, "正在下载更新包…")
         ensure_disk_space(install_dir, release.asset_size)
         zip_path = staging_dir() / ZIP_NAME
+        # 先建好暂存目录: ensure_disk_space 可能被替换/跳过, 下载器不建目录
+        zip_path.parent.mkdir(parents=True, exist_ok=True)
         download(release.asset_url, str(zip_path),
                  progress_cb=progress_cb, check_cancel=check_cancel)
 
@@ -338,12 +342,10 @@ class WindowsUpdateBackend:
         cleanup_staging(install_dir)
 
     def release_page_url(self, release: Optional[ReleaseInfo] = None) -> str:
-        from .checker import REPO_URL
         html_url = getattr(release, "html_url", "") if release is not None else ""
         return html_url or f"{REPO_URL}/releases/latest"
 
     def open_release_page(self, release: Optional[ReleaseInfo] = None) -> str:
-        import webbrowser
         url = self.release_page_url(release)
         webbrowser.open(url)
         return url
