@@ -18,6 +18,23 @@ from ..task.result import TaskResult
 _NONE_RETURN_WARNING = "executor 未返回 TaskResult（过渡兼容）"
 
 
+def _default_runner_factory():
+    """解析 GUI 默认 runner 工厂。
+
+    GUI 环境（存在 QApplication）使用 QProcess 后端，使 UI 取消可通过
+    TaskContext 触达真实进程；纯后端测试（无 QApplication）退回 subprocess。
+    """
+    from PyQt6.QtWidgets import QApplication
+
+    if QApplication.instance() is None:
+        from ..process.subprocess_runner import SubprocessRunner
+
+        return SubprocessRunner()
+    from ..process.qprocess_runner import QProcessRunner
+
+    return QProcessRunner()
+
+
 class _StreamRedirect:
     """将 write() 调用转发为 Qt 信号，用于捕获 print 输出。"""
 
@@ -40,8 +57,9 @@ class TaskRunner(QThread):
         * ``finished_signal(bool, str)`` —— 兼容旧 UI 的薄通道（仅 SUCCESS 为 True）。
 
     取消：
-        ``request_cancel()`` 目前只置 ``TaskContext.cancelled`` 标志
-        （M2.3 再接入子进程 terminate/kill）。
+        ``request_cancel()`` 置 ``TaskContext.cancelled`` 并触发已注册子进程
+        runner 的 ``cancel()``；具体 terminate/kill 时序由 runner 的 wait()
+        在工作线程内推进，UI 线程不被阻塞。
     """
 
     log_signal = pyqtSignal(str)
@@ -53,15 +71,23 @@ class TaskRunner(QThread):
         self.handler = handler
         self.args = args
         self.command_name = command_name
-        self.context = context if context is not None else TaskContext()
+        self.context = (
+            context if context is not None
+            else TaskContext(runner_factory=_default_runner_factory)
+        )
 
     # ----------------------------------------------------------------
     # 取消
     # ----------------------------------------------------------------
 
     def request_cancel(self) -> None:
-        """请求协作式取消（只置标志，M2.3 再接进程终止）。"""
+        """请求取消：置标志并触发已登记 runner.cancel()（立即返回）。"""
         self.context.cancel()
+
+    def cancel_and_wait(self, timeout_ms: int = 5000) -> bool:
+        """请求取消并有限等待工作线程结束（closeEvent 使用）。"""
+        self.request_cancel()
+        return self.wait(timeout_ms)
 
     # ----------------------------------------------------------------
     # 结果归一化
