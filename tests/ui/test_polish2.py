@@ -189,11 +189,12 @@ def test_remux_populate_twice_clears_container(remux_tab, monkeypatch, tmp_path)
     assert len(remux_tab._audio_checks) == 1
 
 
-def test_remux_mp4_opus_audio_unsupported(remux_tab, monkeypatch, tmp_path):
-    real = tmp_path / "opus.mp4"
+def test_remux_mp4_audio_unsupported(remux_tab, monkeypatch, tmp_path):
+    # MP4 矩阵不支持 Vorbis 音频（Opus 为实验性支持，矩阵按允许处理）
+    real = tmp_path / "audio.mp4"
     real.write_bytes(b"x")
     monkeypatch.setattr("src.ui.tabs.remux_tab.probe_detailed",
-                        lambda p: _info(audio_codec="opus", with_subs=False))
+                        lambda p: _info(audio_codec="vorbis", with_subs=False))
     remux_tab.remux_input_edit.setText(str(real))
     assert "兼容性警告" in remux_tab._compat_warn_label.text()
 

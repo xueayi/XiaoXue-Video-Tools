@@ -13,6 +13,7 @@ from ..base_tab import BaseTab, set_label_kind, ACTION_BTN_WIDTH
 from ..args_builder import ArgsNamespace
 from ...presets import REMUX_PRESETS
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
+from ...capabilities.container import check_remux
 
 
 def _format_duration_short(seconds: float) -> str:
@@ -309,40 +310,13 @@ class RemuxTab(BaseTab):
     # 容器兼容性检测
     # ================================================================
 
-    _CONTAINER_COMPAT = {
-        ".mp4": {
-            "unsupported_video": {"vp8", "vp9", "theora"},
-            "unsupported_audio": {"vorbis", "opus"},
-            "unsupported_sub": {"ass", "ssa", "subrip"},
-            "hint": "MP4 不支持 VP8/VP9/Theora 视频、Vorbis/Opus 音频和 ASS/SRT 内封字幕，建议改用 MKV",
-        },
-        ".webm": {
-            "supported_video": {"vp8", "vp9", "av1"},
-            "supported_audio": {"vorbis", "opus"},
-            "hint": "WEBM 仅支持 VP8/VP9/AV1 视频和 Vorbis/Opus 音频",
-        },
-        ".mov": {
-            "unsupported_video": {"vp8", "vp9", "theora"},
-            "unsupported_sub": {"ass", "ssa"},
-            "hint": "MOV 不支持 VP8/VP9 视频和 ASS 字幕",
-        },
-        ".avi": {
-            "unsupported_audio": {"opus", "flac"},
-            "unsupported_sub": {"ass", "ssa", "subrip", "srt"},
-            "hint": "AVI 不支持 Opus/FLAC 音频和大部分字幕格式",
-        },
-        ".ts": {
-            "unsupported_video": {"vp8", "vp9", "av1"},
-            "unsupported_sub": {"ass", "ssa"},
-            "hint": "TS 不支持 VP8/VP9/AV1 视频和 ASS 字幕",
-        },
-    }
-
     def _check_compat(self):
-        """检查源文件编码与目标容器的兼容性，显示警告。"""
-        if not hasattr(self, '_last_probe_info') or self._last_probe_info is None:
-            self._compat_warn_label.setVisible(False)
-            return
+        """用容器能力矩阵检查源文件编码与目标容器，显示原因与建议。
+
+        探测结果来自 ``_do_probe``（选择文件时同步探测首个文件）；
+        兼容、未知容器或没有探测结果时隐藏提示标签。
+        """
+        info = getattr(self, "_last_probe_info", None)
 
         preset = self.remux_preset_combo.currentText()
         preset_info = REMUX_PRESETS.get(preset, {})
@@ -351,42 +325,22 @@ class RemuxTab(BaseTab):
             custom = self.remux_format_custom_edit.text().strip()
             ext = ("." + custom) if custom and not custom.startswith(".") else custom
 
-        if not ext:
+        if info is None or not ext:
             self._compat_warn_label.setVisible(False)
             return
 
-        info = self._last_probe_info
-        warnings = []
-        rules = self._CONTAINER_COMPAT.get(ext.lower())
-
-        if rules:
-            for vs in info.video_streams:
-                codec = vs.codec_name.lower()
-                if "supported_video" in rules and codec not in rules["supported_video"]:
-                    warnings.append(f"视频编码 {vs.codec_name} 不被 {ext} 容器支持")
-                elif "unsupported_video" in rules and codec in rules["unsupported_video"]:
-                    warnings.append(f"视频编码 {vs.codec_name} 不被 {ext} 容器支持")
-
-            for aus in info.audio_streams:
-                codec = aus.codec_name.lower()
-                if "supported_audio" in rules and codec not in rules["supported_audio"]:
-                    warnings.append(f"音频编码 {aus.codec_name} 不被 {ext} 容器支持")
-                elif "unsupported_audio" in rules and codec in rules["unsupported_audio"]:
-                    warnings.append(f"音频编码 {aus.codec_name} 不被 {ext} 容器支持")
-
-            for ss in info.subtitle_streams:
-                codec = ss.codec_name.lower()
-                if "unsupported_sub" in rules and codec in rules["unsupported_sub"]:
-                    warnings.append(f"字幕格式 {ss.codec_name} 不被 {ext} 容器支持")
-
-        if warnings:
-            msg = "⚠ 兼容性警告:\n" + "\n".join(f"  • {w}" for w in warnings)
-            if rules and "hint" in rules:
-                msg += f"\n建议: {rules['hint']}"
-            self._compat_warn_label.setText(msg)
-            self._compat_warn_label.setVisible(True)
-        else:
+        result = check_remux(info, ext)
+        if result.ok:
             self._compat_warn_label.setVisible(False)
+            return
+
+        lines = ["⚠ 兼容性警告:"]
+        lines.extend(f"  • {reason}" for reason in result.reasons)
+        if result.suggestions:
+            lines.append("建议:")
+            lines.extend(f"  • {suggestion}" for suggestion in result.suggestions)
+        self._compat_warn_label.setText("\n".join(lines))
+        self._compat_warn_label.setVisible(True)
 
     # ================================================================
     # build_args

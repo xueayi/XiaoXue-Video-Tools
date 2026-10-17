@@ -279,6 +279,34 @@ def test_remux_compat_no_extension(remux):
     assert not remux._compat_warn_label.isVisibleTo(remux)
 
 
+def test_remux_compat_shows_reasons_and_suggestions(remux):
+    """UI 提示标签展示原因与可操作建议（MKV 封装/转码）。"""
+    remux._last_probe_info = _info(video_codec="vp9", sub_codec="ass")
+    remux._check_compat()
+    text = remux._compat_warn_label.text()
+    assert "兼容性警告" in text
+    assert "MP4" in text and "vp9" in text
+    assert "建议" in text
+    assert "MKV" in text
+
+
+def test_remux_compat_mkv_accepts_ass_subtitle(remux):
+    """MKV 容器支持 ASS 字幕: 提示标签隐藏。"""
+    remux.remux_preset_combo.setCurrentText("MKV (多轨封装)")
+    remux._last_probe_info = _info(video_codec="h264", sub_codec="ass")
+    remux._check_compat()
+    assert not remux._compat_warn_label.isVisibleTo(remux)
+
+
+def test_remux_compat_unknown_codec_shows_hint(remux):
+    """未知编码器: 保守显示警告并注明「未知编码器」。"""
+    remux._last_probe_info = _info(video_codec="weird_codec", with_subs=False)
+    remux._check_compat()
+    text = remux._compat_warn_label.text()
+    assert "兼容性警告" in text
+    assert "未知编码器" in text
+
+
 def test_remux_lang_display():
     from src.ui.tabs.remux_tab import _lang_display
     assert "Japanese" in _lang_display("jpn") or _lang_display("jpn")
