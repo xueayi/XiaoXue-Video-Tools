@@ -308,6 +308,10 @@ def test_task_area_finish_failure(qapp):
     state = area._states[CURRENT_TASK_ID]
     assert state.status is TaskStatus.FAILED
     assert state.message
+    # 失败不能伪装成「100% 完成」: 进度清空, 终态卡片隐藏进度条
+    assert state.progress is None
+    assert state.eta_sec is None
+    assert area._cards[CURRENT_TASK_ID]._progress_bar.isHidden() is True
 
 
 def test_task_area_reset(qapp):

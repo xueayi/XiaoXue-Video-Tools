@@ -335,7 +335,11 @@ class TaskArea(QWidget):
         self.update_task(state)
 
     def finish(self, success: bool):
-        """兼容旧 ProgressDashboard.finish(success: bool)。"""
+        """兼容旧 ProgressDashboard.finish(success: bool)。
+
+        失败时不把进度填成 100%（避免「失败 100.0%」的误导），而是清空
+        进度值；TaskCard 在终态且无进度时会隐藏进度条。
+        """
         current = self._states.get(CURRENT_TASK_ID)
         if current is None:
             current = TaskViewState(task_id=CURRENT_TASK_ID, title="执行中")
@@ -345,9 +349,9 @@ class TaskArea(QWidget):
             title=current.title,
             status=status,
             encoder=current.encoder,
-            progress=100.0,
-            speed=current.speed,
-            eta_sec=0.0,
+            progress=100.0 if success else None,
+            speed=current.speed if success else 0.0,
+            eta_sec=0.0 if success else None,
             message="任务完成" if success else "任务失败",
             elapsed_sec=current.elapsed_sec,
             output_path=current.output_path,
