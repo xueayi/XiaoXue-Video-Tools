@@ -15,10 +15,10 @@ from src.ui.main_window import MainWindow
 
 @pytest.fixture
 def win(qapp):
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     yield w
     w.close()
-from src.ui.tabs import EncodeTab, RemuxTab, ShieldTab
+from src.ui.tabs import EncodeTab, RemuxTab
 from src.ui.task_runner import TaskRunner
 
 
@@ -215,7 +215,7 @@ def test_try_set_duration_success(qapp, monkeypatch, tmp_path):
     video.write_bytes(b"x")
     monkeypatch.setattr(mp, "probe_detailed",
                         lambda p: _info(duration_sec=120))
-    win = MainWindow(shield_available=True, notify_config=None)
+    win = MainWindow()
 
     class A:
         input = str(video)
@@ -234,7 +234,7 @@ def test_stop_when_runner_not_running(win):
 
 
 def test_first_run_centers_window(qapp):
-    win = MainWindow(shield_available=True, notify_config=None)
+    win = MainWindow()
     assert win.x() != 0 or win.y() != 0  # 居中移动已执行
     win.close()
 
@@ -393,27 +393,6 @@ def test_remux_build_args_roundtrip(remux_tab):
     remux_tab.remux_input_edit.setText("C:/a.mp4; C:/b.mp4")
     args = remux_tab.build_args()
     assert args.command == "封装转换"
-
-
-# ----------------------------------------------------------------
-# ShieldTab 联动
-# ----------------------------------------------------------------
-
-def test_shield_censor_toggles(qapp):
-    tab = ShieldTab(shield_available=True)
-    tab._on_censor_toggled(False)
-    assert not tab.overlay_image_edit.isEnabled()
-    tab._on_censor_toggled(True)
-    tab._on_censor_type_changed("自定义")
-    assert tab.overlay_image_edit.isEnabled()
-    tab._on_censor_type_changed("马赛克")
-    assert not tab.overlay_image_edit.isEnabled()
-
-
-def test_shield_build_args_unavailable(qapp):
-    tab = ShieldTab(shield_available=False)
-    args = tab.build_args()
-    assert args.command == "露骨图片识别"
 
 
 # ----------------------------------------------------------------

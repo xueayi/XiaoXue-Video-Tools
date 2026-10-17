@@ -10,9 +10,7 @@ from PIL import Image
 import src.batch_renamer as br
 import src.executors.batch_executor as batch_ex
 import src.executors.file_executor as file_ex
-import src.nsfw_detect as nsfw
 from src.image_converter import FileConvertResult
-from src.nsfw_detect import NSFWResult
 
 
 # ----------------------------------------------------------------
@@ -104,45 +102,3 @@ def test_image_convert_overwrite_delete_failure(capsys, monkeypatch, tmp_path):
     file_ex.execute_image_convert(args)
     assert "删除失败" in capsys.readouterr().out
     assert src.exists()
-
-
-# ----------------------------------------------------------------
-# nsfw_detect: RGBA jpg 打码 + 未处理风险图标
-# ----------------------------------------------------------------
-
-def test_apply_mosaic_rgba_jpg(fake_imgutils, tmp_path):
-    # PNG 字节 + .jpg 扩展名: Image.open 后为 RGBA, 走 RGB 转换分支
-    raw = tmp_path / "rgba.jpg"
-    img = Image.new("RGBA", (16, 16), (255, 0, 0, 128))
-    import io as _io
-    buf = _io.BytesIO()
-    img.save(buf, format="PNG")
-    raw.write_bytes(buf.getvalue())
-    fake_imgutils["censors"] = [((2, 2, 12, 12), "censor", 0.9)]
-    out = tmp_path / "out" / "censored_rgba.jpg"
-    assert nsfw.apply_mosaic(str(raw), str(out)) is True
-    assert out.exists()
-
-
-def test_report_uncensored_risk_icons(tmp_path):
-    r_medium = NSFWResult(path="C:/m.png", rating="questionable")
-    r_medium.warnings.append("[风险] 评级 questionable 达到阈值 safe")
-    r_low = NSFWResult(path="C:/l.png", rating="sensitive")
-    r_low.warnings.append("[风险] 评级 sensitive 达到阈值 safe")
-    r_odd = NSFWResult(path="C:/o.png", rating="unknown")
-    r_odd.warnings.append("[风险] 评级 unknown 达到阈值 safe")
-    r_high = NSFWResult(path="C:/h.png", rating="explicit")
-    r_high.warnings.append("[风险] 评级 explicit 达到阈值 safe")
-
-    # 已打码列表的各风险等级图标 (medium/low/unknown)
-    c_medium = NSFWResult(path="C:/cm.png", rating="questionable",
-                          censored_path="C:/cm_c.png")
-    c_low = NSFWResult(path="C:/cl.png", rating="sensitive",
-                       censored_path="C:/cl_c.png")
-    c_unknown = NSFWResult(path="C:/cu.png", rating="weird",
-                           censored_path="C:/cu_c.png")
-
-    content = nsfw.generate_report(
-        [r_medium, r_low, r_odd, r_high, c_medium, c_low, c_unknown],
-        str(tmp_path / "r.txt"))
-    assert "【风险图片 (未处理)】" in content

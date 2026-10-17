@@ -36,8 +36,7 @@ def sync_worker_start(monkeypatch):
 @pytest.fixture
 def dlg(qapp, monkeypatch, tmp_path):
     """检查结果=发现新版本的对话框 (跳过构造时的网络检查)。"""
-    return UpdateDialog(str(tmp_path), shield=False,
-                        release=ReleaseStub())
+    return UpdateDialog(str(tmp_path), release=ReleaseStub())
 
 
 # ----------------------------------------------------------------
@@ -47,7 +46,7 @@ def dlg(qapp, monkeypatch, tmp_path):
 def test_worker_check_has_update(qapp, monkeypatch):
     rel = ReleaseStub()
     monkeypatch.setattr(ud.updater, "fetch_latest", lambda *a, **k: rel)
-    worker = UpdateWorker("check", "C:/app", shield=False)
+    worker = UpdateWorker("check", "C:/app")
     got = []
     worker.checked.connect(got.append)
     worker.run()
@@ -278,7 +277,7 @@ def test_dialog_labels_exist(dlg):
 
 @pytest.fixture
 def win(qapp):
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     yield w
     w.close()
 
@@ -322,9 +321,9 @@ def test_silent_check_runs_without_guard(win, monkeypatch):
     class RealFake(QObject):
         checked = pyqtSignal(object)
 
-        def __init__(self, mode, install_dir, shield=False):
+        def __init__(self, mode, install_dir):
             super().__init__()
-            inst.append((mode, install_dir, shield))
+            inst.append((mode, install_dir))
 
         def start(self):
             self.started = True
@@ -350,7 +349,7 @@ def test_on_silent_checked_shows_dialog(win, monkeypatch):
     created = []
 
     class FakeDialog:
-        def __init__(self, install_dir, shield=False, release=None,
+        def __init__(self, install_dir, release=None,
                      parent=None):
             created.append(release)
             self.install_requested = type("S", (), {"connect": staticmethod(
@@ -369,7 +368,7 @@ def test_show_update_dialog_manual_uses_exec(win, monkeypatch):
     executed = []
 
     class FakeDialog:
-        def __init__(self, install_dir, shield=False, release=None,
+        def __init__(self, install_dir, release=None,
                      parent=None):
             self.install_requested = type("S", (), {"connect": staticmethod(
                 lambda cb: None)})()
@@ -393,7 +392,7 @@ def test_show_update_dialog_non_modal_uses_show(win, monkeypatch):
     shown = []
 
     class FakeDialog:
-        def __init__(self, install_dir, shield=False, release=None,
+        def __init__(self, install_dir, release=None,
                      parent=None):
             self.install_requested = type("S", (), {"connect": staticmethod(
                 lambda cb: None)})()

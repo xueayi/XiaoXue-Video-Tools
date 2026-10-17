@@ -16,17 +16,6 @@ jobs:
     # 排除 beta/alpha/rc 版本 (这些由 build-beta.yml 处理)
     if: ${{ !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-rc') }}
     runs-on: windows-latest
-    strategy:
-      matrix:
-        include:
-          - variant: standard
-            requirements: requirements.txt
-            suffix: ""
-            display_name: "标准版"
-          - variant: shield
-            requirements: requirements-shield.txt
-            suffix: "_Shield"
-            display_name: "Shield 增强版"
     
     steps:
       - name: Checkout code
@@ -38,10 +27,10 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
       
-      - name: Install dependencies (${{ matrix.display_name }})
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r ${{ matrix.requirements }}
+          pip install -r requirements.txt
       
       - name: Download FFmpeg
         run: |
@@ -71,7 +60,7 @@ jobs:
           
           Get-Content "src/_version.py" | Select-String -Pattern '__version__'
       
-      - name: Build with PyInstaller (${{ matrix.display_name }})
+      - name: Build with PyInstaller
         run: |
           pyinstaller XiaoXueToolbox.spec --noconfirm
       
@@ -82,15 +71,15 @@ jobs:
           if (-not $version) { $version = "dev" }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
       
-      - name: Create release package (${{ matrix.display_name }})
+      - name: Create release package
         run: |
-          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
+          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip"
       
-      - name: Upload artifact (${{ matrix.display_name }})
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}
-          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
+          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}
+          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
           retention-days: 30
       
       - name: Extract changelog for this version
@@ -118,7 +107,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
+          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
           generate_release_notes: false
           draft: false
           prerelease: false
@@ -131,13 +120,11 @@ jobs:
             | 版本 | 说明 |
             |------|------|
             | `XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip` | 标准版，包含全部基础功能 |
-            | `XiaoXueToolbox_${{ github.ref_name }}_Shield_Windows_x64.zip` | Shield 增强版，额外包含露骨图片识别功能 |
             
             ### 下载说明
             - 解压后运行 `小雪工具箱.exe` 即可
             - 可将程序解压到任意**非中文路径**目录 (兼容模式字幕渲染的要求)
-            - **标准版**: 内置静态 FFmpeg，包含全部基础功能
-            - **Shield 增强版**: 额外包含 AI 露骨图片识别功能
+            - 内置静态 FFmpeg，包含全部基础功能
             
             ---
             

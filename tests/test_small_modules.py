@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """业务模块批 1: _version / help_texts / log_utils / utils / gui_config /
-post_transfer / notify_config / encode_params 边界。"""
+post_transfer / encode_params 边界。"""
 
-import json
 import logging
 import sys
 
@@ -259,104 +258,3 @@ def test_transfer_file_errors(tmp_path):
     src.write_bytes(b"x")
     with pytest.raises(ValueError):
         transfer_file(str(src), str(tmp_path), "delete")
-
-
-# ----------------------------------------------------------------
-# notify_config
-# ----------------------------------------------------------------
-
-@pytest.fixture
-def restore_notify_state():
-    import src.notify_config as nc
-    saved = dict(nc._notify_config)
-    saved_loaded = nc._notify_config_loaded
-    yield
-    nc._notify_config.clear()
-    nc._notify_config.update(saved)
-    nc._notify_config_loaded = saved_loaded
-
-
-def test_notify_config_roundtrip(monkeypatch, tmp_path, restore_notify_state):
-    import src.notify_config as nc
-    cfg_file = tmp_path / "notify_config.json"
-    monkeypatch.setattr(nc, "NOTIFY_CONFIG_FILE", str(cfg_file))
-    nc._notify_config.clear()
-    nc._notify_config.update({"enabled": False})
-    nc._notify_config_loaded = False
-
-    nc.load_notify_config()  # 文件不存在 -> 默认
-    assert nc.is_config_loaded() is False
-
-    nc.update_notify_config({"enabled": True, "feishu_webhook": "https://x"})
-    assert nc.get_notify_config()["enabled"] is True
-
-    nc.save_notify_config(dict(nc._notify_config))
-    assert cfg_file.exists()
-
-    nc.load_notify_config()
-    assert nc.is_config_loaded() is True
-    assert nc.get_notify_config()["feishu_webhook"] == "https://x"
-
-    assert nc.delete_notify_config() is True
-    assert nc.is_config_loaded() is False
-    assert nc.delete_notify_config() is True  # 不存在也返回 True
-
-
-def test_notify_config_load_broken_file(monkeypatch, tmp_path, restore_notify_state):
-    import src.notify_config as nc
-    cfg_file = tmp_path / "broken.json"
-    cfg_file.write_text("{not json", encoding="utf-8")
-    monkeypatch.setattr(nc, "NOTIFY_CONFIG_FILE", str(cfg_file))
-    nc._notify_config.clear()
-    nc._notify_config.update({"enabled": False})
-    nc.load_notify_config()  # 损坏文件 -> 警告并保持默认
-    assert nc.get_notify_config()["enabled"] is False
-
-
-def test_notify_config_save_failure(monkeypatch, tmp_path):
-    import src.notify_config as nc
-    bad = tmp_path / "no_dir" / "cfg.json"
-    monkeypatch.setattr(nc, "NOTIFY_CONFIG_FILE", str(bad))
-    nc.save_notify_config({"enabled": True})  # 目录不存在 -> 仅打印错误
-
-
-def test_notify_config_delete_failure(monkeypatch, tmp_path):
-    import src.notify_config as nc
-    cfg_file = tmp_path / "locked.json"
-    cfg_file.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(nc, "NOTIFY_CONFIG_FILE", str(cfg_file))
-    monkeypatch.setattr(nc.os, "remove",
-                        lambda p: (_ for _ in ()).throw(OSError("locked")))
-    assert nc.delete_notify_config() is False
-
-
-def test_send_auto_notification_disabled(monkeypatch, restore_notify_state):
-    import src.notify_config as nc
-    nc._notify_config.clear()
-    nc._notify_config.update({"enabled": False})
-    nc.send_auto_notification("视频压制")  # 未启用 -> 直接返回
-
-
-def test_send_auto_notification_enabled(monkeypatch, restore_notify_state):
-    import src.notify_config as nc
-    calls = []
-    monkeypatch.setattr(nc, "send_feishu_notification",
-                        lambda **kw: calls.append(("feishu", kw)))
-    monkeypatch.setattr(nc, "send_webhook_notification",
-                        lambda **kw: calls.append(("webhook", kw)))
-    nc._notify_config.clear()
-    nc._notify_config.update({
-        "enabled": True,
-        "feishu_webhook": "https://feishu",
-        "feishu_title": "完成",
-        "feishu_content": "任务 {task} 完成",
-        "feishu_color": "blue",
-        "webhook_url": "https://hook",
-        "webhook_headers": "{}",
-        "webhook_body": "{task}",
-    })
-    nc.send_auto_notification("视频压制")
-    kinds = [k for k, _ in calls]
-    assert kinds == ["feishu", "webhook"]
-    assert calls[0][1]["content"] == "任务 视频压制 完成"
-    assert calls[1][1]["body_json"] == "视频压制"

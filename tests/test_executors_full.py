@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """executors 覆盖测试 (mock 底层服务函数)。"""
 
-import sys
 from pathlib import Path
 from types import SimpleNamespace as NS
 
@@ -13,7 +12,6 @@ import src.executors.file_executor as file_ex
 import src.executors.misc_executor as misc_ex
 import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
-import src.executors.shield_executor as shield_ex
 import src.executors.video_executor as ve
 from src.image_converter import FileConvertResult
 
@@ -398,115 +396,7 @@ def test_execute_qc_auto_report_path(capsys, monkeypatch, tmp_path):
 # misc_executor
 # ----------------------------------------------------------------
 
-def test_execute_notification_full(capsys, monkeypatch):
-    import src.notify_config as nc
-    sent = []
-    monkeypatch.setattr(misc_ex, "send_feishu_notification",
-                        lambda **kw: sent.append("feishu") or True)
-    monkeypatch.setattr(misc_ex, "send_webhook_notification",
-                        lambda **kw: sent.append("webhook") or True)
-    monkeypatch.setattr(misc_ex, "save_notify_config", lambda cfg: None)
-    nc._notify_config.clear()
-    nc._notify_config.update({"enabled": True})
-    args = NS(enable_auto_notify=True, save_notify_config=True,
-              delete_notify_config=False,
-              feishu_webhook="https://f", feishu_title="t",
-              feishu_content="c", feishu_color="blue",
-              webhook_url="https://h", webhook_headers="{}",
-              webhook_body="{}")
-    misc_ex.execute_notification(args)
-    assert sent == ["feishu", "webhook"]
-    assert "自动通知已启用" in capsys.readouterr().out
-
-
-def test_execute_notification_delete_config(capsys, monkeypatch):
-    calls = []
-    monkeypatch.setattr(misc_ex, "delete_notify_config",
-                        lambda: calls.append("del"))
-    args = NS(enabled=False, save_notify_config=False,
-              delete_notify_config=True, feishu_webhook="",
-              feishu_title="", feishu_content="", feishu_color="blue",
-              webhook_url="", webhook_headers="", webhook_body="")
-    misc_ex.execute_notification(args)
-    assert calls == ["del"]
-    assert "配置文件已删除" in capsys.readouterr().out
-
-
-def test_execute_notification_test_failure(capsys, monkeypatch):
-    monkeypatch.setattr(misc_ex, "send_feishu_notification",
-                        lambda **kw: False)
-    monkeypatch.setattr(misc_ex, "send_webhook_notification",
-                        lambda **kw: False)
-    args = NS(enabled=False, save_notify_config=False,
-              delete_notify_config=False, feishu_webhook="https://f",
-              feishu_title="t", feishu_content="c", feishu_color="blue",
-              webhook_url="https://h", webhook_headers="{}",
-              webhook_body="{}")
-    misc_ex.execute_notification(args)
-    assert "失败 2 个" in capsys.readouterr().out
-
-
 def test_execute_help(capsys):
     args = NS(help_topic="视频压制")
     misc_ex.execute_help(args)
     assert "使用说明" in capsys.readouterr().out
-
-
-# ----------------------------------------------------------------
-# shield_executor
-# ----------------------------------------------------------------
-
-def test_execute_shield_unavailable(capsys, monkeypatch):
-    monkeypatch.setattr(shield_ex, "SHIELD_AVAILABLE", False)
-    args = NS(shield_input_dir="", shield_input_files=None)
-    shield_ex.execute_shield(args)
-    assert "Shield 功能不可用" in capsys.readouterr().out
-
-
-def test_execute_shield_no_input(capsys, monkeypatch):
-    monkeypatch.setattr(shield_ex, "SHIELD_AVAILABLE", True)
-    args = NS(shield_input_dir="", shield_input_files=None)
-    shield_ex.execute_shield(args)
-    assert "请选择扫描目录或图片文件" in capsys.readouterr().out
-
-
-def test_execute_shield_directory_flow(capsys, monkeypatch, tmp_path):
-    monkeypatch.setattr(shield_ex, "SHIELD_AVAILABLE", True)
-    results = [NS(path=str(tmp_path / "a.png"), filename="a.png",
-                  rating="general", scores={}, sensitive_areas=[],
-                  risk_level="safe", warnings=[], censored_path="")]
-
-    captured = {}
-
-    def fake_scan(directory, **kw):
-        captured.update(kw)
-        return results
-
-    shield_mod = NS(scan_directory=fake_scan,
-                    scan_files=lambda **kw: [],
-                    generate_report=lambda res, path: "报告内容")
-    monkeypatch.setitem(sys.modules, "src.nsfw_detect", shield_mod)
-    args = NS(shield_input_dir=str(tmp_path), shield_input_files=None,
-              shield_output_dir="", shield_report="",
-              shield_threshold="Questionable 及以上 (推荐)",
-              shield_recursive=True, shield_enable_censor=False,
-              shield_censor_type="马赛克 (Pixelate)", shield_mosaic_size="16",
-              shield_overlay_image="", shield_expand_pixels="0")
-    shield_ex.execute_shield(args)
-    assert "报告预览" in capsys.readouterr().out
-
-
-def test_execute_shield_files_flow_no_results(capsys, monkeypatch, tmp_path):
-    monkeypatch.setattr(shield_ex, "SHIELD_AVAILABLE", True)
-    shield_mod = NS(scan_directory=lambda **kw: [],
-                    scan_files=lambda **kw: [],
-                    generate_report=lambda res, path: "")
-    monkeypatch.setitem(sys.modules, "src.nsfw_detect", shield_mod)
-    args = NS(shield_input_dir="", shield_input_files=[str(tmp_path / "x.png")],
-              shield_output_dir="", shield_report="",
-              shield_threshold="Questionable 及以上 (推荐)",
-              shield_recursive=True, shield_enable_censor=True,
-              shield_censor_type="马赛克 (Pixelate)", shield_mosaic_size="16",
-              shield_overlay_image="", shield_expand_pixels="5")
-    shield_ex.execute_shield(args)
-    assert "未找到可扫描的图片" in capsys.readouterr().out

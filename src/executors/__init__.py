@@ -28,12 +28,8 @@ from .qc_executor import (
 )
 
 from .misc_executor import (
-    execute_notification,
     execute_help,
 )
-
-# Shield 执行器 (始终导入，内部通过 SHIELD_AVAILABLE 标志控制可用性)
-from .shield_executor import execute_shield, SHIELD_AVAILABLE
 
 # 媒体元数据检测执行器
 from .probe_executor import execute_media_probe
@@ -55,11 +51,7 @@ __all__ = [
     # 质量检测
     "execute_qc",
     # 杂项
-    "execute_notification",
     "execute_help",
-    # Shield
-    "execute_shield",
-    "SHIELD_AVAILABLE",
     # 媒体元数据检测
     "execute_media_probe",
 ]

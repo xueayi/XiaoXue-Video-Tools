@@ -12,7 +12,7 @@ from src.ui.task_runner import TaskRunner
 
 @pytest.fixture
 def win(qapp):
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     yield w
     w.close()
 
@@ -30,12 +30,38 @@ def _pump_until(qapp, cond, timeout_ms=5000):
 # ----------------------------------------------------------------
 
 def test_window_builds_all_pages(win):
-    assert win._stack.count() == 12
-    assert len(win._tabs) == 12
-    assert len(win._handlers) == 12
-    assert win._sidebar.count() == 12
+    assert win._stack.count() == 10
+    assert len(win._tabs) == 10
+    assert len(win._handlers) == 10
+    assert win._sidebar.count() == 10
     assert win.windowTitle() == "小雪工具箱"
     assert win.minimumSize().width() == 960
+
+
+def test_flat_grouped_navigation(win):
+    """导航保持 main 的分组平铺结构: 4 个分组 + 10 个功能页。
+
+    两个已下线入口移除后「特色与辅助」分组变空被删除；
+    不引入首页/设置等新入口（后续分支负责）。
+    """
+    rows = win._sidebar._page_of_row
+    section_titles = [
+        win._sidebar._list.item(row).text()
+        for row, page in enumerate(rows) if page is None
+    ]
+    item_titles = [
+        win._sidebar._list.item(row).text()
+        for row, page in enumerate(rows) if page is not None
+    ]
+    assert section_titles == ["视频处理", "格式与媒体", "质量与批量", "帮助"]
+    assert item_titles == [
+        "视频压制", "音频替换", "音视频抽取",
+        "封装转换", "媒体元数据检测", "图片转换",
+        "素材质量检测", "文件夹创建", "批量重命名",
+        "使用说明",
+    ]
+    assert win._sidebar._list.count() == len(section_titles) + len(item_titles)
+    assert "首页" not in item_titles and "设置" not in item_titles
 
 
 def test_navigation_switches_stack(win, qapp):
@@ -66,14 +92,10 @@ def test_status_bar_ready(win):
 # ----------------------------------------------------------------
 
 def test_execute_success_flow(win, qapp, monkeypatch):
-    notified = []
-    monkeypatch.setattr(mw, "send_auto_notification",
-                        lambda name: notified.append(name))
     win._handlers["视频压制"] = lambda args: print("fake encode")
     win._sidebar.setCurrentRow(0)
     win._on_execute()
     _pump_until(qapp, lambda: "完成" in win.statusBar().currentMessage())
-    assert notified == ["视频压制"]
     assert win._execute_btn.isEnabled()
     assert not win._stop_btn.isEnabled()
 
@@ -198,7 +220,7 @@ def test_about_dialog_opens_and_links(win, qapp, monkeypatch):
 
 def test_geometry_persisted_on_close(qapp):
     from src.gui_config import get_qsettings
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     w.resize(1000, 700)
     w.close()
     geo = get_qsettings().value("ui/geometry")
@@ -212,7 +234,7 @@ def test_geometry_restored_on_reopen(qapp, monkeypatch):
     restoreGeometry」而非最终尺寸。
     """
     from src.gui_config import get_qsettings
-    w1 = MainWindow(shield_available=True, notify_config=None)
+    w1 = MainWindow()
     w1.resize(1010, 705)
     w1.close()
     saved = get_qsettings().value("ui/geometry")
@@ -225,7 +247,7 @@ def test_geometry_restored_on_reopen(qapp, monkeypatch):
         calls.append(geo)
         return real_restore(self, geo)
     monkeypatch.setattr(MainWindow, "restoreGeometry", spy)
-    w2 = MainWindow(shield_available=True, notify_config=None)
+    w2 = MainWindow()
     assert calls and calls[0] == saved
     w2.close()
 
@@ -245,7 +267,7 @@ def test_close_terminates_running_runner(qapp):
             self.calls.append("wait")
             return True
 
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     fake = FakeRunner()
     w._runner = fake
     w.close()
@@ -283,9 +305,6 @@ def test_main_entrypoint(monkeypatch, qapp):
     import PyQt6.QtWidgets as QtW
     monkeypatch.setattr(QtW, "QApplication", FakeApp)
     monkeypatch.setattr(mw, "MainWindow", fake_mainwindow)
-    monkeypatch.setattr(entry, "load_notify_config", lambda: None)
-    monkeypatch.setattr(entry, "get_notify_config", lambda: {})
-    monkeypatch.setattr(entry, "SHIELD_AVAILABLE", True, raising=False)
 
     import src.ui.theme as theme_mod
     monkeypatch.setattr(theme_mod, "apply_theme", lambda *a, **k: None)
@@ -348,8 +367,6 @@ def test_main_normal_start_no_pending(monkeypatch):
     monkeypatch.setattr(QtW, "QApplication", FakeApp)
     monkeypatch.setattr(mw, "MainWindow",
                         lambda **k: type("W", (), {"show": lambda s: None})())
-    monkeypatch.setattr(entry, "load_notify_config", lambda: None)
-    monkeypatch.setattr(entry, "get_notify_config", lambda: {})
 
     import src.ui.theme as theme_mod
     monkeypatch.setattr(theme_mod, "apply_theme", lambda *a, **k: None)

@@ -23,9 +23,6 @@ from colorama import init as colorama_init
 
 colorama_init()
 
-from src.notify_config import load_notify_config, get_notify_config
-from src.executors import SHIELD_AVAILABLE
-
 
 def main():
     """主入口函数，启动 PyQt6 图形界面。"""
@@ -41,16 +38,10 @@ def main():
         updater.launch_updater(updater_install_dir(), os.getpid())
         sys.exit(0)
 
-    load_notify_config()
-
     app = QApplication(sys.argv)
     apply_theme(app, get_theme())
 
-    notify_config = get_notify_config()
-    window = MainWindow(
-        shield_available=SHIELD_AVAILABLE,
-        notify_config=notify_config,
-    )
+    window = MainWindow()
     window.show()
     sys.exit(app.exec())
 

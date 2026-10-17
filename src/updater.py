@@ -5,8 +5,8 @@
 -> 生成 PowerShell 更新器 -> 主程序退出后由更新器完成 替换 + 重启。
 
 安全与健壮性设计:
-- 只替换 exe 与 _internal; config.ini / notify_config.json 等用户数据
-  都在安装目录下且不在发行包内, 天然保留
+- 只替换 exe 与 _internal; config.ini 等用户数据都在安装目录下且
+  不在发行包内, 天然保留
 - 更新前整目录磁盘空间预检; 下载支持断点续传与取消
 - 更新器先把旧版移入 _backup 再换入新版, 移动失败自动回滚
 - 新版启动成功后, 下一次启动时清理 _backup 与 _update 暂存目录
@@ -91,20 +91,17 @@ def is_dev_version(version: str) -> bool:
 # 检查更新
 # ----------------------------------------------------------------
 
-def _pick_asset(assets: list, shield: bool) -> dict:
-    """按当前发行版变体挑选安装包资产。"""
-    suffix = "_Shield_Windows_x64.zip" if shield else "_Windows_x64.zip"
+def _pick_asset(assets: list) -> dict:
+    """从发行资产中挑选标准版安装包。"""
+    suffix = "_Windows_x64.zip"
     for asset in assets:
         name = str(asset.get("name", ""))
-        if shield and name.endswith(suffix):
-            return asset
-        if not shield and name.endswith(suffix) and "_Shield" not in name:
+        if name.endswith(suffix):
             return asset
     raise UpdateError("新版本中没有找到与当前版本匹配的安装包")
 
 
-def fetch_latest(current_version: str, shield: bool = False,
-                 timeout: float = 10.0):
+def fetch_latest(current_version: str, timeout: float = 10.0):
     """查询最新正式版; 有更新返回 ReleaseInfo, 已是最新返回 None。
 
     网络/接口异常抛出 UpdateError (由调用方展示)。
@@ -123,7 +120,7 @@ def fetch_latest(current_version: str, shield: bool = False,
     except ValueError as e:
         raise UpdateError(f"更新服务器响应解析失败: {e}") from e
 
-    asset = _pick_asset(data.get("assets", []), shield)
+    asset = _pick_asset(data.get("assets", []))
     remote_version = str(data.get("tag_name", "")).lstrip("vV")
     info = ReleaseInfo(
         version=remote_version,

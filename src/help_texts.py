@@ -159,31 +159,6 @@ HELP_TEXTS = {
 ⚠️ 视频抽取不重新编码，速度极快
 """,
     
-    "通知设置": """
-在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Notification
-
-【通知设置】任务完成后自动通知
-
-━━━━━━━━━━ 基本使用 ━━━━━━━━━━
-1. 配置飞书或自定义 Webhook
-2. 勾选"启用自动通知"
-3. 执行其他任务时自动发送通知
-
-━━━━━━━━━━ 飞书通知 ━━━━━━━━━━
-1. 在飞书群添加自定义机器人
-2. 粘贴 Webhook URL
-3. 填写标题和内容
-4. 选择卡片颜色
-
-━━━━━━━━━━ 自定义 Webhook ━━━━━━━━━━
-支持任意 POST 请求:
-• URL: Webhook 地址
-• Headers: JSON 格式
-• Body: JSON 格式
-
-点击"开始"可测试通知。
-""",
-    
     "常见问题": """
 在线文档: https://github.com/xueayi/XiaoXue-Video-Tools/wiki/FAQ
 
@@ -206,9 +181,6 @@ HELP_TEXTS = {
 
 ❓ 字幕字体显示异常？
 → 勾选"兼容模式 (字幕)"
-
-❓ 没收到任务通知？
-→ 确认"启用自动通知"已勾选
 """,
 
     "图片转换": """

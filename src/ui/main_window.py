@@ -29,24 +29,16 @@ from .progress_dashboard import ProgressDashboard
 from .tabs import (
     EncodeTab, ReplaceAudioTab, RemuxTab, QcTab,
     MediaProbeTab, ExtractAvTab, ImageConvertTab,
-    FolderCreatorTab, BatchRenameTab, ShieldTab,
-    NotificationTab, HelpTab,
+    FolderCreatorTab, BatchRenameTab, HelpTab,
 )
 
 from ..executors import (
     execute_encode, execute_replace_audio, execute_extract_av,
     execute_remux, execute_image_convert, execute_folder_creator,
-    execute_batch_rename, execute_qc, execute_notification,
-    execute_help, execute_shield, execute_media_probe,
+    execute_batch_rename, execute_qc,
+    execute_help, execute_media_probe,
 )
-from ..notify_config import send_auto_notification
 from .._version import __version__ as _VERSION
-
-_AUTO_NOTIFY_COMMANDS = {
-    "视频压制", "音频替换", "封装转换", "素材质量检测",
-    "音视频抽取", "图片转换", "文件夹创建", "批量重命名",
-    "媒体元数据检测", "露骨图片识别",
-}
 
 _REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
 
@@ -93,15 +85,8 @@ class _CenteredColumnWidget(QWidget):
 
 
 
-def _tab_defs(shield_available: bool, notify_config):
+def _tab_defs():
     """功能页注册表: (分组标题, [(页面名, 图标名, Tab工厂, executor), ...])"""
-
-    def shield():
-        return ShieldTab(shield_available=shield_available)
-
-    def notification():
-        return NotificationTab(config=notify_config)
-
     return [
         ("视频处理", [
             ("视频压制", "ri.film-line", EncodeTab, execute_encode),
@@ -118,10 +103,6 @@ def _tab_defs(shield_available: bool, notify_config):
             ("文件夹创建", "ri.folder-add-line", FolderCreatorTab, execute_folder_creator),
             ("批量重命名", "ri.file-edit-line", BatchRenameTab, execute_batch_rename),
         ]),
-        ("特色与辅助", [
-            ("露骨图片识别", "ri.shield-check-line", shield, execute_shield),
-            ("通知设置", "ri.notification-3-line", notification, execute_notification),
-        ]),
         ("帮助", [
             ("使用说明", "ri.question-line", HelpTab, execute_help),
         ]),
@@ -131,7 +112,7 @@ def _tab_defs(shield_available: bool, notify_config):
 class MainWindow(QMainWindow):
     """应用程序主窗口。"""
 
-    def __init__(self, shield_available=True, notify_config=None, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("小雪工具箱")
         self.setMinimumSize(960, 640)
@@ -143,12 +124,11 @@ class MainWindow(QMainWindow):
 
         self._runner = None
         self._btn_anim = None
-        self._shield_available = shield_available
         self._update_dialog = None
         self._check_worker = None
 
         self._build_menu_bar()
-        self._build_central(shield_available, notify_config)
+        self._build_central()
         self._build_status_bar()
         self._build_shortcuts()
         self._restore_geometry()
@@ -167,8 +147,7 @@ class MainWindow(QMainWindow):
 
     def _show_update_dialog(self, manual: bool):
         """打开更新对话框; manual=True 时模态 (用户主动), 否则非模态。"""
-        dlg = UpdateDialog(get_base_dir(), shield=self._shield_available,
-                           release=None, parent=self)
+        dlg = UpdateDialog(get_base_dir(), release=None, parent=self)
         dlg.install_requested.connect(self._apply_update_and_quit)
         if manual:
             dlg.exec()
@@ -185,8 +164,7 @@ class MainWindow(QMainWindow):
             return
         if updater.is_dev_version(_VERSION):
             return
-        self._check_worker = UpdateWorker("check", get_base_dir(),
-                                          shield=self._shield_available)
+        self._check_worker = UpdateWorker("check", get_base_dir())
         self._check_worker.checked.connect(self._on_silent_checked)
         self._check_worker.start()
 
@@ -195,8 +173,7 @@ class MainWindow(QMainWindow):
             return
         if release.version == updater.get_skip_version():
             return
-        dlg = UpdateDialog(get_base_dir(), shield=self._shield_available,
-                           release=release, parent=self)
+        dlg = UpdateDialog(get_base_dir(), release=release, parent=self)
         dlg.install_requested.connect(self._apply_update_and_quit)
         dlg.show()
         self._update_dialog = dlg
@@ -245,7 +222,6 @@ class MainWindow(QMainWindow):
             ("封装与图片", f"{_REPO_URL}/wiki/Features-Remux-Image"),
             ("素材质量检测", f"{_REPO_URL}/wiki/Features-Quality-Control"),
             ("批量与效率工具", f"{_REPO_URL}/wiki/Features-Batch-Tools"),
-            ("通知设置", f"{_REPO_URL}/wiki/Features-Notification"),
             ("常见问题", f"{_REPO_URL}/wiki/FAQ"),
         ]
         for title, url in _links:
@@ -266,7 +242,7 @@ class MainWindow(QMainWindow):
     # 中央区域
     # ================================================================
 
-    def _build_central(self, shield_available, notify_config):
+    def _build_central(self):
         central = QWidget()
         self.setCentralWidget(central)
         root_layout = QHBoxLayout(central)
@@ -329,7 +305,7 @@ class MainWindow(QMainWindow):
         self._tabs = []
         self._handlers = {}
 
-        for section_title, items in _tab_defs(shield_available, notify_config):
+        for section_title, items in _tab_defs():
             self._sidebar.add_section(section_title)
             for name, icon_name, tab_factory, handler in items:
                 self._sidebar.add_item(name, icon_name)
@@ -457,11 +433,6 @@ class MainWindow(QMainWindow):
             self._log_panel.append_log(f"\n✔ {command_name} 执行完成\n")
             self._dashboard.finish(True)
             status_flash(self.statusBar(), theme.color("success"), 2000)
-            if command_name in _AUTO_NOTIFY_COMMANDS:
-                try:
-                    send_auto_notification(command_name)
-                except Exception:
-                    pass
         else:
             self._log_panel.append_log(f"\n✘ {command_name} 执行失败\n")
             self._dashboard.finish(False)
