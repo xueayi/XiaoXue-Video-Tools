@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from ..capabilities.encoder import VIDEOTOOLBOX_ENCODER_NAMES
 from ..capabilities.ffmpeg_probe import (
     FfmpegCaps,
     caps_ready,
@@ -30,8 +31,8 @@ from ..utils import get_ffmpeg_path, get_ffprobe_path
 from .paths import resolve_resource_dir
 
 #: macOS 硬件编码器名称 (任一存在即视为 VideoToolbox 可用)
-VIDEOTOOLBOX_ENCODERS = frozenset(
-    {"h264_videotoolbox", "hevc_videotoolbox"})
+#: 与能力目录 :data:`src.capabilities.encoder.VIDEOTOOLBOX_ENCODER_SPECS` 同源
+VIDEOTOOLBOX_ENCODERS = VIDEOTOOLBOX_ENCODER_NAMES
 
 #: AviSynth 兼容模式依赖的 DLL (缺一不可)
 _AVISYNTH_DLLS = ("AviSynth.dll", "VSFilter.dll")

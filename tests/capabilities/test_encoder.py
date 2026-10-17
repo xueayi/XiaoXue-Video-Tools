@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""编码器能力模型 + 硬件 RC 映射测试 (M3.2)。
+"""编码器能力模型 + 硬件 RC 映射测试 (M3.2 / M4.4 VideoToolbox)。
 
 覆盖:
 * 能力构建 (全可用 / 无硬件 / 探测失败未知 / caps=None)、
 * 单一数据源 (KEY_ENCODERS 与 presets.ENCODERS 一致)、
 * rc_modes / speed_values / speed_flag / quality_flag / multipass、
+* VideoToolbox (M4.4): 仅 macOS + 探测到才进入能力目录, 字段与 RC 映射,
 * plan_rate_control 全矩阵 (含硬件 2-Pass 回退 note 与 multipass)。
 """
 
@@ -20,6 +21,9 @@ from src.capabilities.encoder import (
     RC_CRF,
     RC_TWO_PASS,
     RC_VBR,
+    VIDEOTOOLBOX_ENCODER_NAMES,
+    VIDEOTOOLBOX_ENCODER_SPECS,
+    VIDEOTOOLBOX_RC_MODES,
     RcPlan,
     build_encoder_capabilities,
     default_speed_preset,
@@ -34,6 +38,7 @@ from src.presets import CPU_PRESETS, ENCODERS, NVENC_PRESETS
 ALL_ENCODERS = frozenset(ENCODERS.values())
 HARDWARE_ENCODERS = frozenset(
     {"h264_nvenc", "hevc_nvenc", "h264_qsv", "h264_amf"})
+VIDEOTOOLBOX_NAMES = ("h264_videotoolbox", "hevc_videotoolbox")
 
 
 def _caps(encoders=None, probe_error=None):
@@ -207,6 +212,156 @@ def test_plan_cpu_missing_bitrate_falls_back_to_crf():
     plan_no_values = plan_rate_control("libx264", RC_VBR)
     assert plan_no_values.args == ()
     assert plan_no_values.effective_mode == RC_CRF
+
+
+# ----------------------------------------------------------------
+# VideoToolbox (M4.4)
+# ----------------------------------------------------------------
+
+@pytest.fixture
+def darwin_platform(monkeypatch):
+    """把平台能力快照模拟为 macOS (不依赖真实运行平台)。"""
+    from src.platform import capabilities as platform_caps
+
+    monkeypatch.setattr(platform_caps, "_current_platform", lambda: "darwin")
+    platform_caps.reset_platform_capabilities()
+    yield
+    platform_caps.reset_platform_capabilities()
+
+
+@pytest.fixture
+def windows_platform(monkeypatch):
+    """把平台能力快照模拟为 Windows。"""
+    from src.platform import capabilities as platform_caps
+
+    monkeypatch.setattr(platform_caps, "_current_platform", lambda: "win32")
+    platform_caps.reset_platform_capabilities()
+    yield
+    platform_caps.reset_platform_capabilities()
+
+
+def _vt_caps(names=VIDEOTOOLBOX_NAMES, probe_error=None):
+    return _caps(encoders=set(ALL_ENCODERS) | set(names), probe_error=probe_error)
+
+
+def test_videotoolbox_specs_match_platform_layer():
+    """能力目录与平台层的 VideoToolbox 名称必须同源。"""
+    from src.platform import capabilities as platform_caps
+
+    assert VIDEOTOOLBOX_ENCODER_NAMES == frozenset(VIDEOTOOLBOX_NAMES)
+    assert platform_caps.VIDEOTOOLBOX_ENCODERS == VIDEOTOOLBOX_ENCODER_NAMES
+
+
+def test_videotoolbox_absent_on_windows_even_if_probed():
+    """Windows: 即使 ffmpeg 报告了 videotoolbox 编码器也不出现。"""
+    caps = _vt_caps()
+    names = [cap.name for cap in build_encoder_capabilities(caps, platform="win32")]
+
+    assert not VIDEOTOOLBOX_ENCODER_NAMES & set(names)
+    assert encoder_capability("h264_videotoolbox", caps, platform="win32") is None
+    assert len(build_encoder_capabilities(caps, platform="win32")) == len(ENCODERS)
+    # Linux 同样不出现
+    assert encoder_capability("hevc_videotoolbox", caps, platform="linux") is None
+
+
+def test_videotoolbox_added_on_macos_when_detected():
+    caps = _vt_caps()
+    capabilities = build_encoder_capabilities(caps, platform="darwin")
+    names = [cap.name for cap in capabilities]
+
+    assert names[-2:] == list(VIDEOTOOLBOX_NAMES)
+    assert len(capabilities) == len(ENCODERS) + len(VIDEOTOOLBOX_NAMES)
+
+    h264 = encoder_capability("h264_videotoolbox", caps, platform="darwin")
+    hevc = encoder_capability("hevc_videotoolbox", caps, platform="darwin")
+    assert h264 is not None and hevc is not None
+    assert h264.display == "H.264 (Apple VideoToolbox)"
+    assert hevc.display == "H.265/HEVC (Apple VideoToolbox)"
+    # 展示名同样可查
+    assert encoder_capability("H.264 (Apple VideoToolbox)", caps,
+                              platform="darwin") == h264
+    # 探测到即视为可用, 不被 visible_encoders 过滤
+    assert h264.available is True
+    assert set(VIDEOTOOLBOX_NAMES) <= {
+        cap.name for cap in visible_encoders(caps, platform="darwin")}
+
+
+def test_videotoolbox_fields_and_capabilities():
+    caps = _vt_caps(names=["h264_videotoolbox"])
+    h264 = encoder_capability("h264_videotoolbox", caps, platform="darwin")
+    hevc = encoder_capability("hevc_videotoolbox", caps, platform="darwin")
+
+    assert h264.is_hardware is True
+    assert h264.codec == "h264"
+    assert h264.multipass_args == ()
+    assert h264.rc_modes == VIDEOTOOLBOX_RC_MODES == (RC_CRF, RC_VBR)
+    assert RC_TWO_PASS not in h264.rc_modes
+    assert RC_CBR not in h264.rc_modes
+    assert h264.speed_values  # 有合理默认档位, 不能为空
+    assert "auto" in h264.speed_values
+    assert h264.speed_flag == "-prio_speed"
+    assert h264.quality_flag == "-q:v"
+    assert default_speed_preset(h264) == "auto"
+    assert default_speed_preset("hevc_videotoolbox") == "auto"
+    assert supported_rc_modes(h264) == (RC_CRF, RC_VBR)
+    # 未探测到的 hevc 不出现 (不是 available=False 的占位项)
+    assert hevc is None
+
+
+def test_videotoolbox_absent_when_not_probed():
+    """caps=None / 探测失败: 未知 → 不追加平台专属编码器。"""
+    assert encoder_capability("h264_videotoolbox", None, platform="darwin") is None
+    failed = _vt_caps(probe_error="ffmpeg 不存在")
+    names = [cap.name for cap in build_encoder_capabilities(failed,
+                                                            platform="darwin")]
+    assert not VIDEOTOOLBOX_ENCODER_NAMES & set(names)
+
+
+def test_videotoolbox_absent_when_not_detected():
+    """macOS 但 ffmpeg 未报告 videotoolbox: 不出现。"""
+    caps = _caps(encoders=set(ALL_ENCODERS))
+    names = [cap.name for cap in build_encoder_capabilities(caps,
+                                                            platform="darwin")]
+    assert not VIDEOTOOLBOX_ENCODER_NAMES & set(names)
+
+
+def test_videotoolbox_default_platform_is_darwin_when_snapshot_says_so(
+        darwin_platform):
+    """darwin 模拟: 不传 platform 时也会进入能力目录。"""
+    from src.platform import capabilities as platform_caps
+
+    assert platform_caps.platform_capabilities().is_macos is True
+    names = [cap.name for cap in build_encoder_capabilities(_vt_caps())]
+    assert set(VIDEOTOOLBOX_NAMES) <= set(names)
+
+
+def test_videotoolbox_default_platform_windows_excludes_it(windows_platform):
+    """Windows: 不传 platform 时不出现 (与真实开发/CI 环境一致)。"""
+    from src.platform import capabilities as platform_caps
+
+    assert platform_caps.platform_capabilities().is_windows is True
+    names = [cap.name for cap in build_encoder_capabilities(_vt_caps())]
+    assert not VIDEOTOOLBOX_ENCODER_NAMES & set(names)
+
+
+def test_plan_videotoolbox_rc_mapping():
+    crf = plan_rate_control("h264_videotoolbox", RC_CRF, crf=22)
+    assert crf == RcPlan(args=("-q:v", "22"), effective_mode=RC_CRF, note="")
+
+    vbr = plan_rate_control("h264_videotoolbox", RC_VBR, bitrate="8M")
+    assert vbr.args == ("-b:v", "8M")
+    assert vbr.effective_mode == RC_VBR
+    assert vbr.note == ""
+
+    fallback = plan_rate_control("hevc_videotoolbox", RC_TWO_PASS, bitrate="8M")
+    assert fallback.effective_mode == RC_VBR
+    assert fallback.args == ("-b:v", "8M")
+    assert "-2pass" not in fallback.args
+    assert "VideoToolbox 不支持 2-Pass" in fallback.note
+
+    crf_fallback = plan_rate_control("h264_videotoolbox", RC_TWO_PASS, crf=20)
+    assert crf_fallback.effective_mode == RC_CRF
+    assert crf_fallback.args == ("-q:v", "20")
 
 
 # ----------------------------------------------------------------

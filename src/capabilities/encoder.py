@@ -14,16 +14,22 @@
       ``presets.RATE_CONTROL_MODES`` 的值域一致；
     * ``quality_flag`` / ``speed_flag``: 恒定质量值 / 速度档对应的 FFmpeg 参数名。
 
-能力矩阵（M3.2 约定）:
-    ==========  ==========================  ==================
-    编码器      rc_modes                    速度档
-    ==========  ==========================  ==================
-    CPU         crf / vbr / cbr / 2pass     CPU_PRESETS
-    NVENC       crf(vbr+cq) / vbr / cbr     p1..p7
-    QSV         crf(gq) / vbr / cbr         CPU_PRESETS
-    AMF         crf(cqp) / vbr / cbr        speed/balanced/quality
-    ==========  ==========================  ==================
+能力矩阵（M3.2 约定, M4.4 补充 VideoToolbox）:
+    ============  ==========================  ==========================
+    编码器         rc_modes                    速度档
+    ============  ==========================  ==========================
+    CPU           crf / vbr / cbr / 2pass     CPU_PRESETS
+    NVENC         crf(vbr+cq) / vbr / cbr     p1..p7
+    QSV           crf(gq) / vbr / cbr         CPU_PRESETS
+    AMF           crf(cqp) / vbr / cbr        speed/balanced/quality
+    VideoToolbox  crf(q:v) / vbr              auto/true/false
+    ============  ==========================  ==========================
     2-Pass 仅 CPU 支持；硬件选择 2-Pass 时回退到各自的最佳可用模式并给出说明。
+
+VideoToolbox (M4.4) 只在 macOS 且 ffmpeg 实际探测到 ``h264_videotoolbox`` /
+``hevc_videotoolbox`` 时进入能力目录 (Windows/Linux 或未探测完成时不出现);
+平台判定统一走 :func:`src.platform.capabilities.platform_capabilities`, 本模块
+不直接判断 ``sys.platform``。
 """
 
 from dataclasses import dataclass
@@ -42,21 +48,38 @@ RC_TWO_PASS = "2pass"
 
 CPU_RC_MODES: Tuple[str, ...] = (RC_CRF, RC_VBR, RC_CBR, RC_TWO_PASS)
 HARDWARE_RC_MODES: Tuple[str, ...] = (RC_CRF, RC_VBR, RC_CBR)
+#: VideoToolbox 只有恒定质量与 VBR, 不支持 2-Pass / CBR
+VIDEOTOOLBOX_RC_MODES: Tuple[str, ...] = (RC_CRF, RC_VBR)
 
 #: AMF 速度档 (`-quality` 的取值, 不是 x264 风格 preset)
 AMF_SPEED_VALUES: Tuple[str, ...] = ("speed", "balanced", "quality")
+
+#: VideoToolbox 无 ``-preset``, 只有 ``-prio_speed`` 三态: auto / true(优先速度)
+#: / false(优先画质); 取值本身就是 ffmpeg 可接受的参数值。
+VIDEOTOOLBOX_SPEED_VALUES: Tuple[str, ...] = ("auto", "true", "false")
+
+#: VideoToolbox 编码器 (二进制名, 展示名); 顺序固定, 与
+#: :data:`src.platform.capabilities.VIDEOTOOLBOX_ENCODERS` 同源
+VIDEOTOOLBOX_ENCODER_SPECS: Tuple[Tuple[str, str], ...] = (
+    ("h264_videotoolbox", "H.264 (Apple VideoToolbox)"),
+    ("hevc_videotoolbox", "H.265/HEVC (Apple VideoToolbox)"),
+)
+VIDEOTOOLBOX_ENCODER_NAMES = frozenset(
+    name for name, _display in VIDEOTOOLBOX_ENCODER_SPECS)
 
 # 内部家族标识
 FAMILY_CPU = "cpu"
 FAMILY_NVENC = "nvenc"
 FAMILY_QSV = "qsv"
 FAMILY_AMF = "amf"
+FAMILY_VIDEOTOOLBOX = "videotoolbox"
 
 _SPEED_VALUES = {
     FAMILY_CPU: tuple(CPU_PRESETS),
     FAMILY_NVENC: tuple(NVENC_PRESETS),
     FAMILY_QSV: tuple(CPU_PRESETS),
     FAMILY_AMF: AMF_SPEED_VALUES,
+    FAMILY_VIDEOTOOLBOX: VIDEOTOOLBOX_SPEED_VALUES,
 }
 
 _SPEED_FLAGS = {
@@ -64,6 +87,7 @@ _SPEED_FLAGS = {
     FAMILY_NVENC: "-preset",
     FAMILY_QSV: "-preset",
     FAMILY_AMF: "-quality",
+    FAMILY_VIDEOTOOLBOX: "-prio_speed",
 }
 
 _QUALITY_FLAGS = {
@@ -71,10 +95,19 @@ _QUALITY_FLAGS = {
     FAMILY_NVENC: "-cq",
     FAMILY_QSV: "-global_quality",
     FAMILY_AMF: "-qp_i",
+    FAMILY_VIDEOTOOLBOX: "-q:v",
 }
 
 _MULTIPASS_ARGS = {
     FAMILY_NVENC: ("-multipass", "fullres"),
+}
+
+_RC_MODES = {
+    FAMILY_CPU: CPU_RC_MODES,
+    FAMILY_NVENC: HARDWARE_RC_MODES,
+    FAMILY_QSV: HARDWARE_RC_MODES,
+    FAMILY_AMF: HARDWARE_RC_MODES,
+    FAMILY_VIDEOTOOLBOX: VIDEOTOOLBOX_RC_MODES,
 }
 
 _NOTES = {
@@ -82,6 +115,8 @@ _NOTES = {
     FAMILY_NVENC: "NVIDIA 硬件编码；不支持 2-Pass, 选择 2-Pass 时回退 VBR + multipass",
     FAMILY_QSV: "Intel QSV 硬件编码；不支持 2-Pass, 选择 2-Pass 时回退 CRF/CQ",
     FAMILY_AMF: "AMD AMF 硬件编码；速度档使用 -quality speed/balanced/quality",
+    FAMILY_VIDEOTOOLBOX: (
+        "Apple VideoToolbox 硬件编码；不支持 2-Pass, 选择 2-Pass 时回退 CRF/VBR"),
 }
 
 
@@ -96,6 +131,8 @@ def _family_of(name: str) -> str:
         return FAMILY_QSV
     if "amf" in text:
         return FAMILY_AMF
+    if "videotoolbox" in text:
+        return FAMILY_VIDEOTOOLBOX
     return FAMILY_CPU
 
 
@@ -133,7 +170,7 @@ def _build_capability(name: str, display: str,
         codec=_codec_of(name),
         is_hardware=family != FAMILY_CPU,
         available=available,
-        rc_modes=CPU_RC_MODES if family == FAMILY_CPU else HARDWARE_RC_MODES,
+        rc_modes=_RC_MODES[family],
         speed_values=_SPEED_VALUES[family],
         speed_flag=_SPEED_FLAGS[family],
         quality_flag=_QUALITY_FLAGS[family],
@@ -142,15 +179,53 @@ def _build_capability(name: str, display: str,
     )
 
 
-def build_encoder_capabilities(caps=None) -> Tuple[EncoderCapability, ...]:
+def current_platform() -> str:
+    """当前平台标识 (取自平台能力快照; 单测可 monkeypatch 本函数)。
+
+    这里**不**直接判断 ``sys.platform``: 平台判定统一由
+    :mod:`src.platform.capabilities` 提供, 本模块只消费其结果。
+    平台层异常时返回空串 (等价于"非 macOS", 不追加平台专属编码器)。
+    """
+    try:
+        from ..platform.capabilities import platform_capabilities
+
+        return str(platform_capabilities().os_name or "")
+    except Exception:  # pragma: no cover - 平台层异常不影响能力目录
+        return ""
+
+
+def _videotoolbox_capabilities(probed_encoders, platform: Optional[str]) -> list:
+    """macOS 且探测到 VideoToolbox 编码器时追加的能力快照。
+
+    出现条件 (缺一不可, 避免给出本平台无法执行的选项):
+        * 平台为 ``darwin`` (Windows/Linux 一律不出现);
+        * 有真实探测结果 (``caps`` 为 None 或探测失败时不出现);
+        * ffmpeg 编码器列表里确实有 ``h264_videotoolbox`` / ``hevc_videotoolbox``。
+    """
+    resolved = current_platform() if platform is None else str(platform or "")
+    if resolved != "darwin":
+        return []
+    return [
+        _build_capability(name, display, True)
+        for name, display in VIDEOTOOLBOX_ENCODER_SPECS
+        if name in probed_encoders
+    ]
+
+
+def build_encoder_capabilities(caps=None, platform=None
+                               ) -> Tuple[EncoderCapability, ...]:
     """构建全部编码器能力（按 ``presets.ENCODERS`` 顺序）。
 
     Args:
         caps: :class:`FfmpegCaps` 快照；None / 探测失败时所有编码器
-            ``available=None``（未知 → UI 保持可选，不隐藏）。
+            ``available=None``（未知 → UI 保持可选，不隐藏），
+            也不会追加 VideoToolbox 编码器。
+        platform: 覆盖平台标识（``sys.platform`` 值, 测试用）；缺省读取
+            :func:`src.platform.capabilities.platform_capabilities`。
 
     Returns:
-        不可变能力元组。
+        不可变能力元组; macOS 且探测到 VideoToolbox 时在末尾追加
+        ``h264_videotoolbox`` / ``hevc_videotoolbox``。
     """
     probed = caps is not None and not getattr(caps, "probe_error", None)
     probed_encoders = (
@@ -160,25 +235,27 @@ def build_encoder_capabilities(caps=None) -> Tuple[EncoderCapability, ...]:
     for display, name in ENCODERS.items():
         available = (name in probed_encoders) if probed else None
         capabilities.append(_build_capability(name, display, available))
+    capabilities.extend(_videotoolbox_capabilities(probed_encoders, platform))
     return tuple(capabilities)
 
 
-def visible_encoders(caps=None) -> Tuple[EncoderCapability, ...]:
+def visible_encoders(caps=None, platform=None) -> Tuple[EncoderCapability, ...]:
     """可展示/可选的编码器：排除探测明确不可用的项（未知仍然保留）。"""
     return tuple(
-        cap for cap in build_encoder_capabilities(caps)
+        cap for cap in build_encoder_capabilities(caps, platform)
         if cap.available is not False
     )
 
 
-def encoder_capability(binary_or_display, caps=None) -> Optional[EncoderCapability]:
+def encoder_capability(binary_or_display, caps=None,
+                       platform=None) -> Optional[EncoderCapability]:
     """按二进制名或展示名查找能力快照；找不到返回 None。"""
     if binary_or_display is None:
         return None
     key = str(binary_or_display).strip()
     if not key:
         return None
-    for cap in build_encoder_capabilities(caps):
+    for cap in build_encoder_capabilities(caps, platform):
         if key == cap.name or key == cap.display:
             return cap
     return None
@@ -211,6 +288,7 @@ def default_speed_preset(cap) -> str:
         FAMILY_QSV: "medium",
         FAMILY_NVENC: "p4",
         FAMILY_AMF: "balanced",
+        FAMILY_VIDEOTOOLBOX: "auto",
     }[family]
 
 
@@ -250,6 +328,9 @@ def _quality_args(family: str, quality: str) -> Tuple[str, ...]:
         return ("-rc", "vbr", "-cq", quality, "-b:v", "0")
     if family == FAMILY_QSV:
         return ("-global_quality", quality)
+    if family == FAMILY_VIDEOTOOLBOX:
+        # VideoToolbox 恒定质量: -q:v (不写 -b:v, 由编码器自行控制码率)
+        return ("-q:v", quality)
     # AMF: CQP + qp_i/qp_p
     return ("-rc", "cqp", "-qp_i", quality, "-qp_p", quality)
 
@@ -262,6 +343,8 @@ def _vbr_args(family: str, bitrate: str) -> Tuple[str, ...]:
                 "-maxrate", bitrate, "-bufsize", bitrate)
     if family == FAMILY_QSV:
         return ("-b:v", bitrate, "-maxrate", bitrate)
+    if family == FAMILY_VIDEOTOOLBOX:
+        return ("-b:v", bitrate)
     return ("-rc", "vbr_peak", "-b:v", bitrate)
 
 
@@ -274,6 +357,9 @@ def _cbr_args(family: str, bitrate: str) -> Tuple[str, ...]:
                 "-minrate", bitrate, "-maxrate", bitrate)
     if family == FAMILY_QSV:
         return ("-b:v", bitrate, "-maxrate", bitrate)
+    if family == FAMILY_VIDEOTOOLBOX:
+        # VideoToolbox 无独立 CBR 模式, 按目标码率约束 (rc_modes 里也不提供)
+        return ("-b:v", bitrate)
     return ("-rc", "cbr", "-b:v", bitrate, "-maxrate", bitrate)
 
 
@@ -339,6 +425,15 @@ def plan_rate_control(cap, rc_mode, crf=None,
                 return RcPlan(_vbr_args(family, rate), RC_VBR,
                               "QSV 不支持 2-Pass，已回退 VBR")
             return RcPlan((), RC_CRF, "QSV 不支持 2-Pass，且未提供码率/质量值")
+        if family == FAMILY_VIDEOTOOLBOX:
+            if quality is not None:
+                return RcPlan(_quality_args(family, quality), RC_CRF,
+                              "VideoToolbox 不支持 2-Pass，已回退 CRF/CQ")
+            if rate is not None:
+                return RcPlan(_vbr_args(family, rate), RC_VBR,
+                              "VideoToolbox 不支持 2-Pass，已回退 VBR")
+            return RcPlan((), RC_CRF,
+                          "VideoToolbox 不支持 2-Pass，且未提供码率/质量值")
         # AMF
         if rate is not None:
             return RcPlan(_vbr_args(family, rate), RC_VBR,
@@ -387,7 +482,12 @@ __all__ = [
     "RC_TWO_PASS",
     "RC_VBR",
     "RcPlan",
+    "VIDEOTOOLBOX_ENCODER_NAMES",
+    "VIDEOTOOLBOX_ENCODER_SPECS",
+    "VIDEOTOOLBOX_RC_MODES",
+    "VIDEOTOOLBOX_SPEED_VALUES",
     "build_encoder_capabilities",
+    "current_platform",
     "default_speed_preset",
     "encoder_capability",
     "plan_rate_control",
