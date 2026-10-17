@@ -7,7 +7,10 @@ M2.3 起：
       ``cancel()`` 触发回调（异常吞掉、幂等），回调内的 ``runner.cancel()``
       只置线程安全事件，真正的 terminate/kill 时序由 runner 的 wait() 推进；
     * 工厂解析：实例注入 > 模块级默认 > ``SubprocessRunner``；GUI 侧
-      TaskRunner 注入 QProcess 后端，纯后端测试可注入 fake。
+      TaskRunner 注入 QProcess 后端，纯后端测试可注入 fake；
+    * ``progress_callback``（M2.4）：GUI 侧 TaskRunner 设置的 stdout 进度行
+      回调（ffmpeg ``-progress`` 的 ``key=value``），由 core 消费后转发到
+      UI 解析器；非 GUI 场景保持 None。
 """
 
 from contextvars import ContextVar, Token
@@ -83,6 +86,8 @@ class TaskContext:
         self._request_cancel_callbacks: List[Callable[[], None]] = []
         self._handle_cancel_callbacks: dict = {}
         self._runner_factory = runner_factory
+        #: stdout 进度行回调 (M2.4); GUI 由 TaskRunner 设置, 非 GUI 保持 None
+        self.progress_callback: Optional[Callable[[str], None]] = None
 
     # ----------------------------------------------------------------
     # runner 工厂

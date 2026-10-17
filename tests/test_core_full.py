@@ -226,9 +226,19 @@ def test_run_2pass_success_cleans_log(monkeypatch, tmp_path, monkeypatch_tmp=Non
 # run_ffmpeg_command (经 ProcessRunner; mock run_ffmpeg_streaming)
 # ----------------------------------------------------------------
 
-def _fake_streaming(lines=(), exit_code=0, cancelled=False):
-    def fake(cmd, on_line=None, env=None):
+def _fake_streaming(lines=(), exit_code=0, cancelled=False, channel="stderr"):
+    """模拟 run_ffmpeg_streaming 的双通道回调 (M2.4)。
+
+    channel="stderr" 时把 lines 走日志通道, channel="progress" 时走进度通道;
+    两者都会额外转发给兼容的 on_line 通道 (与真实实现一致)。
+    """
+
+    def fake(cmd, on_line=None, on_progress=None, on_log=None, env=None):
         for line in lines:
+            if channel == "progress" and on_progress is not None:
+                on_progress(line)
+            if channel == "stderr" and on_log is not None:
+                on_log(line)
             if on_line is not None:
                 on_line(line)
         return CompletedProcess(exit_code=exit_code, cancelled=cancelled)
@@ -239,13 +249,31 @@ def test_run_ffmpeg_dry_run():
     assert run_ffmpeg_command(["ffmpeg", "-y"], dry_run=True) == 0
 
 
-def test_run_ffmpeg_success(monkeypatch):
-    monkeypatch.setattr(core, "run_ffmpeg_streaming", _fake_streaming(
-        ["line1\n", "frame= 1\n"], exit_code=0))
+def test_run_ffmpeg_success(monkeypatch, capsys):
+    progress_lines = ["frame=1\n", "progress=continue\n"]
+
+    def fake(cmd, on_line=None, on_progress=None, on_log=None, env=None):
+        for line in progress_lines:
+            on_progress(line)
+        on_log("stderr 日志行\n")
+        return CompletedProcess(exit_code=0)
+
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", fake)
     got = []
     rc = run_ffmpeg_command(["ffmpeg"], progress_callback=got.append)
     assert rc == 0
-    assert got == ["line1\n", "frame= 1\n"]
+    # 进度回调只收 stdout 进度行, stderr 日志行只进日志
+    assert got == progress_lines
+    out = capsys.readouterr().out
+    assert "stderr 日志行" in out
+    assert "progress=continue" not in out
+
+
+def test_run_ffmpeg_without_explicit_progress_callback(monkeypatch):
+    """未显式传 progress_callback 时仍正常执行 (GUI 走 TaskContext 通道)。"""
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", _fake_streaming(
+        [""], exit_code=0))
+    assert run_ffmpeg_command(["ffmpeg"]) == 0
 
 
 def test_run_ffmpeg_nonzero_with_hw_error(monkeypatch):
@@ -255,14 +283,14 @@ def test_run_ffmpeg_nonzero_with_hw_error(monkeypatch):
 
 
 def test_run_ffmpeg_filenotfound(monkeypatch):
-    def boom(cmd, on_line=None, env=None):
+    def boom(*args, **kwargs):
         raise ExecutableMissingError("找不到可执行文件: ffmpeg")
     monkeypatch.setattr(core, "run_ffmpeg_streaming", boom)
     assert run_ffmpeg_command(["ffmpeg"]) == -1
 
 
 def test_run_ffmpeg_generic_error(monkeypatch):
-    def boom(cmd, on_line=None, env=None):
+    def boom(*args, **kwargs):
         raise RuntimeError("io error")
     monkeypatch.setattr(core, "run_ffmpeg_streaming", boom)
     assert run_ffmpeg_command(["ffmpeg"]) == -1

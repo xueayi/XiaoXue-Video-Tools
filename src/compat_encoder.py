@@ -19,7 +19,7 @@ from typing import Optional, List, Tuple
 from colorama import Fore, Style
 
 from .core import run_ffmpeg_streaming
-from .process import ExecutableMissingError
+from .process import ExecutableMissingError, inject_progress
 from .task.context import TaskCancelled
 from .utils import get_base_dir, get_internal_dir, get_ffmpeg_path
 from .presets import ENCODERS
@@ -223,7 +223,8 @@ def build_compat_encode_command(
         cmd.extend(extra_args.split())
     
     cmd.append(output_path)
-    return cmd
+    # M2.4: 兼容模式同样注入结构化进度 (stdout -> 进度通道, stderr -> 日志)
+    return inject_progress(cmd)
 
 
 def run_compat_encode(
@@ -312,12 +313,14 @@ def run_compat_encode(
         env = os.environ.copy()
         env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
 
-        def _on_line(line: str) -> None:
+        def _on_log(line: str) -> None:
+            """日志通道：仅 stderr（stdout 的 key=value 进度行不进日志）。"""
             if line:
                 print(line, end="", flush=True)
 
-        # 经 TaskContext 的 ProcessRunner 执行: 兼容模式同样可被 UI 取消
-        completed = run_ffmpeg_streaming(cmd, on_line=_on_line, env=env)
+        # 经 TaskContext 的 ProcessRunner 执行: 兼容模式同样可被 UI 取消;
+        # 进度行走 stdout -> TaskContext.progress_callback (GUI TaskRunner 已接线)
+        completed = run_ffmpeg_streaming(cmd, on_log=_on_log, env=env)
         return_code = (
             completed.exit_code if completed.exit_code is not None else -1)
 

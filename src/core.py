@@ -13,6 +13,7 @@ from .presets import QUALITY_PRESETS, ENCODERS
 from .process import (
     CompletedProcess,
     ExecutableMissingError,
+    inject_progress,
     resolve_runner,
     run as run_process,
 )
@@ -278,7 +279,8 @@ def build_encode_command(
         cmd.extend(extra_args.split())
 
     cmd.append(output_path)
-    return cmd
+    # M2.4: 结构化进度写入 stdout (-progress pipe:1), 供 UI 解析 percent/ETA
+    return inject_progress(cmd)
 
 
 def build_replace_audio_command(
@@ -314,7 +316,7 @@ def build_replace_audio_command(
     if audio_encoder != "copy":
         cmd.extend(["-b:a", audio_bitrate])
     cmd.append(output_path)
-    return cmd
+    return inject_progress(cmd)
 
 
 def build_remux_command(
@@ -355,7 +357,7 @@ def build_remux_command(
 
     cmd.extend(["-c", "copy"])
     cmd.append(output_path)
-    return cmd
+    return inject_progress(cmd)
 
 
 def build_extract_audio_command(
@@ -386,7 +388,7 @@ def build_extract_audio_command(
     if audio_encoder != "copy":
         cmd.extend(["-b:a", audio_bitrate])
     cmd.append(output_path)
-    return cmd
+    return inject_progress(cmd)
 
 
 def build_extract_video_command(
@@ -411,10 +413,17 @@ def build_extract_video_command(
         "-c:v", "copy",  # 视频流直接复制
     ]
     cmd.append(output_path)
-    return cmd
+    return inject_progress(cmd)
 
 
-def run_ffmpeg_streaming(cmd: List[str], *, on_line=None, env=None) -> CompletedProcess:
+def run_ffmpeg_streaming(
+    cmd: List[str],
+    *,
+    on_line=None,
+    on_progress=None,
+    on_log=None,
+    env=None,
+) -> CompletedProcess:
     """
     经当前 TaskContext 的 ProcessRunner 执行外部命令（流式回调 + 可取消）。
 
@@ -423,9 +432,18 @@ def run_ffmpeg_streaming(cmd: List[str], *, on_line=None, env=None) -> Completed
     - 无 TaskContext（CLI / 单元测试）时退回 SubprocessRunner；
     - 被取消时抛 TaskCancelled，由 executor / TaskRunner 映射为 CANCELLED。
 
+    M2.4 起输出分两条通道：
+        * **progress**：stdout 行（ffmpeg ``-progress pipe:1`` 的 ``key=value``）；
+          显式 ``on_progress`` 优先，否则使用 ``TaskContext.progress_callback``
+          （由 TaskRunner 接到 UI 解析器）；
+        * **log**：stderr 行（日志/错误），经 ``on_log`` 回调；
+        * 兼容参数 ``on_line``：仍会收到 stdout+stderr 每一行（旧调用方行为）。
+
     Args:
         cmd: 命令列表。
-        on_line: 可选的逐行输出回调（stdout/stderr 都转发）。
+        on_line: 兼容回调，接收 stdout/stderr 全部行。
+        on_progress: 进度回调，仅 stdout 行；None 时回退到 TaskContext。
+        on_log: 日志回调，仅 stderr 行。
         env: 可选的环境变量字典。
 
     Returns:
@@ -435,9 +453,27 @@ def run_ffmpeg_streaming(cmd: List[str], *, on_line=None, env=None) -> Completed
     if context is not None:
         context.raise_if_cancelled()
     runner = resolve_runner(context)
-    if on_line is not None:
-        runner.on_stdout = on_line
-        runner.on_stderr = on_line
+
+    progress_cb = on_progress
+    if progress_cb is None and context is not None:
+        progress_cb = getattr(context, "progress_callback", None)
+
+    def _stdout(line: str) -> None:
+        if progress_cb is not None:
+            progress_cb(line)
+        if on_line is not None:
+            on_line(line)
+
+    def _stderr(line: str) -> None:
+        if on_log is not None:
+            on_log(line)
+        if on_line is not None:
+            on_line(line)
+
+    if progress_cb is not None or on_line is not None:
+        runner.on_stdout = _stdout
+    if on_log is not None or on_line is not None:
+        runner.on_stderr = _stderr
     if context is not None:
         context.register(runner)
     try:
@@ -453,14 +489,18 @@ def run_ffmpeg_streaming(cmd: List[str], *, on_line=None, env=None) -> Completed
 
 def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = False) -> int:
     """
-    执行 FFmpeg 命令，实时打印输出。
+    执行 FFmpeg 命令，实时打印日志（stderr），进度走独立通道。
 
     内部经 :class:`~src.process.ProcessRunner` 执行（支持 UI 取消），
     对外保持「返回进程退出码」的既有契约。
 
+    M2.4 起 stdout 是 ``-progress`` 的 ``key=value`` 进度流：只送入进度回调，
+    **不再打印到日志**；stderr 仍是日志/错误，逐行打印并用于错误归因。
+
     Args:
         cmd: 命令列表。
-        progress_callback: 可选的进度回调函数。
+        progress_callback: 可选的进度回调（仅 stdout 进度行）。为 None 时
+            GUI 场景由 ``TaskContext.progress_callback`` 接收。
         dry_run: 若为 True，仅打印命令，不执行。
 
     Returns:
@@ -482,17 +522,17 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = F
     # 收集输出用于错误分析
     output_lines = []
 
-    def _on_line(line: str) -> None:
+    def _on_log(line: str) -> None:
+        """日志通道：仅 stderr（避免 key=value 进度行刷屏）。"""
         if not line:
             return
         data = line if line.endswith("\n") else line + "\n"
         print(data, end="", flush=True)
         output_lines.append(data)
-        if progress_callback:
-            progress_callback(data)
 
     try:
-        completed = run_ffmpeg_streaming(cmd, on_line=_on_line)
+        completed = run_ffmpeg_streaming(
+            cmd, on_progress=progress_callback, on_log=_on_log)
     except TaskCancelled:
         raise  # 取消必须向上传播, 由 TaskRunner 映射为 CANCELLED
     except ExecutableMissingError as e:
@@ -751,7 +791,10 @@ def build_2pass_commands(
 
     pass2_cmd.append(output_path)
 
-    return pass1_cmd, pass2_cmd
+    # M2.4: 仅 Pass 2 注入结构化进度。Pass 1 是分析阶段 (输出到 NUL, 结束后
+    # 才运行 Pass 2), 若也注入会让进度条先走满一遍再回退, 反而误导用户;
+    # 分析阶段 UI 保持不确定进度。
+    return pass1_cmd, inject_progress(pass2_cmd)
 
 
 def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool = False) -> int:

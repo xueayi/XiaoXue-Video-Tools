@@ -84,8 +84,10 @@ def _fake_streaming(lines=(), exit_code=0, cancelled=False):
     from src.process import CompletedProcess
     from src.task.context import TaskCancelled
 
-    def fake(cmd, on_line=None, env=None):
+    def fake(cmd, on_line=None, on_progress=None, on_log=None, env=None):
         for line in lines:
+            if on_log is not None:
+                on_log(line)
             if on_line is not None:
                 on_line(line)
         if cancelled:
