@@ -2,6 +2,7 @@
 """executors 覆盖测试 (mock 底层服务函数)。"""
 
 import sys
+from pathlib import Path
 from types import SimpleNamespace as NS
 
 import pytest
@@ -14,6 +15,7 @@ import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.executors.shield_executor as shield_ex
 import src.executors.video_executor as ve
+from src.image_converter import FileConvertResult
 
 
 def test_common_helpers():
@@ -215,7 +217,10 @@ def test_execute_image_convert_run(capsys, monkeypatch, tmp_path):
     src = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (255, 0, 0)).save(src)
     monkeypatch.setattr(file_ex, "batch_convert_images",
-                        lambda **kw: (1, 0, 0, ["e1"]))
+                        lambda **kw: [
+                            FileConvertResult(source=src, output=None,
+                                              status="failed", error="e1")
+                        ])
     args = NS(img_input=[str(src)], img_format="自定义",
               img_format_custom="webp", img_output_dir=str(tmp_path / "o"),
               img_quality=90, img_overwrite=False, img_skip_same_format=True)
@@ -227,13 +232,19 @@ def test_execute_image_convert_overwrite_deletes(capsys, monkeypatch, tmp_path):
     from PIL import Image
     src = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (255, 0, 0)).save(src)
+    out = tmp_path / "a_webp.webp"
+    out.write_bytes(b"converted")
     monkeypatch.setattr(file_ex, "batch_convert_images",
-                        lambda **kw: (1, 0, 0, []))
+                        lambda **kw: [
+                            FileConvertResult(source=src, output=out,
+                                              status="success")
+                        ])
     args = NS(img_input=[str(src)], img_format="PNG (无损)",
               img_format_custom="", img_output_dir="", img_quality=95,
               img_overwrite=True, img_skip_same_format=False)
     file_ex.execute_image_convert(args)
     assert "覆盖模式" in capsys.readouterr().out
+    assert not src.exists()
 
 
 # ----------------------------------------------------------------

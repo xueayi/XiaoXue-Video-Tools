@@ -3,7 +3,10 @@
 图片格式转换模块：支持批量图片格式互转。
 """
 import os
-from typing import List, Optional, Tuple
+from dataclasses import dataclass
+from pathlib import Path
+from typing import List, Literal, Optional, Tuple
+
 from colorama import Fore, Style
 
 try:
@@ -27,6 +30,41 @@ PIL_FORMAT_MAP = {
 
 # 需要特殊处理的格式 (如 JPEG 不支持 alpha 通道)
 FORMATS_NO_ALPHA = {".jpg", ".jpeg", ".bmp"}
+
+# 单张图片的转换状态
+ConvertStatus = Literal["success", "failed", "skipped"]
+
+
+@dataclass(frozen=True)
+class FileConvertResult:
+    """单张图片的转换结果。
+
+    调用方删除源文件前必须先通过 can_delete_source() 校验，
+    避免转换失败/被跳过/输出不存在时误删用户源文件。
+    """
+
+    source: Path
+    output: Optional[Path]
+    status: ConvertStatus
+    error: Optional[str] = None
+
+    def __post_init__(self):
+        # 兼容 str / Path 两种调用方式，统一为 Path
+        object.__setattr__(self, "source", Path(self.source))
+        if self.output is not None:
+            object.__setattr__(self, "output", Path(self.output))
+
+    def can_delete_source(self) -> bool:
+        """是否可安全删除源文件：转换成功 + 输出存在 + 与源不是同一文件。"""
+        if self.status != "success" or self.output is None:
+            return False
+        try:
+            if not self.output.is_file():
+                return False
+        except OSError:
+            # 就低不就高：任何校验异常都保留源文件
+            return False
+        return not _is_same_file(self.source, self.output)
 
 
 def check_pillow_available() -> bool:
@@ -93,7 +131,11 @@ def convert_image(
         # 保存图片
         img.save(output_path, format=target_format, **save_kwargs)
         img.close()
-        
+
+        # 保存后复核输出文件确实落盘，避免“看似成功但文件不存在”时误删源文件
+        if not os.path.isfile(output_path):
+            return False, f"转换失败: 输出文件未生成 ({os.path.basename(output_path)})"
+
         return True, f"成功转换: {os.path.basename(output_path)}"
         
     except Exception as e:
@@ -118,13 +160,79 @@ def _normalize_extension(ext: str) -> str:
     return ext
 
 
+def _path_key(path) -> str:
+    """返回路径比较键：存在时解析真实路径，否则退化为 normcase(abspath)。"""
+    try:
+        if os.path.exists(path):
+            return os.path.normcase(os.path.realpath(path))
+    except OSError:
+        pass
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+def _is_same_file(path_a, path_b) -> bool:
+    """判断两个路径是否指向同一文件。
+
+    文件都存在时优先 os.path.samefile（可识别大小写、符号链接、长路径等），
+    否则退化为归一化路径比较（Windows 大小写不敏感）。
+    """
+    try:
+        if os.path.exists(path_a) and os.path.exists(path_b):
+            return os.path.samefile(path_a, path_b)
+    except OSError:
+        pass
+    return _path_key(path_a) == _path_key(path_b)
+
+
+def _output_available(candidate: str, input_paths: List[str], reserved: set) -> bool:
+    """候选输出路径是否可用：不与输入同一文件、未被本批占用、不覆盖既有文件。"""
+    if _path_key(candidate) in reserved:
+        return False
+    if any(_is_same_file(candidate, p) for p in input_paths):
+        return False
+    try:
+        return not os.path.exists(candidate)
+    except OSError:
+        return False
+
+
+def _reserve_output(candidate: str, input_paths: List[str], reserved: set) -> str:
+    """为输出路径预占位，避免覆盖输入文件、既有文件或同批其他输出。
+
+    冲突时依次尝试 `_converted`（与输入同一文件的旧命名习惯）、`_1`/`_2`… 后缀；
+    成功占位后写入 reserved，供同批后续输入使用。
+
+    Args:
+        candidate: 初始输出路径
+        input_paths: 本批全部输入路径
+        reserved: 本批已被其他输入占用的输出路径键集合
+
+    Returns:
+        可安全写入的输出路径
+    """
+    base, ext = os.path.splitext(candidate)
+    current = candidate
+
+    # 与任一输入是同一文件时优先使用 _converted 后缀（保留历史命名）
+    if any(_is_same_file(candidate, p) for p in input_paths):
+        current = base + "_converted" + ext
+
+    index = 0
+    while not _output_available(current, input_paths, reserved):
+        index += 1
+        current = f"{base}_{index}{ext}"
+
+    reserved.add(_path_key(current))
+    return current
+
+
 def batch_convert_images(
     input_paths: List[str],
     output_dir: Optional[str],
     target_extension: str,
     quality: int = 95,
     skip_same_format: bool = True,
-) -> Tuple[int, int, int, List[str]]:
+) -> List[FileConvertResult]:
     """
     批量转换图片格式。
 
@@ -136,10 +244,19 @@ def batch_convert_images(
         skip_same_format: 跳过与目标格式相同的文件
 
     Returns:
-        (成功数, 失败数, 跳过数, 错误消息列表)
+        逐文件结果列表（success/failed/skipped），供调用方决定是否删除源文件
     """
+    if isinstance(input_paths, str):
+        input_paths = [input_paths]
+    input_paths = [str(p) for p in input_paths]
+
     if not check_pillow_available():
-        return 0, len(input_paths), 0, ["Pillow 库不可用"]
+        results = [
+            FileConvertResult(p, None, "failed", "Pillow 库不可用")
+            for p in input_paths
+        ]
+        print(f"完成: 成功 0 个, 失败 {len(results)} 个")
+        return results
 
     # 确保扩展名格式正确
     if not target_extension.startswith("."):
@@ -148,15 +265,23 @@ def batch_convert_images(
 
     # 检查是否为支持的格式
     if target_extension not in PIL_FORMAT_MAP:
-        return 0, len(input_paths), 0, [f"不支持的目标格式: {target_extension}"]
+        error = f"不支持的目标格式: {target_extension}"
+        print(f"{Fore.RED}[错误] {error}{Style.RESET_ALL}")
+        results = [
+            FileConvertResult(p, None, "failed", error)
+            for p in input_paths
+        ]
+        print(f"完成: 成功 0 个, 失败 {len(results)} 个")
+        return results
 
     target_format = PIL_FORMAT_MAP[target_extension]
     target_ext_normalized = _normalize_extension(target_extension)
-    
+
+    results: List[FileConvertResult] = []
     success_count = 0
     fail_count = 0
     skip_count = 0
-    errors = []
+    reserved: set = set()
 
     print(f"\n{Fore.CYAN}[批量图片转换] 开始处理 {len(input_paths)} 个文件{Style.RESET_ALL}")
     print(f"目标格式: {target_extension.upper()}")
@@ -165,7 +290,7 @@ def batch_convert_images(
     print("-" * 50)
 
     for i, input_path in enumerate(input_paths, 1):
-        # 跳过同格式文件
+        # 跳过同格式文件（.jpeg/.jpg、.tif/.tiff 视为同一格式）
         input_ext = os.path.splitext(input_path)[1]
         input_ext_normalized = _normalize_extension(input_ext)
 
@@ -176,37 +301,34 @@ def batch_convert_images(
                 f"已是目标格式 ({target_extension}){Style.RESET_ALL}"
             )
             skip_count += 1
+            results.append(FileConvertResult(input_path, None, "skipped"))
             continue
 
-        # 生成输出路径
+        # 生成输出路径（预占位：不覆盖输入/既有文件/同批其他输出）
         basename = os.path.splitext(os.path.basename(input_path))[0]
-        
+
         if output_dir:
-            output_path = os.path.join(output_dir, basename + target_extension)
+            candidate = os.path.join(output_dir, basename + target_extension)
         else:
             # 在原文件目录生成
             input_dir = os.path.dirname(input_path)
-            output_path = os.path.join(input_dir, basename + target_extension)
-        
-        # 避免覆盖原文件
-        if os.path.normpath(input_path) == os.path.normpath(output_path):
-            output_path = os.path.join(
-                os.path.dirname(output_path),
-                basename + "_converted" + target_extension
-            )
+            candidate = os.path.join(input_dir, basename + target_extension)
+
+        output_path = _reserve_output(candidate, input_paths, reserved)
 
         # 转换
         print(f"[{i}/{len(input_paths)}] {os.path.basename(input_path)} -> {os.path.basename(output_path)}", end=" ")
-        
+
         success, msg = convert_image(input_path, output_path, target_format, quality)
-        
+
         if success:
             print(f"{Fore.GREEN}✓{Style.RESET_ALL}")
             success_count += 1
+            results.append(FileConvertResult(input_path, output_path, "success"))
         else:
             print(f"{Fore.RED}✗ {msg}{Style.RESET_ALL}")
             fail_count += 1
-            errors.append(f"{os.path.basename(input_path)}: {msg}")
+            results.append(FileConvertResult(input_path, None, "failed", msg))
 
     print("-" * 50)
     summary_parts = [f"成功 {success_count} 个", f"失败 {fail_count} 个"]
@@ -214,4 +336,4 @@ def batch_convert_images(
         summary_parts.append(f"跳过 {skip_count} 个")
     print(f"完成: {', '.join(summary_parts)}")
 
-    return success_count, fail_count, skip_count, errors
+    return results

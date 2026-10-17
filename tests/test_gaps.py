@@ -22,9 +22,9 @@ def test_pillow_unavailable_guards(monkeypatch, tmp_path):
     assert ic.check_pillow_available() is False
     ok, msg = ic.convert_image(str(tmp_path / "a.png"), str(tmp_path / "b.png"))
     assert ok is False and "Pillow" in msg
-    ok2, fail2, skip2, errors = ic.batch_convert_images(
-        [str(tmp_path / "a.png")], None, ".jpg")
-    assert ok2 == 0 and fail2 == 1 and "Pillow" in errors[0]
+    results = ic.batch_convert_images([str(tmp_path / "a.png")], None, ".jpg")
+    assert len(results) == 1 and results[0].status == "failed"
+    assert "Pillow" in results[0].error
 
 
 def make_png(tmp_path, name):
@@ -49,29 +49,29 @@ def test_convert_flatten_palette_to_jpg(tmp_path):
 
 def test_batch_convert_no_dot_extension(tmp_path):
     src = make_png(tmp_path, "x.png")
-    ok, fail, skip, _ = ic.batch_convert_images([str(src)], None, "jpg")
-    assert ok == 1  # "jpg" 自动补点, .jpg 与 .jpeg 归一化
+    results = ic.batch_convert_images([str(src)], None, "jpg")
+    assert sum(r.status == "success" for r in results) == 1  # "jpg" 自动补点
 
 
 def test_batch_convert_output_dir_none(tmp_path):
     src = make_png(tmp_path, "y.png")
-    ok, fail, skip, _ = ic.batch_convert_images([str(src)], None, ".bmp")
-    assert ok == 1 and (tmp_path / "y.bmp").exists()
+    results = ic.batch_convert_images([str(src)], None, ".bmp")
+    assert results[0].status == "success" and (tmp_path / "y.bmp").exists()
 
 
 def test_batch_convert_same_path_gets_suffix(tmp_path):
     src = make_png(tmp_path, "same.png")
-    ok, fail, skip, _ = ic.batch_convert_images(
+    results = ic.batch_convert_images(
         [str(src)], None, ".png", skip_same_format=False)
-    assert ok == 1
+    assert results[0].status == "success"
     assert (tmp_path / "same_converted.png").exists()
 
 
 def test_batch_convert_fail_branch(tmp_path):
     missing = str(tmp_path / "ghost.png")
-    ok, fail, skip, errors = ic.batch_convert_images(
+    results = ic.batch_convert_images(
         [missing], None, ".jpg", skip_same_format=False)
-    assert ok == 0 and fail == 1 and errors
+    assert len(results) == 1 and results[0].status == "failed" and results[0].error
 
 
 def test_image_converter_pillow_import_guard(monkeypatch):

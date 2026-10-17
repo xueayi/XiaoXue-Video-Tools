@@ -13,6 +13,16 @@ from ..image_converter import batch_convert_images
 from .common import print_task_header
 
 
+def _path_key(path) -> str:
+    """返回路径比较键：存在时解析真实路径，否则退化为 normcase(abspath)。"""
+    try:
+        if os.path.exists(path):
+            return os.path.normcase(os.path.realpath(path))
+    except OSError:
+        pass
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
 def execute_remux(args):
     """
     执行封装转换任务（支持批量）。
@@ -125,9 +135,15 @@ def execute_remux(args):
 def execute_image_convert(args):
     """
     执行图片格式转换任务。
-    
+
+    覆盖模式只删除转换成功、输出文件存在且与源文件不是同一文件的源文件；
+    跳过/失败/输出缺失的源文件一律保留。删除失败逐条收集且不中断。
+
     Args:
         args: argparse 解析后的参数对象
+
+    Returns:
+        逐文件转换结果列表 (Phase 2 再包成 TaskResult)
     """
     print_task_header("图片格式转换")
 
@@ -142,7 +158,7 @@ def execute_image_convert(args):
         target_ext = getattr(args, 'img_format_custom', 'png')
         if not target_ext:
             print(f"{Fore.RED}[错误] 选择自定义格式时必须输入扩展名{Style.RESET_ALL}")
-            return
+            return []
     else:
         target_ext = IMAGE_FORMATS.get(format_preset, ".png")
 
@@ -161,7 +177,7 @@ def execute_image_convert(args):
     if overwrite:
         print(f"{Fore.YELLOW}[警告] 覆盖模式已开启，原文件将被删除{Style.RESET_ALL}")
 
-    success, fail, skipped, errors = batch_convert_images(
+    results = batch_convert_images(
         input_paths=input_files,
         output_dir=output_dir,
         target_extension=target_ext,
@@ -169,23 +185,59 @@ def execute_image_convert(args):
         skip_same_format=skip_same,
     )
 
-    # 覆盖模式：删除成功转换的原文件
-    if overwrite and success > 0:
-        print(f"\n{Fore.YELLOW}[覆盖模式] 删除原文件...{Style.RESET_ALL}")
-        deleted_count = 0
-        for input_path in input_files:
-            # 只删除成功转换的，且新旧文件扩展名不同的
-            input_ext = os.path.splitext(input_path)[1].lower()
-            if input_ext != target_ext.lower():
-                try:
-                    os.remove(input_path)
-                    deleted_count += 1
-                except Exception as e:
-                    print(f"  ✗ 删除失败: {os.path.basename(input_path)} - {e}")
-        if deleted_count > 0:
-            print(f"  ✓ 已删除 {deleted_count} 个原文件")
+    success_count = sum(1 for r in results if r.status == "success")
+    fail_count = sum(1 for r in results if r.status == "failed")
+    skip_count = sum(1 for r in results if r.status == "skipped")
 
-    if errors:
-        print(f"\n{Fore.YELLOW}[警告] 部分转换失败:{Style.RESET_ALL}")
-        for err in errors[:5]:
+    # 覆盖模式：只删除“转换成功 + 输出存在 + 非同一文件”的源文件
+    deleted_count = 0
+    delete_errors = []
+    if overwrite:
+        deletable = [r for r in results if r.can_delete_source()]
+        if deletable:
+            print(f"\n{Fore.YELLOW}[覆盖模式] 删除转换成功的原文件...{Style.RESET_ALL}")
+            deleted_keys = set()
+            for r in deletable:
+                source = str(r.source)
+                key = _path_key(source)
+                if key in deleted_keys:
+                    continue
+                try:
+                    os.remove(source)
+                except OSError as e:
+                    delete_errors.append(f"{os.path.basename(source)}: {e}")
+                    print(f"  ✗ 删除失败: {os.path.basename(source)} - {e}")
+                else:
+                    deleted_keys.add(key)
+                    deleted_count += 1
+                    print(f"  ✓ 已删除: {os.path.basename(source)}")
+            if deleted_count > 0:
+                print(f"  ✓ 已删除 {deleted_count} 个原文件")
+        else:
+            print(
+                f"\n{Fore.YELLOW}[覆盖模式] 没有可安全删除的原文件，"
+                f"跳过/失败/输出缺失的源文件已全部保留{Style.RESET_ALL}"
+            )
+
+    print(f"\n{'='*50}")
+    summary_parts = [f"成功 {success_count} 个", f"失败 {fail_count} 个"]
+    if skip_count > 0:
+        summary_parts.append(f"跳过 {skip_count} 个")
+    if overwrite:
+        summary_parts.append(f"已删除 {deleted_count} 个原文件")
+    if delete_errors:
+        summary_parts.append(f"删除失败 {len(delete_errors)} 个")
+    print(f"图片转换完成: {', '.join(summary_parts)}")
+
+    if delete_errors:
+        print(f"\n{Fore.YELLOW}[警告] {len(delete_errors)} 个原文件删除失败（源文件已保留，请手动处理）:{Style.RESET_ALL}")
+        for err in delete_errors[:5]:
             print(f"  - {err}")
+
+    failed = [r for r in results if r.status == "failed" and r.error]
+    if failed:
+        print(f"\n{Fore.YELLOW}[警告] 部分转换失败:{Style.RESET_ALL}")
+        for r in failed[:5]:
+            print(f"  - {os.path.basename(str(r.source))}: {r.error}")
+
+    return results

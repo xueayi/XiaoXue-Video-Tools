@@ -11,6 +11,7 @@ import src.batch_renamer as br
 import src.executors.batch_executor as batch_ex
 import src.executors.file_executor as file_ex
 import src.nsfw_detect as nsfw
+from src.image_converter import FileConvertResult
 from src.nsfw_detect import NSFWResult
 
 
@@ -82,13 +83,18 @@ def test_image_convert_overwrite_delete_failure(capsys, monkeypatch, tmp_path):
     from PIL import Image
     src = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (255, 0, 0)).save(src)
+    out = tmp_path / "a.jpg"
+    out.write_bytes(b"converted")
     monkeypatch.setattr(file_ex, "batch_convert_images",
-                        lambda **kw: (1, 0, 0, []))
+                        lambda **kw: [
+                            FileConvertResult(source=src, output=out,
+                                              status="success")
+                        ])
 
     real_remove = file_ex.os.remove
 
     def failing_remove(path):
-        if path == str(src):
+        if str(path) == str(src):
             raise OSError("locked")
         return real_remove(path)
     monkeypatch.setattr(file_ex.os, "remove", failing_remove)
@@ -97,6 +103,7 @@ def test_image_convert_overwrite_delete_failure(capsys, monkeypatch, tmp_path):
               img_overwrite=True, img_skip_same_format=False)
     file_ex.execute_image_convert(args)
     assert "删除失败" in capsys.readouterr().out
+    assert src.exists()
 
 
 # ----------------------------------------------------------------

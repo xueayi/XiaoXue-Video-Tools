@@ -16,6 +16,7 @@ import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.executors.shield_executor as shield_ex
 import src.folder_creator as fc
+from src.image_converter import FileConvertResult
 import src.log_utils as log_utils
 import src.notify as notify
 import src.nsfw_detect as nsfw
@@ -166,7 +167,10 @@ def test_image_convert_str_input(capsys, monkeypatch, tmp_path):
     src = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (255, 0, 0)).save(src)
     monkeypatch.setattr(file_ex, "batch_convert_images",
-                        lambda **kw: (1, 0, 0, []))
+                        lambda **kw: [
+                            FileConvertResult(source=src, output=None,
+                                              status="success")
+                        ])
     args = NS(img_input=str(src), img_format="PNG (无损)",
               img_format_custom="", img_output_dir="", img_quality=95,
               img_overwrite=False, img_skip_same_format=True)
@@ -178,14 +182,20 @@ def test_image_convert_overwrite_delete_runs(capsys, monkeypatch, tmp_path):
     from PIL import Image
     src = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (255, 0, 0)).save(src)
+    out = tmp_path / "a.jpg"
+    out.write_bytes(b"converted")
     monkeypatch.setattr(file_ex, "batch_convert_images",
-                        lambda **kw: (1, 0, 0, []))
+                        lambda **kw: [
+                            FileConvertResult(source=src, output=out,
+                                              status="success")
+                        ])
     args = NS(img_input=[str(src)], img_format="JPG/JPEG (有损压缩)",
               img_format_custom="", img_output_dir="", img_quality=95,
               img_overwrite=True, img_skip_same_format=False)
     file_ex.execute_image_convert(args)
-    out = capsys.readouterr().out
-    assert "已删除 1 个原文件" in out
+    out_text = capsys.readouterr().out
+    assert "已删除 1 个原文件" in out_text
+    assert not src.exists()
 
 
 # ----------------------------------------------------------------
