@@ -1,16 +1,31 @@
 # -*- coding: utf-8 -*-
-"""视频压制标签页 —— 最复杂的功能页面。"""
+"""视频压制标签页。
+
+信息架构 (PR-04)：
+    A. 输入媒体卡   —— 拖拽/选择输入，展示 8 项媒体信息
+    B. 输出方案卡   —— 5 张目标卡映射现有质量预设 + "更多预设" (全部预设)
+    C. 常用设置     —— 画质镜像 / 输出格式 / 分辨率 / 输出路径 / 音频 / 字幕
+    D. 轨道选择     —— 探测到的音频/字幕轨道勾选 (保留既有能力)
+    E. 压制后分发   —— 成品自动复制/移动 (文档未提, 保留功能)
+    F. 高级设置     —— 默认折叠: encoder/RC/CRF/码率/fps/流编号/extra_args/debug
+    G. 在线文档
+    H. 执行摘要     —— 页尾卡片, 与 executor 同源 (resolve_encoder_params) 实时预览
+
+硬约束：所有控件属性名、``build_args()`` 键集与 command 保持不变。
+"""
 
 import os
 
 from PyQt6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton,
-    QWidget,
+    QWidget, QToolButton,
 )
-from PyQt6.QtCore import Qt
 
 from ..base_tab import BaseTab, set_label_kind, ACTION_BTN_WIDTH
 from ..args_builder import ArgsNamespace
+from ..execution_summary import ExecutionSummaryCard
+from ..input_media_card import InputMediaCard
+from ..output_plan_card import OutputPlanCard
 from ...presets import (
     ENCODERS, QUALITY_PRESETS, CPU_PRESETS, NVENC_PRESETS,
     AUDIO_ENCODERS, AUDIO_BITRATES, RATE_CONTROL_MODES,
@@ -19,181 +34,148 @@ from ...presets import (
 )
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
 
+# 默认预设：保持与改造前一致（均衡 H.264 / CRF18）
+DEFAULT_PRESET = "【均衡画质】x264 常用导出 (CRF18)"
+
+# 预设模式下会被预设覆盖、因而禁用的控件提示
+PRESET_LOCK_HINT = (
+    "预设模式：分辨率 / 帧率 / 音频编码参数由所选预设决定，手动设置不会生效。\n"
+    "如需自由调整，请在「输出方案」中选择「自定义 (Custom)」。"
+)
+
 
 class EncodeTab(BaseTab):
 
     def __init__(self, parent=None):
         super().__init__("视频压制", parent)
 
-        # ---- 输入/输出 ----
-        io = self.add_group("输入/输出设置")
+        # ================================================================
+        # A. 输入媒体卡
+        # ================================================================
+        self.input_media_card = InputMediaCard()
+        self._main_layout.addWidget(self.input_media_card)
         self.input_edit = self.add_file_chooser(
-            io, "输入视频",
+            self.input_media_card.form, "输入视频",
             "视频文件 (*.mp4 *.mov *.avi *.mkv);;所有文件 (*.*)",
-            "选择要处理的视频文件（支持将文件直接拖动到输入框）",
-        )
-        self.output_edit = self.add_file_saver(
-            io, "输出路径 (可选)",
-            "MP4 文件 (*.mp4);;MKV 文件 (*.mkv);;所有文件 (*.*)",
-            "留空则自动生成: 输入文件名_编码器.mp4",
-        )
-        self.subtitle_edit = self.add_file_chooser(
-            io, "字幕文件 (可选)",
-            "字幕文件 (*.srt *.ass *.ssa);;所有文件 (*.*)",
-            "选择要烧录的字幕文件 (留空则不烧录)",
-        )
-        self.compat_mode_cb = self.add_checkbox(
-            io, "兼容模式 (字幕)", False,
-            "开启：使用 AviSynth+VSFilter 渲染字幕。\n"
-            "关闭 (默认)：使用 FFmpeg 内置 libass 渲染。",
-        )
-        self.add_hint(
-            io,
-            "推荐开启: ASS 字幕特效显示错乱、无法调用 TTC/OTF 字体特定字重时\n"
-            "默认关闭 (libass): 速度更快，适合 SRT 及大多数 ASS\n"
-            "注意: 兼容模式需要程序在非中文路径下运行",
-            "info",
+            "选择要处理的视频文件（支持拖拽，或点击「浏览」替换）",
         )
 
-        # ---- 预设 ----
-        preset = self.add_group("预设选择")
-        self.preset_combo = self.add_combo(
-            preset, "质量预设",
-            list(QUALITY_PRESETS.keys()),
-            "【均衡画质】x264 常用导出 (CRF18)",
-            "选择预设配置，或选择 '自定义' 手动配置参数",
-        )
+        # ================================================================
+        # B. 输出方案卡（5 张目标卡 + 更多预设）
+        # ================================================================
+        self.output_plan_card = OutputPlanCard(current=DEFAULT_PRESET)
+        self._main_layout.addWidget(self.output_plan_card)
+        # 复用卡内的预设下拉作为唯一 preset_combo（全部 7 项保持可选）
+        self.preset_combo = self.output_plan_card.preset_combo
 
-        # ---- 编码器 ----
-        encode_only = {k: v for k, v in ENCODERS.items() if v != "copy"}
-        encoder = self.add_group("编码器设置", "选择自定义模式时生效")
-        self.encoder_combo = self.add_combo(
-            encoder, "视频编码器",
-            list(encode_only.keys()), "H.264 (CPU - libx264)",
-            "选择视频编码器 (CPU/NVIDIA/Intel/AMD)",
+        # ================================================================
+        # C. 常用设置
+        # ================================================================
+        common = self.add_group(
+            "常用设置",
+            "日常导出最常用的参数；其余参数收在页面下方「高级设置」中。",
         )
-        self.speed_preset_combo = self.add_combo(
-            encoder, "编码速度", CPU_PRESETS, "medium",
-            "编码速度预设 (越慢画质越好)",
-        )
-        self.nvenc_preset_combo = self.add_combo(
-            encoder, "N卡速度档位",
-            ["使用预设默认"] + NVENC_PRESETS, "使用预设默认",
-            "NVENC 速度档位 (p1最快/p7最慢)",
-        )
+        self.common_group = common.parentWidget()
 
-        # ---- 质量与码率 ----
-        quality = self.add_group(
-            "质量与码率",
-            "CRF/CQ 模式由质量值控制；VBR/CBR 模式需设置目标码率",
-        )
-        self.rate_control_combo = self.add_combo(
-            quality, "码率控制模式",
-            list(RATE_CONTROL_MODES.keys()), "CRF/CQ (恒定质量)",
-        )
-        self.crf_spin = self.add_spinbox(
-            quality, "质量值 (CRF/CQ)", 0, 51, 18,
-            "0-51，越低画质越好，推荐 18-23",
-        )
-        self.video_bitrate_combo = self.add_combo(
-            quality, "目标码率", VIDEO_BITRATES, "",
-            "CRF/CQ 模式留空；VBR/CBR/2-Pass 模式设置码率",
-        )
-        self.add_hint(
-            quality,
-            "CRF/CQ: 恒定质量 (推荐)，由上方质量值控制\n"
-            "VBR: 可变码率，设置平均码率  |  CBR: 恒定码率，适合推流\n"
-            "2-Pass: 两遍编码，精确控制目标码率",
-            "info",
-        )
+        # 画质：只读镜像 crf_spin，真实控件在高级设置
+        quality_row = QHBoxLayout()
+        quality_row.setSpacing(8)
+        self.quality_mirror_label = QLabel()
+        set_label_kind(self.quality_mirror_label, "strong")
+        self._quality_hint = QLabel("只读镜像；可在「高级设置」中调整")
+        set_label_kind(self._quality_hint, "muted")
+        quality_row.addWidget(self.quality_mirror_label)
+        quality_row.addWidget(self._quality_hint)
+        quality_row.addStretch(1)
+        common.addRow("画质", quality_row)
 
-        # ---- 视频输出 ----
-        vid_out = self.add_group("视频输出")
         self.output_format_combo = self.add_combo(
-            vid_out, "输出格式",
+            common, "输出格式",
             list(ENCODE_OUTPUT_FORMATS.keys()), "MP4 (默认)",
             "选择输出容器格式",
         )
         self.output_format_custom_edit = self.add_text_input(
-            vid_out, "自定义格式", "",
+            common, "自定义格式", "",
             "填写扩展名，如 ts、webm",
         )
         self.resolution_edit = self.add_text_input(
-            vid_out, "分辨率", "",
-            "如 1920x1080，留空保持原分辨率",
+            common, "分辨率", "",
+            "如 1920x1080，留空保持原分辨率 (预设模式下由预设决定)",
         )
-        self.fps_spin = self.add_spinbox(
-            vid_out, "帧率", 0, 240, 0,
-            "如 30、60，填 0 保持原帧率",
-        )
-        self.add_hint(
-            vid_out,
-            "留空分辨率和帧率 (帧率填 0) 时将保持源视频的原始分辨率和帧率，不做任何缩放或变速处理",
-            "info",
+        self.output_edit = self.add_file_saver(
+            common, "输出路径 (可选)",
+            "MP4 文件 (*.mp4);;MKV 文件 (*.mkv);;所有文件 (*.*)",
+            "留空则自动生成: 原文件名_编码器简称.格式\n"
+            "如 我的视频.mp4 + libx264 -> 我的视频_x264.mp4",
         )
 
-        # ---- 音频设置 ----
-        audio = self.add_group("音频设置")
+        self._preset_lock_hint = self.add_hint(
+            common, PRESET_LOCK_HINT, "info"
+        )
+
+        # 音频策略
+        self._add_section_label(common, "音频策略")
         self.audio_encoder_combo = self.add_combo(
-            audio, "音频编码器",
+            common, "音频编码器",
             list(AUDIO_ENCODERS.keys()), "复制 (不重新编码)",
         )
         self.audio_bitrate_combo = self.add_combo(
-            audio, "音频码率", AUDIO_BITRATES, "192k",
+            common, "音频码率", AUDIO_BITRATES, "192k",
         )
-
         # 音轨选择：静态下拉 (无探测数据时使用)
         self.audio_tracks_combo = self.add_combo(
-            audio, "保留音轨",
+            common, "保留音轨",
             list(AUDIO_TRACK_OPTIONS.keys()), "仅保留第 1 条 (#0)",
             "快捷选择保留的音轨。注意：MP4 不支持多音轨。",
         )
-        self.audio_tracks_custom_edit = self.add_text_input(
-            audio, "音轨编号 (自定义)", "",
-            "填写要保留的音轨编号，多条用逗号分隔，如: 0,1",
-        )
         self.add_hint(
-            audio,
+            common,
             "注意: MP4 格式不支持多音轨，需保留多轨请输出 MKV 格式",
             "warning",
         )
 
-        # ---- 字幕流设置 ----
-        sub = self.add_group("字幕流设置")
-        self.add_hint(
-            sub,
-            "「字幕烧录」= 硬编码到画面中，不可关闭\n"
-            "「保留字幕流」= 保留在容器中可切换的字幕轨\n"
-            "两者是不同概念，可同时使用",
-            "info",
+        # 字幕
+        self._add_section_label(common, "字幕")
+        self.subtitle_edit = self.add_file_chooser(
+            common, "字幕文件 (可选)",
+            "字幕文件 (*.srt *.ass *.ssa);;所有文件 (*.*)",
+            "选择要烧录的字幕文件 (留空则不烧录)",
+        )
+        self.compat_mode_cb = self.add_checkbox(
+            common, "兼容模式 (字幕)", False,
+            "开启：使用 AviSynth+VSFilter 渲染字幕。\n"
+            "关闭 (默认)：使用 FFmpeg 内置 libass 渲染。",
         )
         self.subtitle_tracks_combo = self.add_combo(
-            sub, "保留字幕",
+            common, "保留字幕",
             list(SUBTITLE_TRACK_OPTIONS.keys()), "不保留字幕",
             "注意：MP4 不支持 ASS 字幕。",
         )
-        self.subtitle_tracks_custom_edit = self.add_text_input(
-            sub, "字幕编号 (自定义)", "",
-            "填写要保留的字幕编号，如: 0,2",
-        )
         self.add_hint(
-            sub,
-            "MP4 格式不支持 ASS 等字幕，若源字幕为 ASS 格式，\n"
-            "请选择「不保留字幕」或手动指定输出格式为 MKV",
-            "warning",
+            common,
+            "「字幕烧录」= 硬编码到画面中，不可关闭\n"
+            "「保留字幕流」= 保留在容器中可切换的字幕轨\n"
+            "两者是不同概念，可同时使用；MP4 不支持 ASS 字幕，"
+            "需要时请选择「不保留字幕」或输出 MKV 格式。",
+            "info",
         )
 
-        # ---- 轨道自动检测面板 ----
+        # ================================================================
+        # D. 轨道自动检测（既有能力，保留独立分组）
+        # ================================================================
         self._audio_checks: list = []
         self._sub_checks: list = []
         self._last_probe_info = None
         self._build_track_panel()
 
-        # ---- 压制后分发 ----
+        # ================================================================
+        # E. 压制后分发（文档未提但保留，位置固定在常用设置之后）
+        # ================================================================
         transfer = self.add_group(
             "压制后分发",
             "压制完成后自动将成品复制或移动到指定目录。",
         )
+        self.transfer_group = transfer.parentWidget()
         self.post_transfer_mode_combo = self.add_combo(
             transfer, "分发模式",
             list(POST_TRANSFER_MODES.keys()), "不分发",
@@ -209,32 +191,104 @@ class EncodeTab(BaseTab):
             "tip",
         )
 
-        # ---- 高级选项 (可折叠) ----
-        extra = self.add_collapsible_group("高级选项")
+        # ================================================================
+        # F. 高级设置（默认折叠）
+        # ================================================================
+        advanced = self.add_collapsible_group("高级设置")
+        self.advanced_layout = advanced
+        self.advanced_content = advanced.parentWidget()
+        self.advanced_header = self._container.findChild(QToolButton, "fold_header")
+        self.add_hint(
+            advanced,
+            "以下编码/质量参数仅在「输出方案」选择「自定义 (Custom)」时生效；\n"
+            "预设模式下由预设决定 (画质镜像见「常用设置」)。",
+            "info",
+        )
+
+        self.encoder_combo = self.add_combo(
+            advanced, "视频编码器",
+            [k for k, v in ENCODERS.items() if v != "copy"],
+            "H.264 (CPU - libx264)",
+            "选择视频编码器 (CPU/NVIDIA/Intel/AMD)",
+        )
+        self.speed_preset_combo = self.add_combo(
+            advanced, "编码速度", CPU_PRESETS, "medium",
+            "编码速度预设 (越慢画质越好)",
+        )
+        self.nvenc_preset_combo = self.add_combo(
+            advanced, "N卡速度档位",
+            ["使用预设默认"] + NVENC_PRESETS, "使用预设默认",
+            "NVENC 速度档位 (p1最快/p7最慢)",
+        )
+        self.rate_control_combo = self.add_combo(
+            advanced, "码率控制模式",
+            list(RATE_CONTROL_MODES.keys()), "CRF/CQ (恒定质量)",
+        )
+        self.crf_spin = self.add_spinbox(
+            advanced, "质量值 (CRF/CQ)", 0, 51, 18,
+            "0-51，越低画质越好，推荐 18-23",
+        )
+        self.video_bitrate_combo = self.add_combo(
+            advanced, "目标码率", VIDEO_BITRATES, "",
+            "CRF/CQ 模式留空；VBR/CBR/2-Pass 模式设置码率",
+        )
+        self.fps_spin = self.add_spinbox(
+            advanced, "帧率", 0, 240, 0,
+            "如 30、60，填 0 保持原帧率 (预设模式下由预设决定)",
+        )
+        self.add_hint(
+            advanced,
+            "CRF/CQ: 恒定质量 (推荐)，由上方质量值控制\n"
+            "VBR: 可变码率，设置平均码率  |  CBR: 恒定码率，适合推流\n"
+            "2-Pass: 两遍编码，精确控制目标码率",
+            "info",
+        )
+
+        self._add_section_label(advanced, "流选择（自定义编号）")
+        self.audio_tracks_custom_edit = self.add_text_input(
+            advanced, "音轨编号 (自定义)", "",
+            "填写要保留的音轨编号，多条用逗号分隔，如: 0,1",
+        )
+        self.subtitle_tracks_custom_edit = self.add_text_input(
+            advanced, "字幕编号 (自定义)", "",
+            "填写要保留的字幕编号，如: 0,2",
+        )
+
+        self._add_section_label(advanced, "其它")
         self.extra_args_edit = self.add_text_input(
-            extra, "额外 FFmpeg 参数", "",
+            advanced, "额外 FFmpeg 参数", "",
             "多个参数用空格分隔",
         )
         self.add_hint(
-            extra,
+            advanced,
             "填写示例: -ss 00:01:00 -t 30 -tune animation\n"
             "参数会追加到 FFmpeg 命令末尾，多个参数用空格分隔",
             "info",
         )
         self.debug_mode_cb = self.add_checkbox(
-            extra, "Debug 模式", False,
+            advanced, "Debug 模式", False,
             "勾选后仅打印 FFmpeg 命令，不执行实际编码",
         )
 
-        # ---- 在线文档 ----
+        # ================================================================
+        # G. 在线文档
+        # ================================================================
         docs = self.add_group("在线文档")
         self.add_link(
             docs,
             "https://github.com/xueayi/XiaoXue-Video-Tools/wiki/Features-Video-Encode",
         )
+
+        # ================================================================
+        # H. 执行摘要（页尾卡片）
+        # ================================================================
+        self.summary_card = ExecutionSummaryCard()
+        self._main_layout.addWidget(self.summary_card)
         self.add_stretch()
 
-        # ---- 控件联动 ----
+        # ================================================================
+        # 控件联动
+        # ================================================================
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
         self.rate_control_combo.currentTextChanged.connect(self._on_rate_control_changed)
         self.encoder_combo.currentTextChanged.connect(self._on_encoder_changed)
@@ -243,12 +297,43 @@ class EncodeTab(BaseTab):
         self.subtitle_tracks_combo.currentTextChanged.connect(self._on_subtitle_tracks_changed)
         self.post_transfer_mode_combo.currentTextChanged.connect(self._on_transfer_changed)
         self.input_edit.textChanged.connect(self._on_input_changed)
+        self.crf_spin.valueChanged.connect(self._update_quality_mirror)
+
+        # 执行摘要实时刷新：复用全部联动信号 + 输出路径等文本输入
+        self._connect_summary_signals()
 
         self._on_preset_changed(self.preset_combo.currentText())
         self._on_output_format_changed(self.output_format_combo.currentText())
         self._on_audio_tracks_changed(self.audio_tracks_combo.currentText())
         self._on_subtitle_tracks_changed(self.subtitle_tracks_combo.currentText())
         self._on_transfer_changed(self.post_transfer_mode_combo.currentText())
+        self._update_quality_mirror()
+        self._refresh_summary()
+
+    # ----------------------------------------------------------------
+    # 常用设置辅助
+    # ----------------------------------------------------------------
+
+    @staticmethod
+    def _add_section_label(layout, text):
+        """在表单中插入小节标题 (accent 色)。"""
+        label = QLabel(text)
+        label.setObjectName("accent_label")
+        layout.addRow("", label)
+        return label
+
+    def _is_custom_mode(self) -> bool:
+        text = self.preset_combo.currentText()
+        return "自定义" in text or "Custom" in text
+
+    def _update_quality_mirror(self, *_args):
+        """画质只读镜像：始终反映 crf_spin 当前值。"""
+        value = self.crf_spin.value()
+        if self._is_custom_mode():
+            mode = self.rate_control_combo.currentText().split(" (")[0]
+            self.quality_mirror_label.setText(f"{mode} · 质量值 {value}")
+        else:
+            self.quality_mirror_label.setText(f"质量值 {value}（由预设决定）")
 
     # ----------------------------------------------------------------
     # 控件联动
@@ -256,7 +341,7 @@ class EncodeTab(BaseTab):
 
     def _on_preset_changed(self, preset_name):
         """当质量预设切换时，自动填充关联参数并控制可编辑状态。"""
-        is_custom = "自定义" in preset_name or "Custom" in preset_name
+        is_custom = self._is_custom_mode()
 
         self.encoder_combo.setEnabled(is_custom)
         self.speed_preset_combo.setEnabled(is_custom)
@@ -264,12 +349,14 @@ class EncodeTab(BaseTab):
         self.rate_control_combo.setEnabled(is_custom)
         self.crf_spin.setEnabled(is_custom)
         self.video_bitrate_combo.setEnabled(is_custom)
+        self._apply_preset_lock(is_custom)
 
         preset = QUALITY_PRESETS.get(preset_name)
         if not preset or preset.get("encoder") is None:
             if is_custom:
                 self._on_rate_control_changed(self.rate_control_combo.currentText())
                 self._on_encoder_changed(self.encoder_combo.currentText())
+            self._update_quality_mirror()
             return
 
         for name, value in ENCODERS.items():
@@ -297,11 +384,26 @@ class EncodeTab(BaseTab):
         if preset.get("audio_bitrate"):
             self.audio_bitrate_combo.setCurrentText(preset["audio_bitrate"])
 
+        self._update_quality_mirror()
+
+    def _apply_preset_lock(self, is_custom: bool):
+        """预设模式下禁用会被预设覆盖的控件，并显示说明，避免输入被静默忽略。"""
+        locked = not is_custom
+        for widget in (
+            self.resolution_edit,
+            self.fps_spin,
+            self.audio_encoder_combo,
+            self.audio_bitrate_combo,
+        ):
+            widget.setEnabled(not locked)
+        self._preset_lock_hint.setVisible(locked)
+
     def _on_rate_control_changed(self, mode_name):
         """当码率控制模式切换时，调整质量值/码率控件的可用状态。"""
         is_crf = "CRF" in mode_name or "CQ" in mode_name
         self.crf_spin.setEnabled(is_crf)
         self.video_bitrate_combo.setEnabled(not is_crf)
+        self._update_quality_mirror()
 
     def _on_encoder_changed(self, encoder_name):
         """当编码器切换时，控制 NVENC 档位可用状态。"""
@@ -319,6 +421,47 @@ class EncodeTab(BaseTab):
 
     def _on_transfer_changed(self, mode):
         self.post_transfer_dir_edit.setEnabled("不分发" not in mode)
+
+    # ----------------------------------------------------------------
+    # 执行摘要联动
+    # ----------------------------------------------------------------
+
+    def _connect_summary_signals(self):
+        """把全部会影响执行参数的控件信号接到摘要刷新。"""
+        signals = (
+            self.input_edit.textChanged,
+            self.output_edit.textChanged,
+            self.subtitle_edit.textChanged,
+            self.compat_mode_cb.toggled,
+            self.preset_combo.currentTextChanged,
+            self.encoder_combo.currentTextChanged,
+            self.speed_preset_combo.currentTextChanged,
+            self.nvenc_preset_combo.currentTextChanged,
+            self.rate_control_combo.currentTextChanged,
+            self.crf_spin.valueChanged,
+            self.video_bitrate_combo.currentTextChanged,
+            self.output_format_combo.currentTextChanged,
+            self.output_format_custom_edit.textChanged,
+            self.resolution_edit.textChanged,
+            self.fps_spin.valueChanged,
+            self.audio_encoder_combo.currentTextChanged,
+            self.audio_bitrate_combo.currentTextChanged,
+            self.audio_tracks_combo.currentTextChanged,
+            self.audio_tracks_custom_edit.textChanged,
+            self.subtitle_tracks_combo.currentTextChanged,
+            self.subtitle_tracks_custom_edit.textChanged,
+            self.extra_args_edit.textChanged,
+            self.debug_mode_cb.toggled,
+        )
+        for signal in signals:
+            signal.connect(self._refresh_summary)
+
+    def _refresh_summary(self, *_args):
+        """重新计算并渲染执行摘要（未选输入时显示占位）。"""
+        summary = getattr(self, "summary_card", None)
+        if summary is None:
+            return
+        summary.update_from_args(self.build_args())
 
     # ================================================================
     # 轨道自动检测
@@ -370,41 +513,47 @@ class EncodeTab(BaseTab):
     def _on_input_changed(self):
         self._do_probe()
 
+    def _show_probe_error(self, message: str):
+        """探测错误态：轨道面板与输入媒体卡同步显示错误。"""
+        self._track_status.setText(message)
+        set_label_kind(self._track_status, "error")
+        self._track_audio_container.setVisible(False)
+        self._track_sub_container.setVisible(False)
+        self._track_no_hint.setVisible(False)
+        self._probe_btn.setVisible(True)
+        self._last_probe_info = None
+        self._update_static_track_visibility(True)
+        self.input_media_card.set_error(message)
+
     def _do_probe(self):
         path = self.input_edit.text().strip()
         if not path:
             self._reset_track_panel()
+            self.input_media_card.reset()
+            self._refresh_summary()
             return
 
         if not os.path.isfile(path):
-            self._track_status.setText(f"文件不存在: {os.path.basename(path)}")
-            set_label_kind(self._track_status, "error")
-            self._track_audio_container.setVisible(False)
-            self._track_sub_container.setVisible(False)
-            self._track_no_hint.setVisible(False)
-            self._probe_btn.setVisible(True)
-            self._last_probe_info = None
-            self._update_static_track_visibility(True)
+            self._show_probe_error(f"文件不存在: {os.path.basename(path)}")
+            self._refresh_summary()
             return
 
         info = probe_detailed(path)
         if info and info.errors:
-            self._track_status.setText(f"检测失败: {info.errors[0]}")
-            set_label_kind(self._track_status, "error")
-            self._track_audio_container.setVisible(False)
-            self._track_sub_container.setVisible(False)
-            self._track_no_hint.setVisible(False)
-            self._probe_btn.setVisible(True)
-            self._last_probe_info = None
-            self._update_static_track_visibility(True)
+            self._show_probe_error(f"检测失败: {info.errors[0]}")
+            self._refresh_summary()
             return
 
         if not info:
             self._reset_track_panel()
+            self.input_media_card.reset()
+            self._refresh_summary()
             return
 
         self._last_probe_info = info
         self._populate_tracks(info)
+        self.input_media_card.render(info)
+        self._refresh_summary()
 
     def _reset_track_panel(self):
         self._last_probe_info = None
@@ -457,6 +606,7 @@ class EncodeTab(BaseTab):
                 label = self._build_stream_label(stream, "audio")
                 cb = QCheckBox(label)
                 cb.setChecked(True)
+                cb.toggled.connect(self._refresh_summary)
                 self._track_audio_layout.addWidget(cb)
                 self._audio_checks.append((cb, stream.index))
             self._track_audio_container.setVisible(True)
@@ -472,6 +622,7 @@ class EncodeTab(BaseTab):
                 label = self._build_stream_label(stream, "subtitle")
                 cb = QCheckBox(label)
                 cb.setChecked(False)
+                cb.toggled.connect(self._refresh_summary)
                 self._track_sub_layout.addWidget(cb)
                 self._sub_checks.append((cb, stream.index))
             self._track_sub_container.setVisible(True)
