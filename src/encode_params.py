@@ -258,6 +258,12 @@ def print_encode_info(params: EncodeParams, quality_presets: Dict[str, Any]) -> 
             print(f"  码率控制: {params.rc_mode}", flush=True)
         if params.bitrate:
             print(f"  视频码率: {params.bitrate}", flush=True)
+
+    # 音频参数 (与最终 FFmpeg 命令同源, 便于日志核对)
+    if params.audio_encoder == "copy":
+        print(f"  音频: 直接复制", flush=True)
+    else:
+        print(f"  音频: {params.audio_encoder} / {params.audio_bitrate}", flush=True)
     
     # 打印编码模式
     mode = params.get_encode_mode()
