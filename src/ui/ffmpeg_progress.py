@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""FFmpeg 输出进度解析器 —— 从 stderr 行中提取 frame/fps/time/speed 等指标。"""
+"""[DEPRECATED] 旧 FFmpeg stderr 正则进度解析器 —— 保留一版兼容。
+
+M2.4 起主窗口已改用 :mod:`src.process.progress` 的结构化解析器
+（ffmpeg ``-progress pipe:1`` + ffprobe 时长，能算出 percent/ETA），
+本模块仅保留以兼容既有调用方与测试，下个版本删除。
+"""
 
 import re
 from dataclasses import dataclass

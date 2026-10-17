@@ -3,6 +3,8 @@
 
 import os
 import webbrowser
+from dataclasses import dataclass
+from typing import Optional
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QApplication, QHBoxLayout, QVBoxLayout,
@@ -15,6 +17,7 @@ from PyQt6.QtGui import QAction, QIcon, QShortcut, QKeySequence, QPixmap
 from .. import updater
 from ..gui_config import get_icon_path
 from ..utils import get_base_dir
+from ..process.progress import FFmpegProgressParser, ProgressEvent
 
 from . import theme
 from . import icons
@@ -27,7 +30,6 @@ from .task_state import TaskStatus as ViewTaskStatus
 from .update_dialog import UpdateDialog, UpdateWorker
 from .task_runner import TaskRunner
 from .animations import AnimatedStackedWidget, button_press_anim, status_flash
-from .ffmpeg_progress import FFmpegProgressParser
 from .home_page import HomePage
 from .settings_page import SettingsPage
 from ..task.result import TaskResult
@@ -47,6 +49,31 @@ from ..executors import (
 from .._version import __version__ as _VERSION
 
 _REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
+
+
+@dataclass(frozen=True)
+class _ProgressView:
+    """把进程层 :class:`ProgressEvent` 适配为任务卡接受的 ProgressInfo 形状。
+
+    任务卡 ``TaskArea.update_metrics`` 只读取 ``percent`` / ``speed`` /
+    ``eta_sec`` / ``frame`` 字段；``percent`` 与 ``eta_sec`` 允许 None
+    （分别表示不确定进度 / 未知剩余时间）。
+    """
+
+    percent: Optional[float] = None
+    speed: float = 0.0
+    eta_sec: Optional[float] = None
+    frame: int = 0
+
+    @classmethod
+    def from_event(cls, event: ProgressEvent) -> "_ProgressView":
+        return cls(
+            percent=event.percent,
+            speed=event.speed,
+            eta_sec=event.eta_seconds,
+            frame=event.frame,
+        )
+
 
 #: 失败时交给 classify_log_text 的最近日志块数量 (归类函数内部再截取末尾行)
 _ERROR_CONTEXT_CHUNKS = 40
@@ -178,8 +205,9 @@ class MainWindow(QMainWindow):
         self._build_shortcuts()
         self._restore_geometry()
 
-        self._ffmpeg_parser = FFmpegProgressParser(self)
-        self._ffmpeg_parser.progress_updated.connect(self._dashboard.update_metrics)
+        # M2.4: 结构化进度解析器 (src/process/progress) —— 喂 ffmpeg -progress
+        # 的 stdout 行, 块结束事件经 _on_progress_line 适配后驱动任务卡。
+        self._ffmpeg_parser = FFmpegProgressParser()
 
         self._sidebar.setCurrentRow(0)
 
@@ -533,9 +561,6 @@ class MainWindow(QMainWindow):
         self._dashboard.show_indeterminate()
         self._refresh_bottom_minimum()
 
-        # 尝试从输入参数获取文件时长
-        self._try_set_duration(args)
-
         self._log_panel.append_log(f"{'=' * 50}\n")
         self._log_panel.append_log(f"▶ 开始执行: {command}\n")
         self._log_panel.append_log(f"{'=' * 50}\n")
@@ -543,25 +568,35 @@ class MainWindow(QMainWindow):
         self._task_caption = command
         self._runner = TaskRunner(handler, args, command, parent=self)
         self._runner.log_signal.connect(self._log_panel.append_log)
-        self._runner.log_signal.connect(self._ffmpeg_parser.feed_line)
+        # M2.4 进度通道: stdout(key=value) -> 解析器 -> 任务卡;
+        # duration_signal 由 worker 线程预取, 用于计算 percent/ETA。
+        self._runner.progress_signal.connect(self._on_progress_line)
+        self._runner.duration_signal.connect(self._on_duration_ready)
         # 主路径: 接收 TaskResult; finished_signal 只保留给旧槽/旧测试, 不再连接
         self._runner.result_signal.connect(self._on_task_result)
         self._runner.start()
 
-    def _try_set_duration(self, args):
-        """尝试通过 probe 获取输入文件的总时长，传给 parser 计算进度。"""
-        input_path = getattr(args, 'input', '') or ''
-        if not input_path:
+    # ----------------------------------------------------------------
+    # 任务进度 (M2.4: ffmpeg -progress -> percent/ETA)
+    # ----------------------------------------------------------------
+
+    def _on_progress_line(self, line):
+        """收到一行 ffmpeg -progress 输出：解析成事件后更新任务卡指标。"""
+        if not isinstance(line, str):
             return
+        event = self._ffmpeg_parser.feed_line(line)
+        if event is None:
+            return
+        self._dashboard.update_metrics(_ProgressView.from_event(event))
+
+    def _on_duration_ready(self, duration):
+        """worker 线程预取到输入时长：交给解析器计算 percent/ETA。"""
         try:
-            from ..media_probe import probe_detailed
-            import os
-            if os.path.isfile(input_path):
-                info = probe_detailed(input_path)
-                if info and info.duration_sec > 0:
-                    self._ffmpeg_parser.set_duration(info.duration_sec)
-        except Exception:
-            pass
+            seconds = float(duration)
+        except (TypeError, ValueError):
+            return
+        if seconds > 0:
+            self._ffmpeg_parser.set_duration(seconds)
 
     def _on_stop(self):
         """协作式取消：请求 TaskRunner 取消（内部触发 runner.cancel()）。

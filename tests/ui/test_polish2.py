@@ -210,20 +210,30 @@ def test_remux_resolve_selection_mixed(remux_tab):
 # main_window 防御分支
 # ----------------------------------------------------------------
 
-def test_try_set_duration_probe_raises(qapp, monkeypatch, tmp_path):
-    import src.media_probe as mp
+def test_task_runner_duration_probe_failure_is_silent(qapp, tmp_path):
+    """M2.4: 时长预取 (worker 线程 ffprobe) 失败不得影响任务执行。"""
+    import types
+
+    from src.task.result import TaskResult
+    from src.task.status import TaskStatus
+    from src.ui.task_runner import TaskRunner
+
     video = tmp_path / "v.mp4"
     video.write_bytes(b"x")
+    args = types.SimpleNamespace(input=str(video))
 
-    def boom(p):
+    def boom(path):
         raise RuntimeError("probe 挂了")
-    monkeypatch.setattr(mp, "probe_detailed", boom)
-    win = MainWindow()
 
-    class A:
-        input = str(video)
-    win._try_set_duration(A())  # 异常被 except 吞掉
-    win.close()
+    runner = TaskRunner(lambda a: TaskResult.ok(), args, "c",
+                        duration_probe=boom)
+    durations, results = [], []
+    runner.duration_signal.connect(durations.append)
+    runner.result_signal.connect(results.append)
+    runner.run()
+
+    assert durations == []  # 预取失败静默, 不设置时长
+    assert results and results[0].status is TaskStatus.SUCCESS
 
 
 def test_first_run_centers_when_no_saved_geometry(qapp, monkeypatch):

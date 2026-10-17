@@ -11,7 +11,6 @@ import pytest
 
 from src.ui.collapsible_log import CollapsibleLog
 from src.ui.error_card import ErrorCategory, ErrorInfo
-from src.ui.ffmpeg_progress import ProgressInfo
 from src.ui.home_page import HomePage
 from src.ui.main_window import MainWindow
 from src.ui.mock_data import MOCK_TASKS
@@ -48,15 +47,33 @@ def test_bottom_dashboard_is_task_area(win):
 
 
 def test_ffmpeg_parser_still_feeds_task_area(win):
-    """_ffmpeg_parser.progress_updated 接线保留, 驱动 TaskArea 的旧 API。"""
+    """M2.4: -progress 行经新解析器 -> 适配层 -> TaskArea.update_metrics。"""
     win._dashboard.show_indeterminate()
-    win._ffmpeg_parser.progress_updated.emit(
-        ProgressInfo(percent=33.0, speed=1.5, eta_sec=12.0, frame=100))
+    win._ffmpeg_parser.set_duration(100.0)
+    # 一个完整进度块 (stdout key=value)
+    for line in (
+        "frame=100\n",
+        "fps=25.0\n",
+        "out_time_us=50000000\n",
+        "speed=2.0x\n",
+        "progress=continue\n",
+    ):
+        win._on_progress_line(line)
     state = win._dashboard._states[CURRENT_TASK_ID]
     assert state.status is TaskStatus.RUNNING
-    assert state.progress == 33.0
-    assert state.speed == 1.5
-    assert state.eta_sec == 12.0
+    assert state.progress == 50.0
+    assert state.speed == 2.0
+    assert state.eta_sec == 25.0
+    # 块结束标记 -> 进度 100%
+    win._on_progress_line("progress=end\n")
+    assert win._dashboard._states[CURRENT_TASK_ID].progress == 100.0
+
+    # duration 未知时只走不确定态, 不产生伪 0% 完成度
+    win._ffmpeg_parser.reset()
+    win._dashboard.show_indeterminate()
+    win._on_progress_line("out_time_us=5000000\n")
+    win._on_progress_line("progress=continue\n")
+    assert win._dashboard._states[CURRENT_TASK_ID].progress is None
 
 
 # ----------------------------------------------------------------
@@ -320,6 +337,8 @@ def test_execute_connects_result_signal_not_finished(win, monkeypatch):
     class FakeRunner:
         def __init__(self, handler, args, command, parent=None):
             self.log_signal = _Signal("log")
+            self.progress_signal = _Signal("progress")
+            self.duration_signal = _Signal("duration")
             self.result_signal = _Signal("result")
             self.finished_signal = _Signal("finished")
 
@@ -335,6 +354,9 @@ def test_execute_connects_result_signal_not_finished(win, monkeypatch):
 
     names = [name for name, _ in connected]
     assert "result" in names
+    # M2.4: 进度与时长信号必须接线到主窗口
+    assert "progress" in names
+    assert "duration" in names
     assert "finished" not in names
     assert "start" in names
 

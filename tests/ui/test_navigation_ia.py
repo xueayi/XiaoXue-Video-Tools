@@ -160,6 +160,8 @@ def test_execute_routes_to_current_page_command(win, monkeypatch):
         def __init__(self, handler, args, command, parent=None):
             captured.update(handler=handler, args=args, command=command)
             self.log_signal = _Signal()
+            self.progress_signal = _Signal()
+            self.duration_signal = _Signal()
             self.finished_signal = _Signal()
             self.result_signal = _Signal()
 

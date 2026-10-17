@@ -7,6 +7,17 @@ from src.ui.ffmpeg_progress import FFmpegProgressParser, ProgressInfo
 from src.ui.progress_dashboard import ProgressDashboard, _MetricCard
 
 
+def test_ui_parser_module_marked_deprecated():
+    """M2.4: 旧 stderr 正则解析器仅保留一版兼容, 必须显式标注 deprecated。"""
+    import src.ui.ffmpeg_progress as mod
+
+    assert "DEPRECATED" in (mod.__doc__ or "")
+    # 新解析器在进程层, 与 UI 无关
+    from src.process.progress import FFmpegProgressParser as NewParser
+
+    assert NewParser is not mod.FFmpegProgressParser
+
+
 def test_parser_duration_line(qapp):
     parser = FFmpegProgressParser()
     results = []

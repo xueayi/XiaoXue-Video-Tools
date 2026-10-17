@@ -210,18 +210,11 @@ def test_slide_to_when_range_invalid(qapp):
 # main_window: 探测时长 / 停止未运行 / 首启居中
 # ----------------------------------------------------------------
 
-def test_try_set_duration_success(qapp, monkeypatch, tmp_path):
-    import src.media_probe as mp
-    video = tmp_path / "v.mp4"
-    video.write_bytes(b"x")
-    monkeypatch.setattr(mp, "probe_detailed",
-                        lambda p: _info(duration_sec=120))
+def test_on_duration_ready_sets_parser_duration(qapp):
+    """M2.4: duration 由 TaskRunner worker 预取, 经 duration_signal 写入解析器。"""
     win = MainWindow()
-
-    class A:
-        input = str(video)
-    win._try_set_duration(A())
-    assert win._ffmpeg_parser._info.total_duration == 120
+    win._on_duration_ready(120)
+    assert win._ffmpeg_parser.duration == 120
     win.close()
 
 

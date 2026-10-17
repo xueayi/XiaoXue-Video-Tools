@@ -176,13 +176,15 @@ def test_running_button_icons_branch(win, qapp):
     win._update_run_button_icons()
 
 
-def test_try_set_duration_invalid_path(win):
-    class A:
-        input = "Z:/nope.mp4"
-    win._try_set_duration(A())  # 文件不存在 -> 静默返回
-    class B:
-        input = ""
-    win._try_set_duration(B())
+def test_on_duration_ready_updates_parser(win):
+    """M2.4: 时长由 worker 线程预取后经信号写入解析器, 不再 GUI 线程同步 probe。"""
+    win._on_duration_ready(120.0)
+    assert win._ffmpeg_parser.duration == pytest.approx(120.0)
+    # 非法值静默忽略, 不改动已有 duration
+    win._on_duration_ready(-5)
+    win._on_duration_ready("bad")
+    win._on_duration_ready(None)
+    assert win._ffmpeg_parser.duration == pytest.approx(120.0)
 
 
 # ----------------------------------------------------------------
