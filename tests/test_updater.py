@@ -20,6 +20,29 @@ from src.updater import (
 
 
 # ----------------------------------------------------------------
+# 更新暂存目录 (M4.2: cache_dir/update)
+# ----------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def staging_root(tmp_path, monkeypatch):
+    """把更新暂存目录重定向到临时 cache_dir, 返回 ``cache/update``。
+
+    M4.2 起暂存区由 ``安装目录/_update`` 迁到
+    ``PlatformPaths.cache_dir/update`` (见 src/update/windows.py): 注入临时
+    cache_dir 既避免单测写真实用户缓存, 也让断言能定位暂存文件。
+    """
+    from types import SimpleNamespace
+
+    import src.update.windows as windows
+
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(
+        windows, "platform_paths",
+        lambda: SimpleNamespace(cache_dir=cache_dir))
+    return cache_dir / windows.STAGING_DIR_NAME
+
+
+# ----------------------------------------------------------------
 # 版本比较
 # ----------------------------------------------------------------
 
@@ -378,15 +401,16 @@ def make_update_zip(tmp_path, name="update.zip", with_exe=True,
     return str(path)
 
 
-def test_prepare_ok(tmp_path):
+def test_prepare_ok(tmp_path, staging_root):
     zip_path = make_update_zip(tmp_path)
     ps1 = prepare(zip_path, str(tmp_path), "2.2.0")
     assert os.path.exists(ps1)
-    assert ps1.endswith(os.path.join("_update", "updater.ps1"))
+    # M4.2: 更新器脚本落在 PlatformPaths.cache_dir/update (不再写安装目录)
+    assert ps1 == str(staging_root / "updater.ps1")
     raw = open(ps1, "rb").read()
     assert raw.startswith(b"\xef\xbb\xbf")  # BOM, PowerShell 5.1 兼容
     assert b"param(" in raw
-    new_dir = tmp_path / "_update" / "new"
+    new_dir = staging_root / "new"
     assert (new_dir / "version.txt").read_text(encoding="utf-8") == "2.2.0"
     assert (new_dir / "_internal" / "run.py").exists()
 
@@ -420,8 +444,8 @@ def test_prepare_ps1_hardened(tmp_path):
     assert "start manually" in content  # 重启失败不回滚, 提示手动启动
 
 
-def test_prepare_removes_stale_new_dir(tmp_path):
-    stale = tmp_path / "_update" / "new"
+def test_prepare_removes_stale_new_dir(tmp_path, staging_root):
+    stale = staging_root / "new"
     stale.mkdir(parents=True)
     (stale / "junk.txt").write_text("x")
     zip_path = make_update_zip(tmp_path)
@@ -448,7 +472,7 @@ def test_prepare_missing_internal(tmp_path):
         prepare(zip_path, str(tmp_path), "2.2.0")
 
 
-def test_launch_updater(monkeypatch, tmp_path):
+def test_launch_updater(monkeypatch, tmp_path, staging_root):
     """回归: 不能带 DETACHED_PROCESS (PowerShell 会静默失败, v2.2.0 踩坑)。"""
     import subprocess
     import src.updater as m
@@ -463,7 +487,9 @@ def test_launch_updater(monkeypatch, tmp_path):
     args = captured["args"]
     assert args[0] == "powershell"
     assert "-File" in args
-    assert str(tmp_path / "_update" / "updater.ps1") in args
+    # M4.2: 脚本路径取 cache 暂存区; 安装目录仍作为 InstallDir 参数传入
+    assert str(staging_root / "updater.ps1") in args
+    assert str(tmp_path) in args
     assert "12345" in args
     assert captured["flags"] == subprocess.CREATE_NO_WINDOW
     assert not captured["flags"] & subprocess.DETACHED_PROCESS
@@ -479,9 +505,9 @@ def test_cleanup_staging(tmp_path):
     cleanup_staging(str(tmp_path))  # 不存在时也安全
 
 
-def test_has_pending_update(tmp_path):
+def test_has_pending_update(tmp_path, staging_root):
     assert not has_pending_update(str(tmp_path))
-    staging = tmp_path / "_update"
+    staging = staging_root  # M4.2: 待应用更新看 cache 暂存区
     (staging / "new" / "_internal").mkdir(parents=True)
     (staging / "updater.ps1").write_text("x")
     assert has_pending_update(str(tmp_path)) is True
@@ -493,9 +519,9 @@ def test_has_pending_update(tmp_path):
     assert has_pending_update(str(tmp_path)) is False
 
 
-def test_cleanup_staging_keeps_pending_download(tmp_path):
+def test_cleanup_staging_keeps_pending_download(tmp_path, staging_root):
     """回归: 手动打开旧版不得清空待应用的更新下载 (v2.2.0 踩坑)。"""
-    staging = tmp_path / "_update"
+    staging = staging_root  # M4.2: 待应用更新看 cache 暂存区
     (staging / "new" / "_internal").mkdir(parents=True)
     (staging / "updater.ps1").write_text("x")
     (staging / "new" / "_internal" / "x").write_text("x")
