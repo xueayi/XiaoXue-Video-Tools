@@ -87,6 +87,7 @@ _LIGHT = dict(
     danger_pressed="#a31d10",
     danger_disabled="#e0a8a3",
     success="#0f7b0f",
+    warning="#8a5300",
     # 进度条
     progress_grad_start="#005fb8",
     progress_grad_mid="#0078d4",
@@ -174,6 +175,7 @@ _DARK = dict(
     danger_pressed="#a32226",
     danger_disabled="rgba(209, 52, 56, 0.40)",
     success="#6ccb5f",
+    warning="#f0c453",
     progress_grad_start="#0f6cbd",
     progress_grad_mid="#4cc2ff",
     progress_grad_end="#79d5ff",
@@ -851,6 +853,212 @@ QToolButton#fold_header:hover {
 QToolButton#fold_header:checked {
     background-color: transparent;
     color: $accent;
+}
+
+/* ================================================================
+   任务卡片 / 任务区  —— PR-03 通用组件
+   ================================================================ */
+QWidget#task_area {
+    background-color: transparent;
+}
+QLabel#task_area_placeholder {
+    color: $text_tertiary;
+    font-size: 12px;
+    padding: 10px 0;
+}
+QFrame#task_card {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-left: 3px solid $card_border;
+    border-radius: 10px;
+}
+QFrame#task_card[status="queued"] {
+    border-left-color: $text_tertiary;
+}
+QFrame#task_card[status="running"] {
+    border-left-color: $accent;
+}
+QFrame#task_card[status="success"] {
+    border-left-color: $success;
+}
+QFrame#task_card[status="partial"] {
+    border-left-color: $warning;
+}
+QFrame#task_card[status="failed"] {
+    border-left-color: $danger;
+}
+QFrame#task_card[status="cancelled"] {
+    border-left-color: $text_secondary;
+}
+QLabel#task_card_title {
+    font-weight: bold;
+    font-size: 13px;
+    color: $text_primary;
+}
+QLabel#task_status {
+    font-size: 11px;
+    font-weight: bold;
+    color: $text_secondary;
+    padding: 1px 8px;
+    border-radius: 8px;
+    background-color: $hover_overlay;
+}
+QLabel#task_status[status="running"] {
+    color: $accent;
+    background-color: $accent_tint;
+}
+QLabel#task_status[status="success"] {
+    color: $success;
+    background-color: $hint_tip_bg;
+}
+QLabel#task_status[status="partial"] {
+    color: $warning;
+    background-color: $hint_warn_bg;
+}
+QLabel#task_status[status="failed"] {
+    color: $danger;
+    background-color: $hint_warn_bg;
+}
+QLabel#task_status[status="cancelled"] {
+    color: $text_secondary;
+    background-color: $hover_overlay;
+}
+QLabel#task_card_meta {
+    color: $text_tertiary;
+    font-size: 12px;
+}
+QLabel#task_card_message {
+    color: $text_secondary;
+    font-size: 12px;
+}
+QLabel#task_card_message[status="failed"] {
+    color: $danger;
+}
+QLabel#task_card_message[status="partial"] {
+    color: $warning;
+}
+QLabel#task_card_message[status="cancelled"] {
+    color: $text_tertiary;
+}
+QLabel#task_percent {
+    color: $text_secondary;
+    font-family: $mono_family;
+    font-size: 11px;
+}
+QToolButton#task_details_btn {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 2px 6px;
+    color: $accent;
+    font-size: 12px;
+}
+QToolButton#task_details_btn:hover {
+    background-color: $hover_overlay;
+}
+QPushButton#task_cancel_btn {
+    background-color: transparent;
+    border: 1px solid $input_border;
+    border-radius: 6px;
+    padding: 3px 10px;
+    color: $text_secondary;
+    font-size: 12px;
+}
+QPushButton#task_cancel_btn:hover {
+    background-color: $danger;
+    border-color: $danger;
+    color: #ffffff;
+}
+QPushButton#task_cancel_btn:disabled {
+    background-color: $input_disabled_bg;
+    border-color: $input_disabled_border;
+    color: $text_disabled;
+}
+
+/* ================================================================
+   错误卡片  —— PR-03 通用组件
+   ================================================================ */
+QFrame#error_card {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-left: 3px solid $danger;
+    border-radius: 10px;
+}
+QLabel#error_title {
+    color: $danger;
+    font-weight: bold;
+    font-size: 13px;
+}
+QPushButton#error_action_btn {
+    background-color: transparent;
+    border: 1px solid $input_border;
+    border-radius: 6px;
+    padding: 5px 12px;
+    color: $text_secondary;
+    font-size: 12px;
+}
+QPushButton#error_action_btn:hover {
+    background-color: $hover_overlay;
+    color: $text_primary;
+}
+QPushButton#error_log_btn {
+    background-color: transparent;
+    border: 1px solid $input_border;
+    border-radius: 6px;
+    padding: 5px 12px;
+    color: $accent;
+    font-size: 12px;
+}
+QPushButton#error_log_btn:hover {
+    background-color: $accent_tint;
+}
+
+/* ================================================================
+   执行摘要 / 输入媒体卡 / 输出方案卡  —— PR-04、PR-06 预留
+   ================================================================ */
+QFrame#execution_summary {
+    background-color: $input_bg;
+    border: 1px solid $card_border;
+    border-radius: 10px;
+}
+QLabel#summary_line {
+    color: $text_secondary;
+    font-family: $mono_family;
+    font-size: 12px;
+}
+QLabel#media_field_label {
+    color: $text_tertiary;
+    font-size: 12px;
+}
+QLabel#media_field_value {
+    color: $text_primary;
+    font-size: 12px;
+}
+QLabel#media_field_strong {
+    color: $text_primary;
+    font-size: 12px;
+    font-weight: bold;
+}
+QLabel#media_field_muted {
+    color: $text_tertiary;
+    font-size: 12px;
+}
+QFrame#plan_card, QPushButton#plan_card {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-radius: 10px;
+    padding: 10px;
+    text-align: left;
+}
+QFrame#plan_card:hover, QPushButton#plan_card:hover {
+    border-color: $input_border_bottom;
+}
+QFrame#plan_card[selected="true"], QPushButton#plan_card:checked {
+    border: 2px solid $accent;
+    background-color: $accent_tint;
+}
+QWidget#collapsible_log_root {
+    background-color: transparent;
 }
 """)
 
