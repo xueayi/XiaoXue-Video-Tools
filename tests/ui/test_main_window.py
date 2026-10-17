@@ -38,6 +38,32 @@ def test_window_builds_all_pages(win):
     assert win.minimumSize().width() == 960
 
 
+def test_flat_grouped_navigation(win):
+    """导航保持 main 的分组平铺结构: 4 个分组 + 10 个功能页。
+
+    两个已下线入口移除后「特色与辅助」分组变空被删除；
+    不引入首页/设置等新入口（后续分支负责）。
+    """
+    rows = win._sidebar._page_of_row
+    section_titles = [
+        win._sidebar._list.item(row).text()
+        for row, page in enumerate(rows) if page is None
+    ]
+    item_titles = [
+        win._sidebar._list.item(row).text()
+        for row, page in enumerate(rows) if page is not None
+    ]
+    assert section_titles == ["视频处理", "格式与媒体", "质量与批量", "帮助"]
+    assert item_titles == [
+        "视频压制", "音频替换", "音视频抽取",
+        "封装转换", "媒体元数据检测", "图片转换",
+        "素材质量检测", "文件夹创建", "批量重命名",
+        "使用说明",
+    ]
+    assert win._sidebar._list.count() == len(section_titles) + len(item_titles)
+    assert "首页" not in item_titles and "设置" not in item_titles
+
+
 def test_navigation_switches_stack(win, qapp):
     win._sidebar.setCurrentRow(3)
     _pump_until(qapp, lambda: win._stack.currentIndex() == 3)

@@ -103,8 +103,6 @@ def _tab_defs():
             ("文件夹创建", "ri.folder-add-line", FolderCreatorTab, execute_folder_creator),
             ("批量重命名", "ri.file-edit-line", BatchRenameTab, execute_batch_rename),
         ]),
-        ("特色与辅助", [
-        ]),
         ("帮助", [
             ("使用说明", "ri.question-line", HelpTab, execute_help),
         ]),
