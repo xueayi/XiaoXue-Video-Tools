@@ -44,10 +44,11 @@ def _drag_event(cls, path="C:/video/a.mp4"):
 # FileDropLineEdit
 # ----------------------------------------------------------------
 
-def test_drop_single_path(qapp):
+def test_drop_single_path(qapp, tmp_path):
     edit = FileDropLineEdit()
-    edit.dropEvent(_drag_event(QDropEvent))
-    assert edit.text() == "C:/video/a.mp4"
+    path = str(tmp_path / "a.mp4")
+    edit.dropEvent(_drag_event(QDropEvent, path))
+    assert edit.text() == QUrl.fromLocalFile(path).toLocalFile()
 
 
 def test_drop_multi_paths(qapp):

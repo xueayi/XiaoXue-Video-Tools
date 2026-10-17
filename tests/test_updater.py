@@ -34,6 +34,10 @@ def staging_root(tmp_path, monkeypatch):
     from types import SimpleNamespace
 
     import src.update.windows as windows
+    import src.platform.capabilities as platform_caps
+    monkeypatch.setattr(windows, "_is_windows", lambda: True)
+    monkeypatch.setattr(platform_caps, "platform_capabilities",
+                        lambda: SimpleNamespace(os_name="win32", self_update_available=True))
 
     cache_dir = tmp_path / "cache"
     monkeypatch.setattr(
@@ -476,6 +480,10 @@ def test_launch_updater(monkeypatch, tmp_path, staging_root):
     """回归: 不能带 DETACHED_PROCESS (PowerShell 会静默失败, v2.2.0 踩坑)。"""
     import subprocess
     import src.updater as m
+    import src.update.windows as windows
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
+    monkeypatch.setattr(subprocess, "DETACHED_PROCESS", 0x8, raising=False)
+    monkeypatch.setattr(windows, "no_window_kwargs", lambda: {"creationflags": 0x08000000})
     captured = {}
 
     def fake_popen(args, creationflags=0, close_fds=False):

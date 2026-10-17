@@ -278,6 +278,7 @@ def test_probe_ffmpeg_success(monkeypatch):
 
 def test_probe_ffmpeg_windows_uses_creationflags(monkeypatch):
     """Windows 下必须带 CREATE_NO_WINDOW, 避免无控制台时弹窗。"""
+    monkeypatch.setattr(subprocess, "CREATE_NO_WINDOW", 0x08000000, raising=False)
     monkeypatch.setattr(fp.os, "name", "nt")
     captured = {}
 
@@ -423,3 +424,10 @@ def test_singleton_set_capabilities_injection_and_clear(monkeypatch):
 
     set_capabilities(None)
     assert caps_ready() is False
+
+
+def test_ffmpeg9_two_flag_filter_lines():
+    text = ('Filters:\n  T.. = Timeline support\n  .S. = Slice threading\n'
+            '  ------\n .. subtitles         V->V       Render text subtitles.\n'
+            ' TS scale             V->V       Scale video.\n')
+    assert fp.parse_filters(text) == frozenset({'subtitles', 'scale'})

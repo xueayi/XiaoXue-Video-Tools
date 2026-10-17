@@ -19,6 +19,7 @@ _ENV_VARS = ("XIAOXUE_FFMPEG", "FFMPEG", "XIAOXUE_FFPROBE", "FFPROBE")
 def _mk_exe(path: Path) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"exe")
+    path.chmod(0o755)
     return str(path)
 
 
@@ -202,5 +203,6 @@ def test_is_executable_file_helper(tmp_path):
     assert utils._is_executable_file(str(tmp_path / "missing")) is False
     existing = tmp_path / "tool"
     existing.write_bytes(b"x")
+    existing.chmod(0o755)
     assert utils._is_executable_file(str(existing)) is True
     assert utils._is_executable_file(str(tmp_path)) is False  # 目录不算

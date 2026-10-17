@@ -3,6 +3,7 @@
 post_transfer / encode_params 边界。"""
 
 import logging
+import os
 import sys
 
 import pytest
@@ -47,6 +48,8 @@ def test_get_log_dir_frozen(monkeypatch, tmp_path):
     exe = tmp_path / "app.exe"
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(exe))
+    from src.platform import paths
+    monkeypatch.setattr(paths, "_is_windows", lambda: True)
     assert log_utils.get_log_dir() == str(tmp_path)
 
 
@@ -126,16 +129,18 @@ def test_get_internal_dir_frozen_meipass(monkeypatch, tmp_path):
 def test_get_ffmpeg_path_internal(monkeypatch, tmp_path):
     monkeypatch.setattr(utils, "get_internal_dir", lambda: str(tmp_path))
     (tmp_path / "bin").mkdir()
-    (tmp_path / "bin" / "ffmpeg.exe").write_bytes(b"x")
-    assert utils.get_ffmpeg_path() == str(tmp_path / "bin" / "ffmpeg.exe")
+    (tmp_path / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"x")
+    (tmp_path / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).chmod(0o755)
+    assert utils.get_ffmpeg_path() == str(tmp_path / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg"))
 
 
 def test_get_ffmpeg_path_base_bin(monkeypatch, tmp_path):
     monkeypatch.setattr(utils, "get_internal_dir", lambda: str(tmp_path / "no"))
     monkeypatch.setattr(utils, "get_base_dir", lambda: tmp_path)
     (tmp_path / "bin").mkdir()
-    (tmp_path / "bin" / "ffmpeg.exe").write_bytes(b"x")
-    assert utils.get_ffmpeg_path() == str(tmp_path / "bin" / "ffmpeg.exe")
+    (tmp_path / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"x")
+    (tmp_path / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).chmod(0o755)
+    assert utils.get_ffmpeg_path() == str(tmp_path / "bin" / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg"))
 
 
 def test_get_ffmpeg_path_system_fallback(monkeypatch, tmp_path):
@@ -162,16 +167,18 @@ def test_get_ffprobe_path_final_fallback(monkeypatch, tmp_path):
 def test_get_ffprobe_path_internal(monkeypatch, tmp_path):
     monkeypatch.setattr(utils, "get_internal_dir", lambda: str(tmp_path))
     (tmp_path / "bin").mkdir()
-    (tmp_path / "bin" / "ffprobe.exe").write_bytes(b"x")
-    assert utils.get_ffprobe_path() == str(tmp_path / "bin" / "ffprobe.exe")
+    (tmp_path / "bin" / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"x")
+    (tmp_path / "bin" / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).chmod(0o755)
+    assert utils.get_ffprobe_path() == str(tmp_path / "bin" / ("ffprobe.exe" if os.name == "nt" else "ffprobe"))
 
 
 def test_get_ffprobe_path_base_bin(monkeypatch, tmp_path):
     monkeypatch.setattr(utils, "get_internal_dir", lambda: str(tmp_path / "no"))
     monkeypatch.setattr(utils, "get_base_dir", lambda: tmp_path)
     (tmp_path / "bin").mkdir()
-    (tmp_path / "bin" / "ffprobe.exe").write_bytes(b"x")
-    assert utils.get_ffprobe_path() == str(tmp_path / "bin" / "ffprobe.exe")
+    (tmp_path / "bin" / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"x")
+    (tmp_path / "bin" / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).chmod(0o755)
+    assert utils.get_ffprobe_path() == str(tmp_path / "bin" / ("ffprobe.exe" if os.name == "nt" else "ffprobe"))
 
 
 def test_get_ffprobe_path_system(monkeypatch, tmp_path):

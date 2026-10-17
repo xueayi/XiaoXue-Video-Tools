@@ -51,7 +51,7 @@ _ENCODER_RE = re.compile(
 
 #: `` TSC aap   AA->A   Apply ...`` -> 标志 / 名称 / 输入输出
 _FILTER_RE = re.compile(
-    r"^\s*([TSC.]{3})\s+([A-Za-z0-9_]+)\s+(\S+->\S+)\s{2,}\S",
+    r"^\s*([TSC.]{2,3})\s+([A-Za-z0-9_]+)\s+(\S+->\S+)\s{2,}\S",
     re.MULTILINE,
 )
 

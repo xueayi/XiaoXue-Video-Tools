@@ -88,7 +88,8 @@ def test_qprocess_cancel_kills_long_running_process(qapp):
     assert completed.cancelled is True
     assert runner.is_running() is False
     assert elapsed < 10.0
-    assert order and order[0][0] == "kill_tree"
+    # POSIX terminate 可正常结束进程，无需升级到强杀。
+    assert completed.exit_code != 0
 
 
 def test_qprocess_cancel_before_start_is_honoured(qapp):

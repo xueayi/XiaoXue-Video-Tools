@@ -129,7 +129,7 @@ def test_task_card_meta_shows_encoder_speed_eta(qapp):
     state = TaskViewState(
         "t", status=TaskStatus.RUNNING, encoder="NVENC H.264",
         progress=10.0, speed=1.85, eta_sec=38.0, elapsed_sec=42.0,
-        output_path=r"D:\输出\成片.mp4",
+        output_path="/输出/成片.mp4",
     )
     card = TaskCard(state)
     text = card._meta_label.text()
@@ -138,7 +138,7 @@ def test_task_card_meta_shows_encoder_speed_eta(qapp):
     assert "剩余 00:38" in text
     assert "耗时 00:00:42" in text
     assert "输出 成片.mp4" in text
-    assert card._meta_label.toolTip() == r"D:\输出\成片.mp4"
+    assert card._meta_label.toolTip() == "/输出/成片.mp4"
 
 
 def test_task_card_set_state_rejects_non_state(qapp):

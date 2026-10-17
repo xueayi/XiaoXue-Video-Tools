@@ -72,7 +72,7 @@ def test_non_ffmpeg_executable_with_ffmpeg_substring_not_injected():
 
 
 def test_ffmpeg_exe_path_and_uppercase():
-    cmd = [r"C:\bin\ffmpeg.EXE", "-y", "-i", "in.mp4", "out.mp4"]
+    cmd = [r"/bin/ffmpeg.EXE", "-y", "-i", "in.mp4", "out.mp4"]
     result = inject_progress(cmd)
     assert result.count("-progress") == 1
     assert result[-1] == "out.mp4"

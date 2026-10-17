@@ -146,7 +146,7 @@ class TestParseDetailedOutput:
 
     def test_parse_multi_track(self):
         """测试多音轨、多字幕的完整解析。"""
-        info = _parse_detailed_output("D:\\test\\example.mkv", MOCK_FFPROBE_OUTPUT_MULTI_TRACK)
+        info = _parse_detailed_output("/test/example.mkv", MOCK_FFPROBE_OUTPUT_MULTI_TRACK)
         
         assert info.filename == "example.mkv"
         assert info.format_name == "matroska,webm"

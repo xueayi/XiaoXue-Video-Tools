@@ -1,0 +1,16 @@
+{
+  "version": "9.0.2",
+  "source": "https://ffmpeg.martin-riedl.de/",
+  "source_code": "https://git.martin-riedl.de/ffmpeg/build-script",
+  "license": "GPL-3.0-or-later",
+  "artifacts": {
+    "ffmpeg": {
+      "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip",
+      "sha256": "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924"
+    },
+    "ffprobe": {
+      "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip",
+      "sha256": "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6"
+    }
+  }
+}
