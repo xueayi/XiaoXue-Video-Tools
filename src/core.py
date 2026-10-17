@@ -439,6 +439,10 @@ def run_ffmpeg_streaming(
         * **log**：stderr 行（日志/错误），经 ``on_log`` 回调；
         * 兼容参数 ``on_line``：仍会收到 stdout+stderr 每一行（旧调用方行为）。
 
+    M2.5 起 stderr 行同时写入 ``TaskContext`` 的环形缓冲（最近 200 行），
+    失败时由 TaskRunner 补齐到 ``TaskResult.details["stderr_tail"]``，
+    供 :mod:`src.ffmpeg.errors` 做用户可读错误归类。
+
     Args:
         cmd: 命令列表。
         on_line: 兼容回调，接收 stdout/stderr 全部行。
@@ -465,6 +469,9 @@ def run_ffmpeg_streaming(
             on_line(line)
 
     def _stderr(line: str) -> None:
+        # M2.5: 记录最近 stderr 行到任务上下文, 失败时供错误分类归因
+        if context is not None:
+            context.append_stderr(line)
         if on_log is not None:
             on_log(line)
         if on_line is not None:
@@ -482,6 +489,10 @@ def run_ffmpeg_streaming(
     finally:
         if context is not None:
             context.unregister(runner)
+    if (context is not None and not context.stderr_lines
+            and completed.stderr_tail):
+        # 兜底: 没有 on_stderr 回调时从 CompletedProcess 补齐最近 stderr
+        context.extend_stderr(completed.stderr_tail)
     if completed.cancelled:
         raise TaskCancelled("任务已取消")
     return completed

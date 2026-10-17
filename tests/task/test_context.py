@@ -96,3 +96,45 @@ def test_current_task_contextvar_roundtrip():
     finally:
         reset_current_task(token)
     assert current_task() is None
+
+
+# ----------------------------------------------------------------
+# stderr 尾部缓冲 (M2.5 错误归因)
+# ----------------------------------------------------------------
+
+def test_stderr_buffer_starts_empty():
+    context = TaskContext()
+    assert context.stderr_lines == ()
+    assert context.stderr_text == ""
+
+
+def test_stderr_buffer_append_and_text():
+    context = TaskContext()
+    context.append_stderr("[h264_nvenc @ 0] No NVENC capable devices found\n")
+    context.append_stderr("Conversion failed!\n")
+    assert context.stderr_lines == (
+        "[h264_nvenc @ 0] No NVENC capable devices found\n",
+        "Conversion failed!\n",
+    )
+    assert "[h264_nvenc" in context.stderr_text
+    assert context.stderr_text.endswith("Conversion failed!\n")
+
+
+def test_stderr_buffer_ignores_empty_lines():
+    context = TaskContext()
+    context.append_stderr("")
+    context.append_stderr(None)
+    assert context.stderr_lines == ()
+
+
+def test_stderr_buffer_is_ring_buffer():
+    context = TaskContext(stderr_tail_lines=3)
+    context.extend_stderr(f"line{i}\n" for i in range(5))
+    assert context.stderr_lines == ("line2\n", "line3\n", "line4\n")
+
+
+def test_stderr_buffer_extend_none_and_empty_are_noops():
+    context = TaskContext()
+    context.extend_stderr(None)
+    context.extend_stderr([])
+    assert context.stderr_lines == ()

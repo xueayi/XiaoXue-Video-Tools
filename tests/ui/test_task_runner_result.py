@@ -253,3 +253,126 @@ def test_runner_uses_subprocess_backend_without_qapplication():
         assert isinstance(created, SubprocessRunner)
     else:
         assert created is not None
+
+
+# ----------------------------------------------------------------
+# M2.5: 失败结果补齐 stderr_tail / exit_code / cancelled
+# ----------------------------------------------------------------
+
+NVENC_STDERR = (
+    "[h264_nvenc @ 000001f4] No NVENC capable devices found\n",
+    "Conversion failed!\n",
+)
+
+
+def test_failed_result_gets_stderr_tail_from_context():
+    def handler(args):
+        assert current_task() is not None
+        current_task().extend_stderr(NVENC_STDERR)
+        return TaskResult.failed("FFmpeg 退出码 1", exit_code=1)
+
+    runner, results, _, _ = _make_runner(handler)
+    runner.run()
+
+    result = results[0]
+    assert result.status is TaskStatus.FAILED
+    assert result.details["exit_code"] == 1
+    assert result.details["cancelled"] is False
+    assert result.details["stderr_tail"] == "".join(NVENC_STDERR)
+
+
+def test_explicit_stderr_tail_is_not_overwritten():
+    explicit = "explicit stderr"
+
+    def handler(args):
+        current_task().append_stderr("context stderr\n")
+        return TaskResult.failed(
+            "失败", exit_code=2, details={"stderr_tail": explicit})
+
+    runner, results, _, _ = _make_runner(handler)
+    runner.run()
+    assert results[0].details["stderr_tail"] == explicit
+
+
+def test_cancelled_result_marks_cancelled_flag():
+    def handler(args):
+        raise TaskCancelled("用户点了停止")
+
+    runner, results, _, _ = _make_runner(handler)
+    runner.run()
+    result = results[0]
+    assert result.status is TaskStatus.CANCELLED
+    assert result.details["cancelled"] is True
+
+
+def test_success_result_details_untouched():
+    runner, results, _, _ = _make_runner(lambda args: TaskResult.ok())
+    runner.run()
+    assert results[0].details == {}
+
+
+def test_exception_result_gets_stderr_tail():
+    def handler(args):
+        current_task().extend_stderr(NVENC_STDERR)
+        raise RuntimeError("boom")
+
+    runner, results, _, _ = _make_runner(handler)
+    runner.run()
+    result = results[0]
+    assert result.status is TaskStatus.FAILED
+    assert "No NVENC capable devices found" in result.details["stderr_tail"]
+
+
+def test_core_streaming_stderr_flows_to_result():
+    """端到端: core.run_ffmpeg_streaming -> TaskContext -> TaskResult.details。"""
+    import src.core as core
+    from src.process import CompletedProcess
+    from src.ffmpeg.errors import ErrorCategory, classify
+
+    class FakeRunner:
+        def __init__(self):
+            self.on_stdout = None
+            self.on_stderr = None
+            self.on_finished = None
+
+        def start(self, cmd, *, cwd=None, env=None, stdin_pipe=False):
+            for line in NVENC_STDERR:
+                if self.on_stderr is not None:
+                    self.on_stderr(line)
+
+        def wait(self, timeout=None):
+            return CompletedProcess(exit_code=1)
+
+        def cancel(self):
+            pass
+
+        def is_running(self):
+            return False
+
+        @property
+        def exit_code(self):
+            return 1
+
+    class FakeEncodingTabArgs:
+        input = ""
+
+    def handler(args):
+        completed = core.run_ffmpeg_streaming(
+            ["ffmpeg", "-i", "in.mp4", "out.mp4"],
+            on_log=lambda _line: None,
+        )
+        return TaskResult.failed(
+            f"FFmpeg 退出码 {completed.exit_code}",
+            exit_code=completed.exit_code,
+        )
+
+    context = TaskContext(runner_factory=FakeRunner)
+    runner = TaskRunner(handler, None, "视频压制", context=context)
+    results = []
+    runner.result_signal.connect(results.append)
+    runner.run()
+
+    result = results[0]
+    classified = classify(result.details["stderr_tail"], result.exit_code)
+    assert classified.category is ErrorCategory.ENCODER_UNAVAILABLE
+    assert result.exit_code == 1

@@ -4,6 +4,7 @@
 import os
 import sys
 import traceback
+from dataclasses import replace
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -14,6 +15,7 @@ from ..task.context import (
     set_current_task,
 )
 from ..task.result import TaskResult
+from ..task.status import TaskStatus
 
 
 def _default_runner_factory():
@@ -109,6 +111,12 @@ class TaskRunner(QThread):
         ``request_cancel()`` 置 ``TaskContext.cancelled`` 并触发已注册子进程
         runner 的 ``cancel()``；具体 terminate/kill 时序由 runner 的 wait()
         在工作线程内推进，UI 线程不被阻塞。
+
+    错误归因 (M2.5)：
+        ``core.run_ffmpeg_streaming`` 把 stderr 尾部写入 ``TaskContext``；
+        runner 在发送结果前补齐 FAILED 结果的
+        ``details['stderr_tail'] / details['exit_code'] / details['cancelled']``，
+        UI 据此生成 ``UserFacingError`` 并展示错误卡片。
     """
 
     log_signal = pyqtSignal(str)
@@ -218,6 +226,33 @@ class TaskRunner(QThread):
         finally:
             reset_current_task(token)
 
+    def _enrich_result(self, result: TaskResult) -> TaskResult:
+        """用 TaskContext 补齐失败结果的错误归因字段 (M2.5)。
+
+        * FAILED: ``details['stderr_tail']``（core 写入的最近 stderr）、
+          ``details['exit_code']``、``details['cancelled'] = False``；
+        * CANCELLED: ``details['cancelled'] = True``，供错误分类优先判定取消。
+
+        executor 已经显式写入的 details 优先，不覆盖。
+        """
+        if not isinstance(result, TaskResult):
+            return result
+        details = dict(result.details)
+        if result.status is TaskStatus.FAILED:
+            stderr_tail = self.context.stderr_text
+            if stderr_tail and not details.get("stderr_tail"):
+                details["stderr_tail"] = stderr_tail
+            if result.exit_code is not None:
+                details.setdefault("exit_code", result.exit_code)
+            details.setdefault("cancelled", False)
+        elif result.status is TaskStatus.CANCELLED:
+            details.setdefault("cancelled", True)
+        else:
+            return result
+        if details == dict(result.details):
+            return result
+        return replace(result, details=details)
+
     # ----------------------------------------------------------------
     # 线程体
     # ----------------------------------------------------------------
@@ -243,6 +278,7 @@ class TaskRunner(QThread):
             sys.stdout = old_stdout
             sys.stderr = old_stderr
 
+        result = self._enrich_result(result)
         self.result_signal.emit(result)
         # 兼容旧 bool 槽：仅 SUCCESS 为 True（PARTIAL / CANCELLED 不算成功）
         self.finished_signal.emit(result.legacy_success, self.command_name)

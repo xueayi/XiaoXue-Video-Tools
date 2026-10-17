@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""任务上下文 —— 协作式取消标志、runner 工厂与子进程句柄注册。
+"""任务上下文 —— 协作式取消标志、runner 工厂、子进程句柄注册与 stderr 尾部缓冲。
 
 M2.3 起：
     * ``TaskRunner`` 在工作线程中 ``set_current_task(ctx)``，``cancel()`` 置标志；
@@ -10,9 +10,13 @@ M2.3 起：
       TaskRunner 注入 QProcess 后端，纯后端测试可注入 fake；
     * ``progress_callback``（M2.4）：GUI 侧 TaskRunner 设置的 stdout 进度行
       回调（ffmpeg ``-progress`` 的 ``key=value``），由 core 消费后转发到
-      UI 解析器；非 GUI 场景保持 None。
+      UI 解析器；非 GUI 场景保持 None；
+    * ``stderr_tail``（M2.5）：执行期间由 ``core.run_ffmpeg_streaming`` 写入
+      最近 stderr 行的环形缓冲；TaskRunner 归一化结果时补齐到
+      ``TaskResult.details["stderr_tail"]``，供错误分类 (UserFacingError)。
 """
 
+import collections
 from contextvars import ContextVar, Token
 from typing import TYPE_CHECKING, Callable, List, Optional
 
@@ -20,6 +24,7 @@ if TYPE_CHECKING:  # pragma: no cover - 仅类型检查
     from ..process.base import ProcessRunner, RunnerFactory
 
 __all__ = [
+    "DEFAULT_STDERR_TAIL_LINES",
     "TaskCancelled",
     "TaskContext",
     "current_task",
@@ -28,6 +33,9 @@ __all__ = [
     "set_current_task",
     "set_runner_factory",
 ]
+
+#: 错误归因用的 stderr 环形缓冲行数 (与 ProcessRunner 默认尾部行数一致)
+DEFAULT_STDERR_TAIL_LINES = 200
 
 
 class TaskCancelled(Exception):
@@ -80,6 +88,7 @@ class TaskContext:
     def __init__(
         self,
         runner_factory: Optional[Callable[[], object]] = None,
+        stderr_tail_lines: int = DEFAULT_STDERR_TAIL_LINES,
     ) -> None:
         self._cancelled: bool = False
         self._handles: List[object] = []
@@ -88,6 +97,9 @@ class TaskContext:
         self._runner_factory = runner_factory
         #: stdout 进度行回调 (M2.4); GUI 由 TaskRunner 设置, 非 GUI 保持 None
         self.progress_callback: Optional[Callable[[str], None]] = None
+        #: 最近 stderr 行环形缓冲 (M2.5): 失败结果归因用
+        self._stderr_tail: "collections.deque[str]" = collections.deque(
+            maxlen=max(1, int(stderr_tail_lines)))
 
     # ----------------------------------------------------------------
     # runner 工厂
@@ -142,6 +154,31 @@ class TaskContext:
         """已请求取消时抛 TaskCancelled，供长循环主动退出。"""
         if self._cancelled:
             raise TaskCancelled("任务已取消")
+
+    # ----------------------------------------------------------------
+    # stderr 尾部缓冲（M2.5: 错误分类归因）
+    # ----------------------------------------------------------------
+
+    @property
+    def stderr_lines(self):
+        """最近 stderr 行的 tuple 快照（旧 -> 新）。"""
+        return tuple(self._stderr_tail)
+
+    @property
+    def stderr_text(self) -> str:
+        """最近 stderr 行拼成的文本（供 UserFacingError 分类）。"""
+        return "".join(self._stderr_tail)
+
+    def append_stderr(self, line) -> None:
+        """追加一行 stderr（空行忽略，超出环形容量自动丢弃最旧行）。"""
+        if not line:
+            return
+        self._stderr_tail.append(str(line))
+
+    def extend_stderr(self, lines) -> None:
+        """批量追加 stderr 行（None / 空序列无副作用）。"""
+        for line in lines or ():
+            self.append_stderr(line)
 
     # ----------------------------------------------------------------
     # 子进程句柄注册（真正绑定到 cancel 回调）

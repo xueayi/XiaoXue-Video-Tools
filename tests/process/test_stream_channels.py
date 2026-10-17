@@ -239,3 +239,65 @@ def test_progress_lines_flow_to_parser_end_to_end():
     assert events[0].frame == 100
     assert events[0].percent == pytest.approx(10.0)
     assert events[0].eta_seconds == pytest.approx(4.5)  # (10-1)/2
+
+
+# ----------------------------------------------------------------
+# M2.5: stderr 尾部写入 TaskContext (错误归因)
+# ----------------------------------------------------------------
+
+NVENC_LOG = (
+    "[h264_nvenc @ 000001f4] No NVENC capable devices found\n",
+    "Conversion failed!\n",
+)
+
+
+class FallbackRunner(FakeRunner):
+    """wait() 返回带 stderr_tail 的 CompletedProcess (模拟无回调时的兜底)。"""
+
+    def wait(self, timeout=None):
+        self.waited = True
+        return CompletedProcess(
+            exit_code=self._exit_code,
+            cancelled=self._cancelled,
+            stderr_tail=tuple(self._stderr_lines),
+        )
+
+
+def test_stderr_lines_are_recorded_into_context():
+    runner = FakeRunner(stderr_lines=NVENC_LOG, exit_code=1)
+    context, token = _use_context(runner)
+    try:
+        core.run_ffmpeg_streaming(["ffmpeg"], on_log=lambda _line: None)
+    finally:
+        reset_current_task(token)
+
+    assert context.stderr_lines == NVENC_LOG
+    assert "No NVENC capable devices found" in context.stderr_text
+
+
+def test_completed_process_stderr_tail_fills_context_without_callbacks():
+    """没有 on_log/on_line 时由 CompletedProcess.stderr_tail 兜底补齐。"""
+    runner = FallbackRunner(stderr_lines=NVENC_LOG, exit_code=1)
+    context, token = _use_context(runner)
+    try:
+        completed = core.run_ffmpeg_streaming(["ffmpeg"])
+    finally:
+        reset_current_task(token)
+
+    assert completed.stderr_tail == NVENC_LOG
+    assert context.stderr_lines == NVENC_LOG
+
+
+def test_cancelled_streaming_keeps_stderr_buffer():
+    from src.task.context import TaskCancelled
+
+    runner = FakeRunner(stderr_lines=NVENC_LOG, cancelled=True)
+    context, token = _use_context(runner)
+    try:
+        with pytest.raises(TaskCancelled):
+            core.run_ffmpeg_streaming(["ffmpeg"], on_log=lambda _line: None)
+    finally:
+        reset_current_task(token)
+
+    # 取消前已产生的 stderr 仍保留, 便于日志/归因
+    assert context.stderr_lines == NVENC_LOG
