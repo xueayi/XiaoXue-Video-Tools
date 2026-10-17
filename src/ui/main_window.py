@@ -26,6 +26,8 @@ from .task_runner import TaskRunner
 from .animations import AnimatedStackedWidget, button_press_anim, status_flash
 from .ffmpeg_progress import FFmpegProgressParser
 from .progress_dashboard import ProgressDashboard
+from .home_page import HomePage
+from .settings_page import SettingsPage
 from .tabs import (
     EncodeTab, ReplaceAudioTab, RemuxTab, QcTab,
     MediaProbeTab, ExtractAvTab, ImageConvertTab,
@@ -41,6 +43,21 @@ from ..executors import (
 from .._version import __version__ as _VERSION
 
 _REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
+
+#: 业务键 (Tab.command_name) -> executor 的映射。
+#: 首页/设置页没有命令名, 因此不在其中 (执行按钮对它们禁用)。
+_EXECUTORS = {
+    "视频压制": execute_encode,
+    "音频替换": execute_replace_audio,
+    "音视频抽取": execute_extract_av,
+    "封装转换": execute_remux,
+    "媒体元数据检测": execute_media_probe,
+    "图片转换": execute_image_convert,
+    "素材质量检测": execute_qc,
+    "文件夹创建": execute_folder_creator,
+    "批量重命名": execute_batch_rename,
+    "使用说明": execute_help,
+}
 
 
 class _CenteredColumnWidget(QWidget):
@@ -86,25 +103,33 @@ class _CenteredColumnWidget(QWidget):
 
 
 def _tab_defs():
-    """功能页注册表: (分组标题, [(页面名, 图标名, Tab工厂, executor), ...])"""
+    """功能页注册表: (分组标题, [(页面名, 图标名, 页面工厂), ...])。
+
+    侧边栏按分组平铺渲染 (无二级 Tab 容器); 首页/设置页为新增入口,
+    其中首页与设置页不参与执行。
+    """
     return [
+        ("常用", [
+            ("首页", "ri.home-line", HomePage),
+        ]),
         ("视频处理", [
-            ("视频压制", "ri.film-line", EncodeTab, execute_encode),
-            ("音频替换", "ri.music-2-line", ReplaceAudioTab, execute_replace_audio),
-            ("音视频抽取", "ri.file-transfer-line", ExtractAvTab, execute_extract_av),
+            ("视频压制", "ri.film-line", EncodeTab),
+            ("音频替换", "ri.music-2-line", ReplaceAudioTab),
+            ("音视频抽取", "ri.file-transfer-line", ExtractAvTab),
         ]),
         ("格式与媒体", [
-            ("封装转换", "ri.exchange-line", RemuxTab, execute_remux),
-            ("媒体元数据检测", "ri.file-info-line", MediaProbeTab, execute_media_probe),
-            ("图片转换", "ri.image-line", ImageConvertTab, execute_image_convert),
+            ("封装转换", "ri.exchange-line", RemuxTab),
+            ("媒体元数据检测", "ri.file-info-line", MediaProbeTab),
+            ("图片转换", "ri.image-line", ImageConvertTab),
         ]),
         ("质量与批量", [
-            ("素材质量检测", "ri.file-search-line", QcTab, execute_qc),
-            ("文件夹创建", "ri.folder-add-line", FolderCreatorTab, execute_folder_creator),
-            ("批量重命名", "ri.file-edit-line", BatchRenameTab, execute_batch_rename),
+            ("素材质量检测", "ri.file-search-line", QcTab),
+            ("文件夹创建", "ri.folder-add-line", FolderCreatorTab),
+            ("批量重命名", "ri.file-edit-line", BatchRenameTab),
         ]),
-        ("帮助", [
-            ("使用说明", "ri.question-line", HelpTab, execute_help),
+        ("系统", [
+            ("设置", "ri.settings-3-line", SettingsPage),
+            ("使用说明", "ri.question-line", HelpTab),
         ]),
     ]
 
@@ -126,6 +151,8 @@ class MainWindow(QMainWindow):
         self._btn_anim = None
         self._update_dialog = None
         self._check_worker = None
+        # 当前选中页索引 (点击即生效, 不等切换动画播完)
+        self._current_page_index = -1
 
         self._build_menu_bar()
         self._build_central()
@@ -197,10 +224,10 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self._theme_action)
 
         motion_action = QAction("减少动画", self)
+        self._motion_action = motion_action
         motion_action.setCheckable(True)
         motion_action.setChecked(theme.reduced_motion())
-        motion_action.triggered.connect(
-            lambda checked: theme.set_reduced_motion(checked))
+        motion_action.triggered.connect(self._on_motion_action_triggered)
         view_menu.addAction(motion_action)
 
         about_menu = menu_bar.addMenu("关于")
@@ -301,20 +328,31 @@ class MainWindow(QMainWindow):
 
         root_layout.addWidget(right_splitter, 1)
 
-        # ---- 注册 Tab 页面 ----
+        # ---- 注册导航页面 (分组平铺, 无二级容器) ----
         self._tabs = []
-        self._handlers = {}
+        # 业务键 (Tab.command_name) -> executor, 不随导航结构变化
+        self._handlers = dict(_EXECUTORS)
+        # 页面名 -> 页面栈索引 (首页快捷入口跳转用)
+        self._page_index = {}
 
         for section_title, items in _tab_defs():
             self._sidebar.add_section(section_title)
-            for name, icon_name, tab_factory, handler in items:
+            for name, icon_name, page_factory in items:
                 self._sidebar.add_item(name, icon_name)
-                tab_widget = tab_factory()
-                self._stack.addWidget(tab_widget)
-                self._tabs.append(tab_widget)
-                self._handlers[name] = handler
+                page = page_factory()
+                if isinstance(page, HomePage):
+                    page.navigate_requested.connect(self._on_home_navigate)
+                elif isinstance(page, SettingsPage):
+                    page.theme_change_requested.connect(self._apply_theme_choice)
+                    page.reduced_motion_changed.connect(
+                        self._on_reduced_motion_changed)
+                    page.update_check_requested.connect(
+                        lambda: self._show_update_dialog(manual=True))
+                self._stack.addWidget(page)
+                self._tabs.append(page)
+                self._page_index[name] = len(self._tabs) - 1
 
-        self._sidebar.tab_changed.connect(self._stack.slide_to)
+        self._sidebar.tab_changed.connect(self._on_sidebar_tab_changed)
         self._refresh_theme_dependent_ui()
 
     # ================================================================
@@ -338,16 +376,38 @@ class MainWindow(QMainWindow):
     # 主题切换
     # ================================================================
 
-    def _on_theme_toggle(self):
-        new_theme = "dark" if theme.get_theme() == "light" else "light"
-        theme.set_theme(new_theme)
-        theme.apply_theme(QApplication.instance(), new_theme)
+    def _apply_theme_choice(self, name: str):
+        """应用指定主题 (菜单 / 侧边栏按钮 / 设置页外观共用)。"""
+        if name not in theme.THEMES:
+            return
+        theme.set_theme(name)
+        theme.apply_theme(QApplication.instance(), name)
         self._refresh_theme_dependent_ui()
         self.statusBar().showMessage(f"就绪  |  v{_VERSION}")
+
+    def _on_theme_toggle(self):
+        new_theme = "dark" if theme.get_theme() == "light" else "light"
+        self._apply_theme_choice(new_theme)
+
+    def _on_motion_action_triggered(self, checked: bool):
+        """菜单栏「减少动画」开关: 持久化并同步设置页勾选状态。"""
+        theme.set_reduced_motion(checked)
+        self._sync_settings_appearance()
+
+    def _on_reduced_motion_changed(self, enabled: bool):
+        """设置页「减少动画」勾选: 持久化并同步菜单栏勾选状态。"""
+        theme.set_reduced_motion(enabled)
+        self._motion_action.setChecked(enabled)
+
+    def _sync_settings_appearance(self):
+        for page in self._tabs:
+            if isinstance(page, SettingsPage):
+                page.on_theme_changed()
 
     def _refresh_theme_dependent_ui(self):
         """主题切换后刷新图标、Logo、按钮文案、勾选状态。"""
         self._theme_action.setChecked(theme.get_theme() == "dark")
+        self._motion_action.setChecked(theme.reduced_motion())
         self._sidebar.set_theme_icons()
         self._update_run_button_icons()
         for tab in self._tabs:
@@ -365,6 +425,53 @@ class MainWindow(QMainWindow):
             self._stop_btn.setIcon(icons.icon("ri.stop-fill", "#ffffff"))
 
     # ================================================================
+    # 页面路由
+    # ================================================================
+
+    def _current_tab(self):
+        """当前选中的一级页面。
+
+        以侧边栏选中索引为准 (点击即生效), 避免等页面切换动画播完才能
+        读到执行目标; 首页/设置页因此也能立刻反映「执行按钮禁用」。
+        """
+        index = self._current_page_index
+        if 0 <= index < len(self._tabs):
+            return self._tabs[index]
+        return None
+
+    @staticmethod
+    def _tab_supports_execution(tab) -> bool:
+        """页面是否允许交给底部「开始执行」(首页/设置页显式返回 False)。"""
+        if tab is None:
+            return False
+        hook = getattr(tab, "is_executable", None)
+        return True if not callable(hook) else bool(hook())
+
+    def _is_executable_tab(self, tab) -> bool:
+        """可执行 = 页面允许执行 且 command_name 已注册 executor。"""
+        return (
+            tab is not None
+            and self._tab_supports_execution(tab)
+            and getattr(tab, "command_name", "") in self._handlers
+        )
+
+    def _update_execute_enabled(self):
+        """按当前页面是否可执行刷新「开始执行」按钮。"""
+        self._execute_btn.setEnabled(
+            self._is_executable_tab(self._current_tab()))
+
+    def _on_sidebar_tab_changed(self, index: int):
+        self._current_page_index = index
+        self._stack.slide_to(index)
+        self._update_execute_enabled()
+
+    def _on_home_navigate(self, target: str):
+        """首页快捷入口跳转: target 为页面名 (如 "视频压制")。"""
+        index = self._page_index.get(target)
+        if index is not None:
+            self._sidebar.setCurrentRow(index)
+
+    # ================================================================
     # 执行与停止
     # ================================================================
 
@@ -372,7 +479,9 @@ class MainWindow(QMainWindow):
         idx = self._stack.currentIndex()
         if idx < 0:
             return
-        tab = self._tabs[idx]
+        tab = self._current_tab()
+        if not self._tab_supports_execution(tab):
+            return
         try:
             args = tab.build_args()
         except Exception as e:
@@ -444,7 +553,11 @@ class MainWindow(QMainWindow):
         )
 
     def _set_running(self, running):
-        self._execute_btn.setEnabled(not running)
+        if running:
+            self._execute_btn.setEnabled(False)
+        else:
+            # 首页 / 设置页仍保持禁用, 其余页面恢复可执行
+            self._update_execute_enabled()
         self._stop_btn.setEnabled(running)
         self._sidebar.setEnabled(not running)
         self._update_run_button_icons()
