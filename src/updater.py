@@ -1,445 +1,176 @@
 # -*- coding: utf-8 -*-
-"""应用自更新模块 —— GitHub Release 整包下载 + 校验 + 外部更新器。
+"""应用自更新 —— 兼容门面 (M4.2)。
 
-流程: 检查 (releases/latest) -> 下载 zip -> SHA256 校验 -> 解压到 _update/new
--> 生成 PowerShell 更新器 -> 主程序退出后由更新器完成 替换 + 重启。
+实现已拆分到 :mod:`src.update` 包, 本模块只保留**旧对外 API** (现有
+``src/ui`` 与测试无需修改):
 
-安全与健壮性设计:
-- 只替换 exe 与 _internal; config.ini 等用户数据都在安装目录下且
-  不在发行包内, 天然保留
-- 更新前整目录磁盘空间预检; 下载支持断点续传与取消
-- 更新器先把旧版移入 _backup 再换入新版, 移动失败自动回滚
-- 新版启动成功后, 下一次启动时清理 _backup 与 _update 暂存目录
-- 发行包文件名保持 ASCII (XiaoXueToolbox_*.zip); 更新器用 *.exe 通配
-  定位新引导器, 因此 exe 中文名 (小雪工具箱.exe) 与旧英文名均兼容,
-  exe 名不进入任何更新路径, 不触碰兼容模式的非中文路径约束
+    * 版本比较:    parse_version / is_newer / is_dev_version
+    * Release 检查: fetch_latest / ReleaseInfo / REPO_URL
+    * 下载与校验:  download / sha256_of / verify_sha256 / resolve_checksum /
+                   fetch_checksum / parse_checksums_from_body
+    * Windows 安装: prepare / launch_updater / has_pending_update /
+                   cleanup_staging / ensure_disk_space
+    * 跳过版本:    get_skip_version / set_skip_version
+
+平台差异:
+    * ``STAGING_DIR`` 现在指向 :func:`src.update.windows.staging_dir`
+      (即 ``PlatformPaths.cache_dir/update``, 绝对路径), 旧 UI 里
+      ``os.path.join(install_dir, STAGING_DIR, "update.zip")`` 依然可用,
+      且下载/解压暂存自动落到用户可写 cache 目录;
+    * Windows 专有符号在 macOS/其它平台优雅降级: ``launch_updater`` 返回
+      False、``has_pending_update`` 返回 False、``cleanup_staging`` 空操作;
+      ``prepare`` 抛 :class:`UpdateError` 子类 (UI 统一捕获并展示友好文案)。
+
+新代码 (M4.4 起) 请直接使用 :mod:`src.update` 的
+``get_update_backend()`` 与 ``PlatformCapabilities.self_update_available``。
 """
 
-import os
-import re
-import shutil
-import subprocess
-import zipfile
-from dataclasses import dataclass
+import requests  # noqa: F401 - 保留为既有 monkeypatch 入口 (src.updater.requests)
 
-import requests
+from .update import (
+    BACKUP_DIR,
+    CHUNK_SIZE,
+    RELEASES_LATEST_API,
+    REPO_URL,
+    ReleaseInfo,
+    UpdateError,
+    UpdateNotSupportedError,
+    _pick_asset as _pick_asset_impl,
+    download as _download,
+    ensure_disk_space as _ensure_disk_space,
+    fetch_checksum as _fetch_checksum,
+    fetch_latest as _fetch_latest,
+    get_skip_version as _get_skip_version,
+    is_dev_version,
+    is_newer,
+    parse_checksums_from_body as _parse_checksums_from_body,
+    parse_version,
+    resolve_checksum as _resolve_checksum,
+    set_skip_version as _set_skip_version,
+    sha256_of as _sha256_of,
+    verify_sha256 as _verify_sha256,
+)
+from .update import windows as _windows
 
-REPO_URL = "https://github.com/xueayi/XiaoXue-Video-Tools"
-RELEASES_LATEST_API = "https://api.github.com/repos/xueayi/XiaoXue-Video-Tools/releases/latest"
+#: 旧常量: 更新器脚本 (私有, 保留兼容)
+_BACKUP_DIR = BACKUP_DIR
 
-STAGING_DIR = "_update"       # 安装目录下的下载/解压暂存
-BACKUP_DIR = "_backup"        # 旧版本备份 (更新成功后下次启动清理)
-CHUNK_SIZE = 256 * 1024
-
+#: 旧组织/应用名 (未使用, 保留兼容)
 _ORG = "XiaoXue"
 _APP = "XiaoXueToolbox"
 
 
-class UpdateError(Exception):
-    """更新流程中的可恢复错误 (展示给用户)。"""
-
-
-@dataclass
-class ReleaseInfo:
-    """新版本发行信息。"""
-    version: str
-    asset_name: str
-    asset_url: str
-    asset_size: int
-    sha256_url: str
-    notes: str = ""
-    published_at: str = ""
-    html_url: str = ""
-
-
 # ----------------------------------------------------------------
-# 版本比较
+# 版本 / Release 检查 (委托 src.update)
 # ----------------------------------------------------------------
-
-_VERSION_RE = re.compile(
-    r"^\s*v?(\d+)\.(\d+)\.(\d+)(?:-?(alpha|beta|rc)[.\-]?(\d+)?)?\s*$", re.I)
-_PRE_RANK = {"": 3, "rc": 2, "beta": 1, "alpha": 0}
-
-
-def parse_version(version: str):
-    """解析版本号为可比较元组; 无法解析返回 None。
-
-    2.1.0 -> (2, 1, 0, 3, 0)   正式版 > rc > beta > alpha
-    """
-    m = _VERSION_RE.match(str(version))
-    if not m:
-        return None
-    rank = _PRE_RANK[(m.group(4) or "").lower()]
-    num = int(m.group(5)) if m.group(5) else 0
-    return (int(m.group(1)), int(m.group(2)), int(m.group(3)), rank, num)
-
-
-def is_newer(remote: str, local: str) -> bool:
-    """远端版本是否严格更新于本地; 任一版本无法解析时返回 False。"""
-    r, l = parse_version(remote), parse_version(local)
-    if r is None or l is None:
-        return False
-    return r > l
-
-
-def is_dev_version(version: str) -> bool:
-    """开发版本 (git 描述失败回退的 *-dev) 不参与静默提示。"""
-    return "dev" in str(version).lower()
-
-
-# ----------------------------------------------------------------
-# 检查更新
-# ----------------------------------------------------------------
-
-def _pick_asset(assets: list) -> dict:
-    """从发行资产中挑选标准版安装包。"""
-    suffix = "_Windows_x64.zip"
-    for asset in assets:
-        name = str(asset.get("name", ""))
-        if name.endswith(suffix):
-            return asset
-    raise UpdateError("新版本中没有找到与当前版本匹配的安装包")
-
 
 def fetch_latest(current_version: str, timeout: float = 10.0):
-    """查询最新正式版; 有更新返回 ReleaseInfo, 已是最新返回 None。
+    """查询最新正式版 (按当前平台选择后端; Windows 要求匹配安装包资产)。"""
+    from .update.backend import get_update_backend
 
-    网络/接口异常抛出 UpdateError (由调用方展示)。
-    """
-    try:
-        resp = requests.get(
-            RELEASES_LATEST_API, timeout=timeout,
-            headers={"Accept": "application/vnd.github+json"})
-    except requests.RequestException as e:
-        raise UpdateError(f"无法连接更新服务器: {e}") from e
+    return get_update_backend().check(current_version, timeout=timeout)
 
-    if resp.status_code != 200:
-        raise UpdateError(f"更新服务器返回异常 (HTTP {resp.status_code})")
-    try:
-        data = resp.json()
-    except ValueError as e:
-        raise UpdateError(f"更新服务器响应解析失败: {e}") from e
 
-    asset = _pick_asset(data.get("assets", []))
-    remote_version = str(data.get("tag_name", "")).lstrip("vV")
-    info = ReleaseInfo(
-        version=remote_version,
-        asset_name=str(asset.get("name", "")),
-        asset_url=str(asset.get("browser_download_url", "")),
-        asset_size=int(asset.get("size", 0)),
-        sha256_url=str(asset.get("browser_download_url", "")) + ".sha256",
-        notes=str(data.get("body", "")),
-        published_at=str(data.get("published_at", "")),
-        html_url=str(data.get("html_url", REPO_URL + "/releases")),
-    )
-    if not is_newer(remote_version, current_version):
-        return None
-    return info
+def _pick_asset(assets: list) -> dict:
+    """旧接口: 挑选标准版 Windows 安装包 (兼容保留)。"""
+    return _pick_asset_impl(assets)
 
 
 # ----------------------------------------------------------------
-# 下载与校验
+# 下载与校验 (委托 src.update.checker)
 # ----------------------------------------------------------------
 
-def ensure_disk_space(install_dir: str, asset_size: int):
-    """磁盘空间预检: 需容纳 下载包 + 解压结果 + 余量。"""
-    if asset_size <= 0:
-        return
-    usage = shutil.disk_usage(install_dir)
-    need = int(asset_size * 3) + (200 << 20)
-    if usage.free < need:
-        raise UpdateError(
-            f"磁盘空间不足: 约需 {need >> 20} MB, "
-            f"当前剩余 {usage.free >> 20} MB")
-
-
-def download(url: str, dest: str, progress_cb=None, check_cancel=None):
-    """流式下载 (支持断点续传 .part 与取消)。
-
-    progress_cb(已下载字节, 总字节或 0)
-    check_cancel() 返回 True 时抛出 UpdateError("已取消"), .part 保留供续传。
-    """
-    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
-    part_path = dest + ".part"
-    headers = {}
-    resume_from = 0
-    if os.path.exists(part_path):
-        resume_from = os.path.getsize(part_path)
-        headers["Range"] = f"bytes={resume_from}-"
-
-    try:
-        resp = requests.get(url, headers=headers, stream=True,
-                            timeout=(10, 60))
-    except requests.RequestException as e:
-        raise UpdateError(f"下载请求失败: {e}") from e
-
-    if resp.status_code != 200 and resp.status_code != 206:
-        raise UpdateError(f"下载失败 (HTTP {resp.status_code})")
-    if resume_from and resp.status_code != 206:
-        resume_from = 0  # 服务器不支持续传, 从头下载
-
-    try:
-        total = int(resp.headers.get("Content-Length", 0)) + resume_from
-    except (TypeError, ValueError):
-        total = 0
-
-    done = resume_from
-    mode = "ab" if resume_from else "wb"
-    try:
-        with open(part_path, mode) as f:
-            for chunk in resp.iter_content(chunk_size=CHUNK_SIZE):
-                if check_cancel is not None and check_cancel():
-                    raise UpdateError("已取消")
-                if chunk:
-                    f.write(chunk)
-                    done += len(chunk)
-                    if progress_cb is not None:
-                        progress_cb(done, total)
-    except requests.RequestException as e:
-        raise UpdateError(f"下载中断 (已保留进度, 可重试续传): {e}") from e
-
-    os.replace(part_path, dest)
+def download(url: str, dest: str, progress_cb=None, check_cancel=None) -> None:
+    """流式下载安装包 (断点续传/取消)。"""
+    return _download(url, dest, progress_cb=progress_cb,
+                     check_cancel=check_cancel)
 
 
 def sha256_of(path: str) -> str:
-    import hashlib
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    """计算文件 SHA256。"""
+    return _sha256_of(path)
 
 
 def verify_sha256(path: str, expected: str) -> bool:
-    return sha256_of(path).lower() == str(expected).strip().lower()
+    """校验文件 SHA256。"""
+    return _verify_sha256(path, expected)
 
 
 def parse_checksums_from_body(body: str) -> dict:
-    """从 Release 正文的「### SHA256 校验和」段解析 {文件名: 哈希}。
-
-    CI 在发版后把校验和嵌入正文 (替代独立 .sha256 资产, 保持发行页整洁)。
-    """
-    result = {}
-    in_section = False
-    for line in (body or "").splitlines():
-        stripped = line.strip()
-        if stripped == "### SHA256 校验和":
-            in_section = True
-            continue
-        if in_section:
-            if stripped.startswith("### ") or stripped.startswith("## "):
-                break
-            parts = stripped.split()
-            if (len(parts) >= 2 and re.fullmatch(r"[0-9a-fA-F]{64}", parts[0])
-                    and not stripped.startswith("`")):
-                result[parts[1].strip("`")] = parts[0].lower()
-    return result
+    """解析 Release 正文内嵌的 SHA256 校验和表。"""
+    return _parse_checksums_from_body(body)
 
 
 def resolve_checksum(release: ReleaseInfo):
-    """解析发行包校验和: 优先 Release 正文, 回退独立 .sha256 资产。"""
-    if release.notes:
-        found = parse_checksums_from_body(release.notes).get(release.asset_name)
-        if found:
-            return found
-    if release.sha256_url:
-        return fetch_checksum(release.sha256_url)
-    return None
+    """统一校验和解析入口 (正文优先, 回退 .sha256 资产)。"""
+    return _resolve_checksum(release)
 
 
 def fetch_checksum(url: str, timeout: float = 15.0):
-    """获取发行包的 SHA256; 校验和资产不存在 (旧版发行) 返回 None。"""
-    try:
-        resp = requests.get(url, timeout=timeout)
-    except requests.RequestException as e:
-        raise UpdateError(f"校验和下载失败: {e}") from e
-    if resp.status_code == 404:
-        return None
-    if resp.status_code != 200:
-        raise UpdateError(f"校验和下载失败 (HTTP {resp.status_code})")
-    return resp.text.strip().split()[0] if resp.text.strip() else None
+    """下载独立 .sha256 资产 (不存在返回 None)。"""
+    return _fetch_checksum(url, timeout=timeout)
 
 
 # ----------------------------------------------------------------
-# 准备更新 (解压 + 生成更新器)
+# Windows 安装流程 (非 Windows 优雅降级)
 # ----------------------------------------------------------------
 
-def _settings():
-    from .gui_config import get_qsettings
-    return get_qsettings()
-
-
-def get_skip_version() -> str:
-    return str(_settings().value("update/skip_version", "") or "")
-
-
-def set_skip_version(version: str):
-    _settings().setValue("update/skip_version", version)
-
-
-# 更新器: 等主程序退出 -> 备份旧版 -> 换入新版 -> 重启。纯 ASCII, 无需编码处理。
-# 全程写 _update/updater.log (隐藏窗口排障唯一手段); 任一替换失败回滚旧版。
-_UPDATER_PS1 = r"""
-param(
-    [int]$ParentPid,
-    [string]$InstallDir,
-    [string]$NewDir
-)
-$ErrorActionPreference = "Stop"
-$log = Join-Path $InstallDir "_update/updater.log"
-
-function Log($msg) {
-    Add-Content -LiteralPath $log -Value ("[{0}] {1}" -f (Get-Date -Format s), $msg) -Encoding UTF8
-}
-
-try {
-    Log "updater start (parent=$ParentPid)"
-
-    # 1. 等待主程序退出 (最多 60s, 超时则继续尝试)
-    $deadline = (Get-Date).AddSeconds(60)
-    while ((Get-Date) -lt $deadline) {
-        $p = Get-Process -Id $ParentPid -ErrorAction SilentlyContinue
-        if (-not $p) { break }
-        Start-Sleep -Milliseconds 500
-    }
-    Log "parent process exited"
-
-    Set-Location $InstallDir
-
-    # 2. 校验新包完整性
-    $newExe = Get-ChildItem -LiteralPath $NewDir -Filter "*.exe" -File |
-        Select-Object -First 1
-    if (-not $newExe -or -not (Test-Path (Join-Path $NewDir "_internal"))) {
-        Log "invalid new package, abort"
-        exit 2
-    }
-
-    # 3. 备份旧版 (exe + _internal 移动到 _backup)
-    $backup = Join-Path $InstallDir "_backup"
-    if (Test-Path $backup) { Remove-Item $backup -Recurse -Force }
-    New-Item -ItemType Directory -Path $backup | Out-Null
-
-    $oldExe = Get-ChildItem -Path $InstallDir -Filter "*.exe" -File |
-        Where-Object { $_.DirectoryName -eq (Get-Item $InstallDir).FullName } |
-        Select-Object -First 1
-    try {
-        Move-Item -LiteralPath $oldExe.FullName -Destination $backup -Force
-        if (Test-Path (Join-Path $InstallDir "_internal")) {
-            Move-Item -LiteralPath (Join-Path $InstallDir "_internal") `
-                -Destination $backup -Force
-        }
-        Log "old version moved to backup"
-    } catch {
-        Log ("backup move failed (will retry inline): " + $_.Exception.Message)
-    }
-
-    # 4. 换入新版; 任一步失败立即回滚旧版
-    try {
-        Move-Item -LiteralPath $newExe.FullName -Destination $InstallDir -Force
-        Move-Item -LiteralPath (Join-Path $NewDir "_internal") `
-            -Destination $InstallDir -Force
-        Log "new version installed"
-    } catch {
-        Log ("install failed, rolling back: " + $_.Exception.Message)
-        if ($oldExe -and (Test-Path (Join-Path $backup $oldExe.Name))) {
-            Move-Item -LiteralPath (Join-Path $backup $oldExe.Name) `
-                -Destination $InstallDir -Force
-        }
-        if (Test-Path (Join-Path $backup "_internal")) {
-            Move-Item -LiteralPath (Join-Path $backup "_internal") `
-                -Destination $InstallDir -Force
-        }
-        exit 3
-    }
-
-    Remove-Item $NewDir -Recurse -Force -ErrorAction SilentlyContinue
-
-    # 5. 重启新版本 (失败不回滚: 更新已生效, 可手动启动)
-    try {
-        Start-Process -FilePath (Join-Path $InstallDir $newExe.Name)
-        Log "new version launched"
-    } catch {
-        Log ("start new version failed (update applied, start manually): " +
-            $_.Exception.Message)
-    }
-    exit 0
-} catch {
-    try { Log ("fatal: " + $_.Exception.Message) } catch {}
-    exit 1
-}
-"""
+def ensure_disk_space(install_dir: str, asset_size: int) -> None:
+    """磁盘空间预检 (检查更新暂存目录所在卷)。"""
+    return _ensure_disk_space(install_dir, asset_size)
 
 
 def prepare(zip_path: str, install_dir: str, new_version: str) -> str:
-    """解压新包到暂存区并生成更新器脚本, 返回 updater.ps1 路径。
-
-    任何完整性问题抛出 UpdateError, 主程序保持可用。
-    """
-    staging = os.path.join(install_dir, STAGING_DIR)
-    new_dir = os.path.join(staging, "new")
-    if os.path.exists(new_dir):
-        shutil.rmtree(new_dir, ignore_errors=True)
-    os.makedirs(new_dir, exist_ok=True)
-
-    try:
-        with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(new_dir)
-    except zipfile.BadZipFile as e:
-        raise UpdateError(f"安装包解压失败 (文件可能已损坏): {e}") from e
-
-    exe_list = [f for f in os.listdir(new_dir) if f.lower().endswith(".exe")]
-    if not exe_list:
-        raise UpdateError("安装包内容异常: 未找到主程序")
-    if not os.path.isdir(os.path.join(new_dir, "_internal")):
-        raise UpdateError("安装包内容异常: 缺少运行时目录")
-
-    with open(os.path.join(new_dir, "version.txt"), "w",
-              encoding="utf-8") as f:
-        f.write(new_version)
-
-    ps1_path = os.path.join(staging, "updater.ps1")
-    with open(ps1_path, "w", encoding="utf-8-sig", newline="\r\n") as f:
-        f.write(_UPDATER_PS1)
-    return ps1_path
+    """解压安装包到暂存区并生成 PowerShell 更新器, 返回 ps1 路径。"""
+    return _windows.prepare(zip_path, install_dir, new_version)
 
 
-def launch_updater(install_dir: str, parent_pid: int):
-    """以隐藏进程启动 PowerShell 更新器 (主程序随后自行退出)。
-
-    注意: 只能用 CREATE_NO_WINDOW, 不能加 DETACHED_PROCESS ——
-    PowerShell 在完全脱离控制台时会静默初始化失败直接退出,
-    导致更新器什么都没做 (v2.2.0 实测踩坑)。
-    """
-    ps1 = os.path.join(install_dir, STAGING_DIR, "updater.ps1")
-    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-    subprocess.Popen(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-         "-WindowStyle", "Hidden", "-File", ps1,
-         "-ParentPid", str(parent_pid),
-         "-InstallDir", install_dir,
-         "-NewDir", os.path.join(install_dir, STAGING_DIR, "new")],
-        creationflags=flags, close_fds=True)
+def launch_updater(install_dir: str, parent_pid: int) -> bool:
+    """拉起外部更新器; 非 Windows 返回 False (不抛异常)。"""
+    return _windows.launch_updater(install_dir, parent_pid)
 
 
 def has_pending_update(install_dir: str) -> bool:
-    """是否有尚未应用的更新 (下载并解压就绪、等待替换)。"""
-    ps1 = os.path.join(install_dir, STAGING_DIR, "updater.ps1")
-    new_dir = os.path.join(install_dir, STAGING_DIR, "new")
-    return os.path.exists(ps1) and os.path.isdir(
-        os.path.join(new_dir, "_internal"))
+    """是否有等待替换的更新 (仅 Windows 可能为 True)。"""
+    return _windows.has_pending_update(install_dir)
 
 
-def cleanup_staging(install_dir: str):
-    """新版启动成功后清理备份与暂存。
+def cleanup_staging(install_dir: str) -> None:
+    """清理旧版备份/暂存 (启动时调用, 非 Windows 空操作)。"""
+    return _windows.cleanup_staging(install_dir)
 
-    - _backup: 旧版已被成功替换, 可安全删除
-    - _update: 仅在没有待应用更新时清理 —— 有待应用更新时保留下载
-      与解压结果, 下次启动会继续完成安装 (而不是清空用户的下载)
+
+# ----------------------------------------------------------------
+# 跳过版本 (委托 src.update.backend)
+# ----------------------------------------------------------------
+
+def get_skip_version() -> str:
+    """读取「跳过此版本」设置。"""
+    return _get_skip_version()
+
+
+def set_skip_version(version: str) -> None:
+    """写入「跳过此版本」设置。"""
+    return _set_skip_version(version)
+
+
+# ----------------------------------------------------------------
+# 动态兼容属性
+# ----------------------------------------------------------------
+
+def __getattr__(name: str):
+    """动态提供旧模块私有/常量属性 (PEP 562)。
+
+    ``STAGING_DIR`` 需要按当前 ``PlatformPaths.cache_dir`` 计算, 因此不能
+    在 import 时固化为相对名; 旧 UI 用 ``os.path.join(install_dir,
+    STAGING_DIR, ...)`` 拼接绝对路径时节下仍可用。
     """
-    backup = os.path.join(install_dir, BACKUP_DIR)
-    if os.path.exists(backup):
-        shutil.rmtree(backup, ignore_errors=True)
-    if not has_pending_update(install_dir):
-        staging = os.path.join(install_dir, STAGING_DIR)
-        if os.path.exists(staging):
-            shutil.rmtree(staging, ignore_errors=True)
+    if name == "STAGING_DIR":
+        return str(_windows.staging_dir())
+    if name == "_UPDATER_PS1":
+        return _windows.UPDATER_PS1
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__():
+    return sorted(set(globals()) | {"STAGING_DIR", "_UPDATER_PS1"})
