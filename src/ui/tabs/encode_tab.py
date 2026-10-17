@@ -16,6 +16,7 @@
 
 import os
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton,
     QWidget, QToolButton,
@@ -26,6 +27,11 @@ from ..args_builder import ArgsNamespace
 from ..execution_summary import ExecutionSummaryCard
 from ..input_media_card import InputMediaCard
 from ..output_plan_card import OutputPlanCard
+from ...capabilities.encoder import (
+    build_encoder_capabilities,
+    default_speed_preset,
+    encoder_capability,
+)
 from ...presets import (
     ENCODERS, QUALITY_PRESETS, CPU_PRESETS, NVENC_PRESETS,
     AUDIO_ENCODERS, AUDIO_BITRATES, RATE_CONTROL_MODES,
@@ -36,6 +42,13 @@ from ...media_probe import probe_detailed, LANGUAGE_NAMES
 
 # 默认预设：保持与改造前一致（均衡 H.264 / CRF18）
 DEFAULT_PRESET = "【均衡画质】x264 常用导出 (CRF18)"
+
+# 能力探测判定不可用时的 CPU 回退编码器
+CPU_FALLBACK_ENCODER = "H.264 (CPU - libx264)"
+
+#: 编码器不可用 / 预设依赖的编码器不可用时的悬停提示
+ENCODER_UNAVAILABLE_HINT = "未检测到该硬件编码器"
+PRESET_ENCODER_UNAVAILABLE_HINT = "依赖的硬件编码器不可用"
 
 # 预设模式下会被预设覆盖、因而禁用的控件提示
 PRESET_LOCK_HINT = (
@@ -48,6 +61,10 @@ class EncodeTab(BaseTab):
 
     def __init__(self, parent=None):
         super().__init__("视频压制", parent)
+
+        # ---- M3.2 编码器能力状态 (探测完成前保持全量可选) ----
+        self._caps = None
+        self.encoder_capabilities = build_encoder_capabilities(None)
 
         # ================================================================
         # A. 输入媒体卡
@@ -406,9 +423,183 @@ class EncodeTab(BaseTab):
         self._update_quality_mirror()
 
     def _on_encoder_changed(self, encoder_name):
-        """当编码器切换时，控制 NVENC 档位可用状态。"""
-        is_nvenc = "NVENC" in encoder_name or "nvenc" in encoder_name
-        self.nvenc_preset_combo.setEnabled(is_nvenc)
+        """编码器切换: 联动 RC 选项 / 速度档下拉 (仅自定义模式可用)。"""
+        is_custom = self._is_custom_mode()
+        capability = self._capability_for_display(encoder_name)
+        is_nvenc = capability is not None and "nvenc" in capability.name
+
+        # 速度档: NVENC 用 p1..p7 档位下拉; QSV/AMF/CPU 用各自速度下拉
+        if capability is not None and not is_nvenc:
+            self._rebuild_speed_options(capability)
+        self.nvenc_preset_combo.setEnabled(is_custom and is_nvenc)
+        self.speed_preset_combo.setEnabled(is_custom and not is_nvenc)
+
+        # RC 选项: CPU 4 项, 硬件 3 项 (去掉 2-Pass); 当前项不支持时回退 CRF/CQ
+        self._rebuild_rate_control_options(capability)
+        if is_custom:
+            self._on_rate_control_changed(self.rate_control_combo.currentText())
+
+    # ----------------------------------------------------------------
+    # M3.2 编码器能力联动
+    # ----------------------------------------------------------------
+
+    def _capability_for_display(self, display):
+        """按下拉展示名取能力快照 (未探测时 available=None)。"""
+        for capability in self.encoder_capabilities:
+            if capability.display == display:
+                return capability
+        resolved = encoder_capability(display, self._caps)
+        if resolved is not None:
+            return resolved
+        capabilities = build_encoder_capabilities(self._caps)
+        return capabilities[0]
+
+    @staticmethod
+    def _set_combo_items(combo, items, preferred):
+        """重建下拉项并尽量保留当前选择 (阻塞信号, 避免中间态触发联动)。"""
+        items = list(items)
+        blocked = combo.blockSignals(True)
+        try:
+            combo.clear()
+            combo.addItems(items)
+            target = preferred if preferred in items else (
+                items[0] if items else "")
+            if target:
+                combo.setCurrentText(target)
+        finally:
+            combo.blockSignals(blocked)
+        return combo.currentText()
+
+    def _rebuild_rate_control_options(self, capability):
+        """按编码器能力重建码率控制模式下拉 (硬件隐藏 2-Pass)。"""
+        supported = set(capability.rc_modes) if capability is not None else {
+            "crf", "vbr", "cbr", "2pass"}
+        choices = [
+            display for display, mode in RATE_CONTROL_MODES.items()
+            if mode in supported
+        ]
+        current = self.rate_control_combo.currentText()
+        selected = self._set_combo_items(
+            self.rate_control_combo, choices, current or "CRF/CQ (恒定质量)")
+        if selected != current and self._is_custom_mode():
+            self._on_rate_control_changed(selected)
+        self.rate_control_combo.setToolTip(
+            "" if len(choices) == len(RATE_CONTROL_MODES)
+            else "该编码器不支持 2-Pass，已隐藏该选项")
+
+    def _rebuild_speed_options(self, capability):
+        """按编码器能力重建速度档下拉 (AMF=speed/balanced/quality)。"""
+        values = list(capability.speed_values)
+        current = self.speed_preset_combo.currentText()
+        preferred = (current if current in values
+                     else default_speed_preset(capability))
+        self._set_combo_items(self.speed_preset_combo, values, preferred)
+        self.speed_preset_combo.setToolTip(
+            f"编码速度 (默认 {default_speed_preset(capability)})")
+
+    def _preset_enabled(self, preset_name) -> bool:
+        """预设依赖的编码器是否可用 (未知/CPU 视为可用)。"""
+        preset = QUALITY_PRESETS.get(preset_name)
+        if not preset:
+            return True
+        encoder = preset.get("encoder")
+        if not encoder:
+            return True
+        capability = encoder_capability(encoder, self._caps)
+        return capability is not None and capability.available is not False
+
+    def _encoder_item_enabled(self, display) -> bool:
+        """编码器下拉中该展示名是否可用 (保持与视图置灰状态一致)。"""
+        model = self.encoder_combo.model()
+        for index in range(self.encoder_combo.count()):
+            if self.encoder_combo.itemText(index) != display:
+                continue
+            item = model.item(index) if model is not None else None
+            return True if item is None else item.isEnabled()
+        return False
+
+    def _nvenc_state(self, caps):
+        """NVENC 硬件卡三态: None=待检测 / True=可用 / False=不可用。"""
+        if caps is None or getattr(caps, "probe_error", None):
+            return None
+        nvenc_caps = [
+            cap for cap in self.encoder_capabilities if "nvenc" in cap.name
+        ]
+        if not nvenc_caps:
+            return False
+        return any(cap.available is True for cap in nvenc_caps)
+
+    # ----------------------------------------------------------------
+    # 能力探测结果应用 (main_window 探测完成后调用)
+    # ----------------------------------------------------------------
+
+    def apply_capabilities(self, caps=None):
+        """按 FFmpeg 能力探测结果联动编码器 / 预设 / 硬件卡。
+
+        Args:
+            caps: FfmpegCaps 快照; None 表示未知/探测失败 —— 保持全量可选,
+                硬件卡显示「待能力检测」。
+        """
+        self._caps = caps
+        self.encoder_capabilities = build_encoder_capabilities(caps)
+        by_display = {cap.display: cap for cap in self.encoder_capabilities}
+
+        # 1) 编码器下拉: 探测为不可用的项置灰 + 悬停提示
+        model = self.encoder_combo.model()
+        for index in range(self.encoder_combo.count()):
+            display = self.encoder_combo.itemText(index)
+            capability = by_display.get(display)
+            unavailable = (capability is not None
+                           and capability.available is False)
+            item = model.item(index) if model is not None else None
+            if item is not None:
+                item.setEnabled(not unavailable)
+                item.setData(
+                    ENCODER_UNAVAILABLE_HINT if unavailable else None,
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+
+        # 2) 当前编码器不可用 -> 回退 CPU 编码器 (CPU 也不可用时取首个可用项)
+        current = by_display.get(self.encoder_combo.currentText())
+        if current is not None and current.available is False:
+            fallback = CPU_FALLBACK_ENCODER
+            if not self._encoder_item_enabled(fallback):
+                fallback = next(
+                    (cap.display for cap in self.encoder_capabilities
+                     if cap.available is not False),
+                    CPU_FALLBACK_ENCODER,
+                )
+            self.encoder_combo.setCurrentText(fallback)
+
+        # 3) 预设下拉: 依赖不可用编码器的预设同样置灰 + 提示
+        preset_model = self.preset_combo.model()
+        for index in range(self.preset_combo.count()):
+            preset_name = self.preset_combo.itemText(index)
+            unavailable = not self._preset_enabled(preset_name)
+            item = (preset_model.item(index)
+                    if preset_model is not None else None)
+            if item is not None:
+                item.setEnabled(not unavailable)
+                item.setData(
+                    PRESET_ENCODER_UNAVAILABLE_HINT if unavailable else None,
+                    Qt.ItemDataRole.ToolTipRole,
+                )
+        # 当前预设不可用 -> 回退默认预设 (默认也需可用) 或首个可用预设
+        if not self._preset_enabled(self.preset_combo.currentText()):
+            fallbacks = [DEFAULT_PRESET] + [
+                name for name in QUALITY_PRESETS if name != DEFAULT_PRESET
+            ]
+            for preset_name in fallbacks:
+                if self._preset_enabled(preset_name):
+                    self.preset_combo.setCurrentText(preset_name)
+                    break
+
+        # 4) 硬件目标卡三态
+        self.output_plan_card.set_hardware_available(self._nvenc_state(caps))
+
+        # 5) 重新应用当前编码器联动 + 刷新摘要
+        self._on_encoder_changed(self.encoder_combo.currentText())
+        self._refresh_summary()
 
     def _on_output_format_changed(self, text):
         self.output_format_custom_edit.setEnabled("自定义" in text)

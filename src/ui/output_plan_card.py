@@ -24,6 +24,8 @@ TITLE = "输出方案"
 MORE_PRESETS_LABEL = "更多预设"
 CUSTOM_PRESET = "自定义 (Custom)"
 HARDWARE_CAPABILITY_PENDING = "待能力检测"
+HARDWARE_CAPABILITY_AVAILABLE = "NVENC 可用"
+HARDWARE_CAPABILITY_UNAVAILABLE = "NVENC 不可用"
 CUSTOM_BADGE = "自定义参数"
 
 
@@ -109,6 +111,7 @@ class PlanCard(QFrame):
         self.target = target
         self.preset_name = target.preset_name
         self._selected = False
+        self._hardware_blocked = False
 
         self.setObjectName("plan_card")
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -154,6 +157,36 @@ class PlanCard(QFrame):
     def is_selected(self) -> bool:
         return self._selected
 
+    def is_hardware_blocked(self) -> bool:
+        """硬件卡是否因能力不足被禁用。"""
+        return self._hardware_blocked
+
+    def set_hardware_available(self, available) -> None:
+        """硬件卡三态（仅对 ``target.hardware`` 卡片生效）。
+
+        Args:
+            available: None=待能力检测（卡片仍可选）、True=可用、
+                False=不可用（卡片禁用且点击不触发切换）。
+        """
+        if not self.target.hardware:
+            return
+        self._hardware_blocked = available is False
+        if available is None:
+            self.capability_label.setText(HARDWARE_CAPABILITY_PENDING)
+        elif available:
+            self.capability_label.setText(HARDWARE_CAPABILITY_AVAILABLE)
+        else:
+            self.capability_label.setText(HARDWARE_CAPABILITY_UNAVAILABLE)
+        self.capability_label.setVisible(True)
+        self.setEnabled(not self._hardware_blocked)
+        if self._hardware_blocked:
+            self.setCursor(Qt.CursorShape.ForbiddenCursor)
+            self.setToolTip(
+                f"{self.target.preset_name}（未检测到该硬件编码器）")
+        else:
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.setToolTip(self.target.preset_name)
+
     def set_selected(self, selected: bool) -> None:
         self._selected = bool(selected)
         self.setProperty("selected", self._selected)
@@ -163,12 +196,15 @@ class PlanCard(QFrame):
         repolish(self)
 
     def click(self) -> None:
-        """程序化点击（测试/键盘触发）。"""
+        """程序化点击（测试/键盘触发）；禁用卡不触发切换。"""
+        if not self.isEnabled():
+            return
         self.clicked.emit(self.preset_name)
 
     def mouseReleaseEvent(self, event):
         if (
-            event.button() == Qt.MouseButton.LeftButton
+            self.isEnabled()
+            and event.button() == Qt.MouseButton.LeftButton
             and self.rect().contains(event.position().toPoint())
         ):
             self.click()
@@ -184,6 +220,8 @@ class OutputPlanCard(QGroupBox):
         super().__init__(TITLE, parent)
         self.setObjectName("output_plan_card")
         self.presets = dict(QUALITY_PRESETS if presets is None else presets)
+        #: 硬件卡能力状态: None=待检测 / True=可用 / False=不可用
+        self.hardware_available = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -231,6 +269,17 @@ class OutputPlanCard(QGroupBox):
         outer.addWidget(hint)
 
         self._sync_selection(self.preset_combo.currentText())
+
+    # ----------------------------------------------------------------
+    # 能力联动
+    # ----------------------------------------------------------------
+
+    def set_hardware_available(self, available) -> None:
+        """硬件目标卡三态: None=待能力检测 / True=可用 / False=不可用(禁用)。"""
+        self.hardware_available = available
+        for card in self.cards:
+            if card.target.hardware:
+                card.set_hardware_available(available)
 
     # ----------------------------------------------------------------
     # 选择联动

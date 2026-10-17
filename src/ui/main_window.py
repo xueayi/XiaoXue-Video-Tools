@@ -477,18 +477,35 @@ class MainWindow(QMainWindow):
         self._caps_worker = None
         if caps is not None:
             self._apply_capabilities(caps)
+        else:
+            # 探测异常兜底: 页面回到「未知/全量可选」状态, 不把上次结果当新结果
+            self._forward_capabilities_to_tabs(None)
 
     def _set_capabilities_probing(self):
         if self._home_page is not None:
             self._home_page.set_probing()
         if self._settings_page is not None:
             self._settings_page.set_probing()
+        # 重新检测期间编码页回到「待能力检测」未知态 (保持全量可选)
+        self._forward_capabilities_to_tabs(None)
 
     def _apply_capabilities(self, caps):
         if self._home_page is not None:
             self._home_page.update_capabilities(caps)
         if self._settings_page is not None:
             self._settings_page.update_capabilities(caps)
+        # 编码页等按探测结果联动; 探测失败/未知统一按 None 下发 (保持全量可选)
+        effective = None
+        if caps is not None and not getattr(caps, "probe_error", None):
+            effective = caps
+        self._forward_capabilities_to_tabs(effective)
+
+    def _forward_capabilities_to_tabs(self, caps):
+        """把能力快照转发给实现了 ``apply_capabilities`` 的页面 (M3.2)。"""
+        for tab in getattr(self, "_tabs", ()):
+            hook = getattr(tab, "apply_capabilities", None)
+            if callable(hook):
+                hook(caps)
 
     # ================================================================
     # 快捷键
