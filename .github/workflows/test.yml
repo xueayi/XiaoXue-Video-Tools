@@ -1,0 +1,54 @@
+name: Tests
+
+# PR 测试门禁: main 分支的 push / pull_request 时运行。
+# 只在分支上触发 —— tag 构建由 build.yml / build-beta.yml 负责, 三者互不冲突。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # 支持手动触发
+
+permissions:
+  contents: read
+
+# 同一分支/PR 的旧运行自动取消, 避免排队浪费 runner
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (Windows / Python 3.12)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      # 不需要下载 FFmpeg: 测试全部 mock 真实二进制, 不依赖 ffmpeg/ffprobe。
+      # - core / compat_encoder / media_probe / qc 的执行路径在测试中均被 mock;
+      # - tests/process 的 QProcess 用例只启动 `python -c ...` 子进程;
+      # - tests/capabilities 通过注入 fake ffmpeg 探测结果驱动, 不调用真实 ffmpeg;
+      # - tests/test_updater.py 只调用系统自带的 PowerShell (windows-latest 已有)。
+      # 因此这里不安装/下载 FFmpeg, 门禁保持轻量, 也不受发行版二进制版本影响。
+      - name: Run tests (offscreen)
+        shell: pwsh
+        run: |
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          $env:XIAOXUE_NO_UPDATE_CHECK = '1'
+          python -m pytest -q

@@ -24,20 +24,30 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
           cache: 'pip'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
-      - name: Download FFmpeg
+          # 构建期依赖: 锁定与 Python 3.12 兼容的 PyInstaller 大版本
+          pip install "pyinstaller>=6.11.1,<7"
+
+      # FFmpeg 固定到不可变的 BtbN autobuild 快照 + SHA256 校验 (不用 latest, 保证可复现)
+      # 资产: ffmpeg-N-127579-g5cb9fcd211-win64-gpl.zip (GPL, static, win64)
+      # 来源: https://github.com/BtbN/FFmpeg-Builds/releases/tag/autobuild-2026-10-16-13-04
+      - name: Download FFmpeg (pinned + SHA256)
         run: |
-          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-          $dirName = "ffmpeg-master-latest-win64-gpl"
-          Invoke-WebRequest -Uri $url -OutFile "ffmpeg.zip"
+          $ffmpegUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-16-13-04/ffmpeg-N-127579-g5cb9fcd211-win64-gpl.zip"
+          $expectedSha256 = "b7c94a054ae4c1cce0e11ae18979d932e6f129ba6f5253b328227b31f1bf2bbf"
+          Invoke-WebRequest -Uri $ffmpegUrl -OutFile "ffmpeg.zip"
+          $actualSha256 = (Get-FileHash "ffmpeg.zip" -Algorithm SHA256).Hash.ToLower()
+          if ($actualSha256 -ne $expectedSha256) {
+            throw "FFmpeg SHA256 校验失败: 期望 $expectedSha256, 实际 $actualSha256"
+          }
           Expand-Archive -Path "ffmpeg.zip" -DestinationPath "ffmpeg_temp"
+          $dirName = (Get-ChildItem "ffmpeg_temp" -Directory | Select-Object -First 1).Name
           New-Item -ItemType Directory -Force -Path "bin"
           Copy-Item "ffmpeg_temp\$dirName\bin\ffmpeg.exe" -Destination "bin\"
           Copy-Item "ffmpeg_temp\$dirName\bin\ffprobe.exe" -Destination "bin\"
