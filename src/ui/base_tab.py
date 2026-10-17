@@ -4,13 +4,13 @@
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QGroupBox, QLabel, QLineEdit, QPushButton,
-    QCheckBox, QSpinBox, QPlainTextEdit, QFileDialog, QToolButton,
+    QCheckBox, QPlainTextEdit, QFileDialog, QToolButton,
 )
 from PyQt6.QtCore import Qt, QMimeData
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 
 from .args_builder import ArgsNamespace
-from .widgets import WheelGuardComboBox
+from .widgets import WheelGuardComboBox, WheelGuardSpinBox
 
 # 表单内容列的最大宽度: 避免宽窗口下输入框被无限拉长
 CONTENT_MAX_WIDTH = 860
@@ -228,7 +228,7 @@ class BaseTab(QScrollArea):
         return edit
 
     def add_combo(self, layout, label, choices, default="", tooltip=""):
-        """下拉选择框 (未聚焦时忽略滚轮, 自绘三角箭头)。"""
+        """下拉选择框 (下拉未展开时滚轮不改值, 自绘三角箭头)。"""
         combo = WheelGuardComboBox()
         combo.addItems(choices)
         if default in choices:
@@ -248,8 +248,8 @@ class BaseTab(QScrollArea):
         return cb
 
     def add_spinbox(self, layout, label, min_val=0, max_val=100, default=0, tooltip=""):
-        """整数微调框。"""
-        spin = QSpinBox()
+        """整数微调框 (滚轮不改值, 用于滚动页面时避免误操作)。"""
+        spin = WheelGuardSpinBox()
         spin.setRange(min_val, max_val)
         spin.setValue(default)
         spin.setFixedWidth(SPIN_WIDTH)

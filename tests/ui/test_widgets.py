@@ -33,20 +33,61 @@ def test_combo_is_a_combobox_with_strong_focus(combo):
     assert combo.focusPolicy() == Qt.FocusPolicy.StrongFocus
 
 
-def test_wheel_ignored_when_not_focused(combo, monkeypatch):
-    monkeypatch.setattr(combo, "hasFocus", lambda: False)
-    event = _wheel_event()
-    combo.wheelEvent(event)
-    assert event.isAccepted() is False
-    assert combo.currentIndex() == 0  # 未改值
+def test_wheel_never_changes_value_when_popup_closed(combo, monkeypatch):
+    """下拉未展开时, 无论有无焦点, 滚轮都不改选项。"""
+    for focused in (False, True):
+        monkeypatch.setattr(combo, "hasFocus", lambda value=focused: value)
+        combo.setCurrentIndex(0)
+        event = _wheel_event(-120)
+        combo.wheelEvent(event)
+        assert combo.currentIndex() == 0
+    assert combo.popup_visible() is False
 
 
-def test_wheel_changes_value_when_focused(combo, monkeypatch):
-    monkeypatch.setattr(combo, "hasFocus", lambda: True)
+def test_wheel_allowed_only_when_popup_open(combo, qapp):
+    """下拉展开时, 滚轮交给基类用于滚动选项列表。"""
+    qapp.sendEvent(combo.view(), QEvent(QEvent.Type.Show))
+    assert combo.popup_visible() is True
+    combo.setCurrentIndex(0)
     event = _wheel_event(-120)
     combo.wheelEvent(event)
-    assert event.isAccepted() is True
-    assert combo.currentIndex() == 1  # 向下滚动一格
+    assert combo.currentIndex() == 1
+
+    qapp.sendEvent(combo.view(), QEvent(QEvent.Type.Hide))
+    assert combo.popup_visible() is False
+    combo.setCurrentIndex(0)
+    combo.wheelEvent(_wheel_event(-120))
+    assert combo.currentIndex() == 0
+
+
+def test_wheel_forwards_to_enclosing_scroll_area(qapp):
+    """下拉未展开时, 滚轮应滚动外层页面而不是改选项。"""
+    from PyQt6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
+
+    area = QScrollArea()
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    inner = WheelGuardComboBox()
+    inner.addItems(["A", "B", "C"])
+    layout.addWidget(inner)
+    for index in range(30):
+        layout.addWidget(QLabel(f"row {index}"))
+    area.setWidget(content)
+    area.resize(300, 200)
+    area.show()
+    qapp.processEvents()
+
+    bar = area.verticalScrollBar()
+    assert bar.maximum() > 0, "滚动区域内容应可滚动"
+    bar.setValue(0)
+    inner.setCurrentIndex(0)
+
+    qapp.sendEvent(inner, _wheel_event(-120))
+    assert inner.currentIndex() == 0, "滚轮不得改变选项"
+    assert bar.value() > 0, "滚轮应滚动外层页面"
+
+    area.hide()
+    area.deleteLater()
 
 
 def test_arrow_rotates_when_popup_opens(combo, qapp):
@@ -99,6 +140,39 @@ def test_arrow_open_flag_resets_after_hide(combo, qapp):
     # 收起后箭头恢复朝下
     polygon = combo.arrow_polygon()
     assert polygon.at(2).y() > polygon.at(0).y()
+
+
+def test_spinbox_wheel_does_not_change_value(qapp):
+    """数值微调框: 滚轮在未聚焦时也不改值, 且转交外层滚动区域。"""
+    from PyQt6.QtWidgets import QLabel, QScrollArea, QVBoxLayout, QWidget
+
+    from src.ui.widgets import WheelGuardSpinBox
+
+    area = QScrollArea()
+    content = QWidget()
+    layout = QVBoxLayout(content)
+    spin = WheelGuardSpinBox()
+    spin.setRange(0, 100)
+    spin.setValue(23)
+    layout.addWidget(spin)
+    for index in range(30):
+        layout.addWidget(QLabel(f"row {index}"))
+    area.setWidget(content)
+    area.resize(300, 200)
+    area.show()
+    qapp.processEvents()
+
+    bar = area.verticalScrollBar()
+    bar.setValue(0)
+    spin.setFocus()
+    qapp.processEvents()
+
+    qapp.sendEvent(spin, _wheel_event(-120))
+    assert spin.value() == 23, "滚轮不得改变数值"
+    assert bar.value() > 0, "滚轮应滚动外层页面"
+
+    area.hide()
+    area.deleteLater()
 
 
 def test_paint_smoke(combo, qapp):
