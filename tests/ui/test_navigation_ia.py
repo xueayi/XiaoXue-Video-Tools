@@ -223,7 +223,10 @@ def test_home_page_skeleton_sections(win):
     assert len(home._recent_tasks_area.task_ids) == len(MOCK_TASKS)
     assert home._recent_outputs_placeholder.text() == "暂无输出文件"
     assert home._ffmpeg_path_label.text() == get_ffmpeg_path()
-    assert "待能力检测" in home._capability_label.text()
+    # M3.1: 探测完成前展示「正在检测…」; 结果由主窗口后台探测推送
+    assert "正在检测" in home._capability_label.text()
+    assert home._encoder_label.text() == "待检测"
+    assert home._nvenc_label.text() == "未检测到"
 
 
 def test_home_quick_action_emits_navigate_requested(win):

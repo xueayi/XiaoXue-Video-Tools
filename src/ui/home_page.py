@@ -8,9 +8,12 @@
   不接后端、不创建 TaskRunner;
 - 快速压制入口通过 ``navigate_requested`` 通知主窗口跳转到视频压制页;
 - 最近输出占位, 后续接入真实输出记录;
-- 环境能力概览展示 FFmpeg 路径与「待能力检测」占位 (真实探测后续接入)。
+- 环境能力概览展示 FFmpeg 路径, 以及后台能力探测的结果 (M3.1):
+  检测中 / 关键编码器可用数 / NVENC 可用性 / 失败原因。
 
 首页不参与执行 (``is_executable()`` 恒为 False), 底部「开始执行」禁用。
+首页也不发起探测: 探测由主窗口在窗口显示后启动, 结果通过
+:meth:`update_capabilities` 推送过来, 首页只做展示。
 """
 
 from dataclasses import replace
@@ -19,6 +22,14 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton
 
 from .._version import __version__
+from ..capabilities import (
+    KEY_ENCODERS,
+    available_key_encoders,
+    caps_ready,
+    get_capabilities,
+    nvenc_available,
+    short_probe_error,
+)
 from ..utils import get_ffmpeg_path
 from . import icons
 from .base_tab import BaseTab
@@ -107,21 +118,90 @@ class HomePage(BaseTab):
         outputs.addRow(self._recent_outputs_placeholder)
 
     def _build_environment(self):
-        env = self.add_group("环境与能力", "FFmpeg 自动定位, 硬件能力待检测")
+        env = self.add_group(
+            "环境与能力", "启动后后台探测, 不阻塞使用, 也不影响已有功能")
         self._ffmpeg_path_label = QLabel(get_ffmpeg_path())
         self._ffmpeg_path_label.setTextInteractionFlags(
             Qt.TextInteractionFlag.TextSelectableByMouse)
         self._ffmpeg_path_label.setWordWrap(True)
         env.addRow("FFmpeg 路径", self._ffmpeg_path_label)
 
-        self._capability_label = QLabel("待能力检测")
+        self._capability_label = QLabel()
         self._capability_label.setObjectName("muted_label")
-        env.addRow("硬件编码能力", self._capability_label)
+        self._capability_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._capability_label.setWordWrap(True)
+        env.addRow("检测状态", self._capability_label)
+
+        self._encoder_label = QLabel()
+        self._encoder_label.setObjectName("muted_label")
+        env.addRow("编码器", self._encoder_label)
+
+        self._nvenc_label = QLabel()
+        self._nvenc_label.setObjectName("muted_label")
+        env.addRow("NVENC", self._nvenc_label)
+
+        self.set_probing()
         self.add_hint(
             env,
-            "硬件编码器 (NVENC / QSV / AMF) 真实可用性将在后续版本启动时探测。",
+            "关键编码器指压制页可选的 CPU / NVENC / QSV / AMF 共 "
+            f"{len(KEY_ENCODERS)} 项; 真实可用性以本次检测结果为准, "
+            "其它编码器仍可在「自定义」中使用。",
             "info",
         )
+        # 若本次进程已有探测结果 (例如从设置页返回后重建首页), 直接展示
+        if caps_ready():
+            caps = get_capabilities()
+            if caps is not None:
+                self.update_capabilities(caps)
+
+    # ----------------------------------------------------------------
+    # 环境与能力展示 (M3.1)
+    # ----------------------------------------------------------------
+
+    def set_probing(self):
+        """探测进行中: 只改展示文案, 不禁用任何功能。"""
+        self._capability_label.setText("正在检测…")
+        self._capability_label.setToolTip("")
+        self._encoder_label.setText("待检测")
+        self._encoder_label.setToolTip("")
+        self._nvenc_label.setText("未检测到")
+        self._nvenc_label.setToolTip("")
+
+    def update_capabilities(self, caps):
+        """接收主窗口推送的探测结果并刷新「环境与能力」区。"""
+        if caps is None:
+            self.set_probing()
+            return
+
+        if getattr(caps, "probe_error", None):
+            self._capability_label.setText(
+                f"检测失败: {short_probe_error(caps)}")
+            # 完整原因放 tooltip, 状态行只展示截断后的短文本
+            self._capability_label.setToolTip(str(caps.probe_error))
+            self._encoder_label.setText("未知")
+            self._encoder_label.setToolTip("能力探测失败, 无法确定编码器可用性")
+            self._nvenc_label.setText("未检测到")
+            self._nvenc_label.setToolTip("能力探测失败, 无法确定 NVENC 可用性")
+            return
+
+        version = getattr(caps, "version", "") or "未知版本"
+        self._capability_label.setText(f"检测完成 · FFmpeg {version}")
+        self._capability_label.setToolTip(str(getattr(caps, "ffmpeg_path", "")))
+
+        available = available_key_encoders(caps)
+        self._encoder_label.setText(
+            f"{len(available)}/{len(KEY_ENCODERS)} 可用")
+        missing = [name for name in KEY_ENCODERS if name not in available]
+        self._encoder_label.setToolTip(
+            ("不可用: " + ", ".join(missing)) if missing else "全部可用")
+
+        if nvenc_available(caps):
+            self._nvenc_label.setText("可用")
+            self._nvenc_label.setToolTip("检测到 h264_nvenc / hevc_nvenc 等 NVENC 编码器")
+        else:
+            self._nvenc_label.setText("不可用")
+            self._nvenc_label.setToolTip("FFmpeg 未提供 NVENC 编码器 (无 N 卡或构建未启用)")
 
     # ----------------------------------------------------------------
     # 示例任务交互 / 主题联动 / 执行能力

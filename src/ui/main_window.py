@@ -15,6 +15,11 @@ from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QAction, QIcon, QShortcut, QKeySequence, QPixmap
 
 from .. import updater
+from ..capabilities import (
+    caps_ready,
+    get_capabilities,
+    start_capability_probe,
+)
 from ..gui_config import get_icon_path
 from ..utils import get_base_dir
 from ..process.progress import FFmpegProgressParser, ProgressEvent
@@ -195,6 +200,11 @@ class MainWindow(QMainWindow):
         self._btn_anim = None
         self._update_dialog = None
         self._check_worker = None
+        # M3.1: FFmpeg 能力探测 —— 首页/设置页展示 + 后台线程
+        self._home_page = None
+        self._settings_page = None
+        self._caps_worker = None
+        self._caps_probe_started = False
         # 当前任务标题 (结果日志用, _on_execute 时写入)
         self._task_caption = ""
         # 当前选中页索引 (点击即生效, 不等切换动画播完)
@@ -400,19 +410,85 @@ class MainWindow(QMainWindow):
                 self._sidebar.add_item(name, icon_name)
                 page = page_factory()
                 if isinstance(page, HomePage):
+                    self._home_page = page
                     page.navigate_requested.connect(self._on_home_navigate)
                 elif isinstance(page, SettingsPage):
+                    self._settings_page = page
                     page.theme_change_requested.connect(self._apply_theme_choice)
                     page.reduced_motion_changed.connect(
                         self._on_reduced_motion_changed)
                     page.update_check_requested.connect(
                         lambda: self._show_update_dialog(manual=True))
+                    page.capability_refresh_requested.connect(
+                        self._on_capability_refresh_requested)
                 self._stack.addWidget(page)
                 self._tabs.append(page)
                 self._page_index[name] = len(self._tabs) - 1
 
         self._sidebar.tab_changed.connect(self._on_sidebar_tab_changed)
+        # 已有缓存快照 (同进程重建窗口 / 测试注入) 时立即展示, 不再重复探测
+        if caps_ready():
+            caps = get_capabilities()
+            if caps is not None:
+                self._apply_capabilities(caps)
         self._refresh_theme_dependent_ui()
+
+    # ================================================================
+    # FFmpeg 能力探测 (M3.1)
+    # ================================================================
+
+    def showEvent(self, event):
+        """窗口首次显示后启动一次后台能力探测 (不阻塞启动)。"""
+        super().showEvent(event)
+        if self._caps_probe_started:
+            return
+        self._caps_probe_started = True
+        # 用 singleShot 让 show 先完成首帧绘制, 避免探测线程与首帧抢 GIL
+        QTimer.singleShot(0, self._start_capability_probe)
+
+    def _start_capability_probe(self, refresh: bool = False):
+        """启动后台探测; 已有线程在跑时直接复用 (防止并发 worker)。"""
+        worker = self._caps_worker
+        if worker is not None and getattr(worker, "isRunning", lambda: False)():
+            return worker
+
+        # 已有缓存且不是重新检测时, 不要把已展示的结果退回「正在检测…」
+        if refresh or not caps_ready():
+            self._set_capabilities_probing()
+        worker = start_capability_probe(parent=self, refresh=refresh)
+        worker.finished_caps.connect(self._on_capabilities_ready)
+        # QThread 内置 finished -> deleteLater 是 Qt 官方推荐的安全销毁方式
+        worker.finished.connect(worker.deleteLater)
+        self._caps_worker = worker
+        return worker
+
+    def _on_capability_refresh_requested(self):
+        """设置页「重新检测」: 重新探测并刷新首页/设置两处展示。"""
+        self._start_capability_probe(refresh=True)
+
+    def _on_capabilities_ready(self, caps):
+        """探测完成: 刷新两处展示, 释放 worker 以便下次重新检测。"""
+        # 防御过期 worker: 正常 UI 流程不会并发, 但重检紧跟在旧 worker
+        # finished 之后时, 旧结果不应清掉新 worker 的引用 (sender 为 None
+        # 表示测试/替身直接 emit, 按当前 worker 处理)。
+        sender = self.sender()
+        if sender is not None and sender is not self._caps_worker:
+            return
+        self._caps_worker = None
+        if caps is not None:
+            self._apply_capabilities(caps)
+
+    def _set_capabilities_probing(self):
+        if self._home_page is not None:
+            self._home_page.set_probing()
+        if self._settings_page is not None:
+            self._settings_page.set_probing()
+
+    def _apply_capabilities(self, caps):
+        if self._home_page is not None:
+            self._home_page.update_capabilities(caps)
+        if self._settings_page is not None:
+            self._settings_page.update_capabilities(caps)
 
     # ================================================================
     # 快捷键
@@ -790,6 +866,14 @@ class MainWindow(QMainWindow):
                 wait = getattr(runner, "wait", None)
                 if callable(wait):
                     wait(5000)
+        # M3.1: 能力探测线程同样是 QThread, 关闭前必须等待结束再销毁
+        caps_worker = self._caps_worker
+        self._caps_worker = None
+        if caps_worker is not None and getattr(
+                caps_worker, "isRunning", lambda: False)():
+            wait = getattr(caps_worker, "wait", None)
+            if callable(wait):
+                wait(2000)
         super().closeEvent(event)
 
     # ================================================================

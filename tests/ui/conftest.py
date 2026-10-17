@@ -91,3 +91,87 @@ def pump(app, ms: int):
 @pytest.fixture
 def pump_fn(qapp):
     return lambda ms=100: pump(qapp, ms)
+
+
+# ----------------------------------------------------------------
+# M3.1: FFmpeg 能力探测替身
+# ----------------------------------------------------------------
+
+class _FakeSignal:
+    """最小信号替身: 支持 connect / emit (同步直连)。"""
+
+    def __init__(self):
+        self._slots = []
+
+    def connect(self, slot):
+        self._slots.append(slot)
+
+    def emit(self, *args):
+        for slot in list(self._slots):
+            slot(*args)
+
+
+class FakeProbeWorker:
+    """CapabilityProbeWorker 替身: 不创建 QThread、不跑子进程。"""
+
+    def __init__(self, parent=None, refresh=True):
+        self.parent_obj = parent
+        self.refresh = refresh
+        self.finished_caps = _FakeSignal()
+        self.finished = _FakeSignal()  # QThread 内置信号 (主窗口连 deleteLater)
+        self.running = False
+        self.started = False
+
+    def start(self):
+        self.started = True
+        self.running = True
+
+    def isRunning(self):  # noqa: N802 - 模拟 QThread API
+        return self.running
+
+    def wait(self, msecs=0):
+        self.running = False
+        return True
+
+    def deleteLater(self):  # noqa: N802 - 模拟 QObject API
+        pass
+
+
+class ProbeStub:
+    """main_window.start_capability_probe 的替身, 记录每次创建。"""
+
+    def __init__(self):
+        self.workers = []
+
+    def __call__(self, parent=None, timeout=15.0, refresh=True):
+        worker = FakeProbeWorker(parent=parent, refresh=refresh)
+        self.workers.append(worker)
+        worker.start()
+        return worker
+
+    @property
+    def calls(self):
+        return len(self.workers)
+
+    def emit_latest(self, caps):
+        """向最近创建的 worker 发出 finished_caps, 模拟探测完成。"""
+        assert self.workers, "尚未创建探测 worker"
+        self.workers[-1].finished_caps.emit(caps)
+
+
+@pytest.fixture(autouse=True)
+def capability_probe_stub(monkeypatch):
+    """所有 UI 测试统一替换后台能力探测。
+
+    主窗口在 showEvent 后会自动启动探测; 测试环境不能启动真实 QThread
+    (会真的跑 ffmpeg, 且线程生命周期与离屏窗口难以同步), 因此默认换成
+    可手动 emit 的替身。需要真实探测行为的测试应显式 monkeypatch。
+    """
+    import src.ui.main_window as mw
+    from src.capabilities import ffmpeg_probe
+
+    ffmpeg_probe.set_capabilities(None)
+    stub = ProbeStub()
+    monkeypatch.setattr(mw, "start_capability_probe", stub)
+    yield stub
+    ffmpeg_probe.set_capabilities(None)
