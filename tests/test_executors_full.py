@@ -14,6 +14,7 @@ import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.executors.video_executor as ve
 from src.image_converter import FileConvertResult
+from src.task.status import TaskStatus
 
 
 def test_common_helpers():
@@ -44,7 +45,8 @@ def encode_args(**kw):
 
 def test_execute_encode_invalid_input(capsys, tmp_path):
     args = encode_args(input=str(tmp_path / "no.mp4"))
-    assert ve.execute_encode(args) == 1
+    result = ve.execute_encode(args)
+    assert result.status is TaskStatus.FAILED
     assert "错误" in capsys.readouterr().out
 
 
@@ -52,8 +54,9 @@ def test_execute_encode_dry_run_normal(capsys, tmp_path):
     real = tmp_path / "in.mp4"
     real.write_bytes(b"x")
     args = encode_args(input=str(real))
-    rc = ve.execute_encode(args)
-    assert rc == 0
+    result = ve.execute_encode(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.details["dry_run"] is True
     assert "Debug 模式" in capsys.readouterr().out
 
 
@@ -66,8 +69,9 @@ def test_execute_encode_compat_dry_run(capsys, monkeypatch, tmp_path):
     monkeypatch.setattr(ce, "get_bin_dir", lambda: str(tmp_path / "bin"))
     args = encode_args(input=str(real), output=str(tmp_path / "o.mp4"),
                        compat_mode=True, subtitle=str(sub))
-    rc = ve.execute_encode(args)
-    assert rc == 0
+    result = ve.execute_encode(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.details["dry_run"] is True
 
 
 def test_execute_encode_2pass_dry_run(capsys, tmp_path):
@@ -75,8 +79,9 @@ def test_execute_encode_2pass_dry_run(capsys, tmp_path):
     real.write_bytes(b"x")
     args = encode_args(input=str(real), rate_control="2-Pass VBR (两遍编码)",
                        crf=None, video_bitrate="8M")
-    rc = ve.execute_encode(args)
-    assert rc == 0
+    result = ve.execute_encode(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.details["dry_run"] is True
     assert "2-Pass" in capsys.readouterr().out
 
 
@@ -91,7 +96,9 @@ def test_execute_encode_post_transfer(capsys, monkeypatch, tmp_path):
     args = encode_args(input=str(real), output=str(out), debug_mode=False,
                        post_transfer_mode="复制到指定目录",
                        post_transfer_dir=str(dest))
-    ve.execute_encode(args)
+    result = ve.execute_encode(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.outputs == (str(out),)
     assert (dest / "o.mp4").exists()
 
 

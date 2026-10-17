@@ -32,10 +32,11 @@ from ..encode_params import (
     resolve_encoder_params,
     print_encode_info,
 )
+from ..task.result import TaskResult
 from .common import print_task_header
 
 
-def execute_encode(args) -> int:
+def execute_encode(args) -> TaskResult:
     """
     执行视频压制任务。
     
@@ -43,7 +44,7 @@ def execute_encode(args) -> int:
         args: argparse 解析后的参数对象
     
     Returns:
-        返回码 (0 表示成功)
+        TaskResult: 成功/失败结果 (失败保留 exit_code 与已产出的文件)。
     """
     print_task_header("视频压制")
 
@@ -61,7 +62,7 @@ def execute_encode(args) -> int:
     is_valid, error_msg = params.validate()
     if not is_valid:
         print(f"{Fore.RED}[错误] {error_msg}{Style.RESET_ALL}", flush=True)
-        return 1
+        return TaskResult.failed(error_msg, details={"reason": "validation"})
     
     # 打印编码信息
     print_encode_info(params, QUALITY_PRESETS)
@@ -140,13 +141,42 @@ def execute_encode(args) -> int:
         )
         return_code = run_ffmpeg_command(cmd, dry_run=params.dry_run)
     
-    # 压制后分发
-    _post_transfer(args, params.output_path, return_code)
-    
-    return return_code
+    # 压制后分发: dry_run 没有真实产物, 不做分发; 分发失败降级为 warnings
+    warnings: tuple = ()
+    if not params.dry_run:
+        warnings = tuple(_post_transfer(args, params.output_path, return_code) or ())
+
+    details = {"mode": mode.value}
+
+    if params.dry_run:
+        # 调试模式只打印命令: 状态为 SUCCESS 但不是真实产出, 用 details 标记
+        return TaskResult.ok(
+            "Debug 模式：仅输出命令，未实际执行",
+            warnings=warnings,
+            details={**details, "dry_run": True, "exit_code": return_code},
+        )
+
+    if return_code == 0:
+        return TaskResult.ok(
+            outputs=(params.output_path,),
+            warnings=warnings,
+            details={**details, "exit_code": 0},
+        )
+
+    # 失败: 保留已产生的输出文件 (部分容器可能已落盘)
+    produced = tuple(
+        path for path in (params.output_path,) if os.path.isfile(path)
+    )
+    return TaskResult.failed(
+        f"FFmpeg 退出码 {return_code}",
+        exit_code=return_code,
+        outputs=produced,
+        warnings=warnings,
+        details=details,
+    )
 
 
-def _post_transfer(args, output_path: str, return_code: int) -> None:
+def _post_transfer(args, output_path: str, return_code: int) -> list:
     """
     压制完成后执行文件分发。
     
@@ -154,26 +184,32 @@ def _post_transfer(args, output_path: str, return_code: int) -> None:
         args: argparse 解析后的参数对象
         output_path: 成品文件路径
         return_code: 编码返回码 (0 表示成功)
+    
+    Returns:
+        分发失败等警告消息列表 (编码成功但分发失败不改变任务状态)。
     """
+    warnings = []
     transfer_mode_name = getattr(args, 'post_transfer_mode', '不分发')
     transfer_mode = POST_TRANSFER_MODES.get(transfer_mode_name, 'none')
     transfer_dir = getattr(args, 'post_transfer_dir', '')
 
     if transfer_mode == 'none' or not transfer_dir:
-        return
+        return warnings
 
     if return_code != 0:
         print(f"{Fore.YELLOW}[分发] 编码未成功，跳过分发{Style.RESET_ALL}")
-        return
+        return warnings
 
     if not os.path.isfile(output_path):
         print(f"{Fore.YELLOW}[分发] 输出文件不存在，跳过分发{Style.RESET_ALL}")
-        return
+        return warnings
 
     try:
         transfer_file(output_path, transfer_dir, mode=transfer_mode)
     except Exception as e:
         print(f"{Fore.RED}[分发失败] {e}{Style.RESET_ALL}")
+        warnings.append(f"分发失败: {e}")
+    return warnings
 
 
 def execute_replace_audio(args):

@@ -19,6 +19,7 @@ import src.core as core
 import src.executors.video_executor as video_executor
 from src.encode_params import EncodeParams, print_encode_info
 from src.presets import AUDIO_ENCODERS, ENCODERS, QUALITY_PRESETS, RATE_CONTROL_MODES
+from src.task.status import TaskStatus
 from src.utils import generate_output_path
 
 
@@ -73,7 +74,9 @@ def _capture_normal_command(monkeypatch, args):
     monkeypatch.setattr(video_executor, "run_ffmpeg_command", lambda cmd, **kw: 0)
     monkeypatch.setattr(video_executor, "_post_transfer", lambda *a, **k: None)
 
-    assert video_executor.execute_encode(args) == 0
+    result = video_executor.execute_encode(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.exit_code == 0
     return captured
 
 
@@ -89,7 +92,9 @@ def _capture_2pass_command(monkeypatch, args):
     monkeypatch.setattr(video_executor, "run_2pass_encode", lambda p1, p2, dry_run=False: 0)
     monkeypatch.setattr(video_executor, "_post_transfer", lambda *a, **k: None)
 
-    assert video_executor.execute_encode(args) == 0
+    result = video_executor.execute_encode(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.exit_code == 0
     return captured
 
 

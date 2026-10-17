@@ -17,6 +17,7 @@ from src.executors.video_executor import (
     execute_extract_av,
 )
 from src.executors.common import print_task_header
+from src.task.status import TaskStatus
 
 
 @dataclass
@@ -101,8 +102,10 @@ class TestExecuteEncode:
         
         result = execute_encode(args)
         
-        # 由于 dry_run=True，应该返回成功
-        assert result == 0 or mock_build.called
+        # dry_run=True: 归一为 SUCCESS, 并标记未实际执行
+        assert result.status is TaskStatus.SUCCESS
+        assert result.details.get("dry_run") is True
+        assert mock_build.called
     
     @patch('src.executors.video_executor.run_ffmpeg_command')
     @patch('src.executors.video_executor.build_encode_command')
@@ -122,7 +125,9 @@ class TestExecuteEncode:
         
         result = execute_encode(args)
         
-        assert result == 0 or mock_build.called
+        assert result.status is TaskStatus.SUCCESS
+        assert result.details.get("dry_run") is True
+        assert mock_build.called
     
     def test_execute_encode_missing_input(self):
         """测试输入文件不存在时的错误处理"""
@@ -133,8 +138,10 @@ class TestExecuteEncode:
         
         result = execute_encode(args)
         
-        # 应该返回错误码
-        assert result == 1
+        # 参数校验失败 -> FAILED, 且不产生退出码 (未真正执行)
+        assert result.status is TaskStatus.FAILED
+        assert "输入文件不存在" in result.message
+        assert result.exit_code is None
 
 
 class TestExecuteReplaceAudio:
