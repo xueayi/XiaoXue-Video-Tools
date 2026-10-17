@@ -73,10 +73,17 @@ class UpdateWorker(QThread):
             check_cancel=lambda: self.cancel)
 
         self.stage.emit("正在校验安装包完整性…")
-        expected = updater.fetch_checksum(r.sha256_url) if r.sha256_url else None
-        if expected and not updater.verify_sha256(zip_path, expected):
-            raise updater.UpdateError(
-                "SHA256 校验失败, 安装包可能已损坏, 请重试或到发布页手动下载")
+        # 优先使用 Release 正文内嵌的校验和 (v2.2.2+ 的 CI 已不再发布 .sha256 资产),
+        # resolve_checksum 内部回退到独立 .sha256 资产。
+        expected = updater.resolve_checksum(r)
+        if expected:
+            if not updater.verify_sha256(zip_path, expected):
+                raise updater.UpdateError(
+                    "SHA256 校验失败, 安装包可能已损坏, 请重试或到发布页手动下载")
+        else:
+            # 旧版发行包可能没有校验和: 显式提示用户, 不静默跳过 (不阻断升级)
+            self.stage.emit(
+                "未找到安装包校验和，已跳过完整性校验（建议到发布页手动核对）")
 
         self.stage.emit("正在准备更新文件…")
         ps1 = updater.prepare(zip_path, self._install_dir, r.version)

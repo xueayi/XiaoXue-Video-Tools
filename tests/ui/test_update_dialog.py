@@ -93,12 +93,24 @@ def test_worker_full_pipeline(qapp, monkeypatch, tmp_path):
 
     monkeypatch.setattr(ud.updater, "ensure_disk_space", lambda *a: None)
     monkeypatch.setattr(ud.updater, "download", fake_download)
-    monkeypatch.setattr(ud.updater, "fetch_checksum", lambda url: "a" * 64)
+    resolved = []
+
+    def fake_resolve(release):
+        resolved.append(release)
+        return "a" * 64
+
+    monkeypatch.setattr(ud.updater, "resolve_checksum", fake_resolve)
+    # 不允许绕过统一入口直接拉 .sha256 资产 (回归: CI 已不再发布该资产)
+    monkeypatch.setattr(
+        ud.updater, "fetch_checksum",
+        lambda url: (_ for _ in ()).throw(
+            AssertionError("不应直接调用 fetch_checksum")))
     monkeypatch.setattr(ud.updater, "verify_sha256", lambda p, e: True)
     monkeypatch.setattr(ud.updater, "prepare",
                         lambda z, d, v: "C:/app/_update/updater.ps1")
 
-    worker = UpdateWorker("full", str(tmp_path), release=ReleaseStub())
+    rel = ReleaseStub()
+    worker = UpdateWorker("full", str(tmp_path), release=rel)
     worker.progress.connect(lambda d, t: calls["progress"].append((d, t)))
     worker.stage.connect(calls["stages"].append)
     ready = []
@@ -107,6 +119,7 @@ def test_worker_full_pipeline(qapp, monkeypatch, tmp_path):
     assert ready == ["C:/app/_update/updater.ps1"]
     assert calls["progress"] == [(5 << 20, 10 << 20)]
     assert any("下载" in s for s in calls["stages"])
+    assert resolved == [rel]  # 统一校验和入口拿到完整 ReleaseInfo
 
 
 def test_worker_full_cancel(qapp, monkeypatch, tmp_path):
@@ -131,13 +144,43 @@ def test_worker_full_checksum_mismatch(qapp, monkeypatch, tmp_path):
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         open(dest, "wb").write(b"x")
     monkeypatch.setattr(ud.updater, "download", fake_download)
-    monkeypatch.setattr(ud.updater, "fetch_checksum", lambda url: "a" * 64)
+    monkeypatch.setattr(ud.updater, "resolve_checksum", lambda r: "a" * 64)
     monkeypatch.setattr(ud.updater, "verify_sha256", lambda p, e: False)
     worker = UpdateWorker("full", str(tmp_path), release=ReleaseStub())
     got = []
     worker.failed.connect(got.append)
     worker.run()
     assert "SHA256" in got[0]
+
+
+def test_worker_full_missing_checksum_warns_but_continues(qapp, monkeypatch, tmp_path):
+    """旧版发行包没有校验和: 必须显式提示, 但仍允许继续安装。"""
+    monkeypatch.setattr(ud.updater, "ensure_disk_space", lambda *a: None)
+
+    def fake_download(url, dest, **k):
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        open(dest, "wb").write(b"x")
+
+    monkeypatch.setattr(ud.updater, "download", fake_download)
+    called = {"resolve": False}
+
+    def fake_resolve(release):
+        called["resolve"] = True
+        return None
+
+    monkeypatch.setattr(ud.updater, "resolve_checksum", fake_resolve)
+    monkeypatch.setattr(ud.updater, "prepare", lambda z, d, v: "C:/ps1")
+
+    worker = UpdateWorker("full", str(tmp_path), release=ReleaseStub())
+    stages, ready = [], []
+    worker.stage.connect(stages.append)
+    worker.ready.connect(ready.append)
+    worker.run()
+
+    assert called["resolve"] is True          # 走统一校验和解析入口
+    assert ready == ["C:/ps1"]                # 无校验和时不阻断旧版升级
+    assert any("校验和" in s for s in stages)  # 但必须显式告警, 不静默跳过
+    assert any("跳过" in s for s in stages)
 
 
 # ----------------------------------------------------------------
@@ -417,7 +460,7 @@ def test_dialog_real_start_download_pipeline(dlg, monkeypatch, tmp_path):
 
     monkeypatch.setattr(ud.updater, "ensure_disk_space", lambda *a: None)
     monkeypatch.setattr(ud.updater, "download", fake_download)
-    monkeypatch.setattr(ud.updater, "fetch_checksum", lambda url: None)
+    monkeypatch.setattr(ud.updater, "resolve_checksum", lambda r: None)
     monkeypatch.setattr(ud.updater, "prepare",
                         lambda z, d, v: "C:/ps1")
     dlg._start_download()
