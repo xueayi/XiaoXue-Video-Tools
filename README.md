@@ -45,9 +45,10 @@
 支持 H.264/H.265 编码，内置 5 种输出方案（均衡 H.264 / 高质量 H.264 / HEVC 高压缩 / 硬件极速 / 自定义），可从「更多预设」选择全部预设；可选字幕烧录。
 
 - **编码器**: CPU (libx264/libx265)、NVIDIA NVENC、Intel QSV、AMD AMF
-- **码率控制**: CRF/CQ 恒定质量、VBR 可变码率、CBR 恒定码率、真 2-Pass 编码
+- **码率控制**: CRF/CQ 恒定质量、VBR 可变码率、CBR 恒定码率、真 2-Pass 编码（仅 CPU 编码器）
 - **NVENC 档位**: p1(最快) ~ p7(最慢) 可调
 - **Debug 模式**: 仅输出 FFmpeg 命令，不实际执行
+- **能力检测**: 启动后后台探测 FFmpeg 能力，硬件编码器不可用时自动置灰；硬件编码器使用自身码率控制（NVENC multipass / QSV / AMF），不再伪装 2-Pass
 
 ### 预设说明
 
@@ -96,7 +97,7 @@ flowchart TD
 
 ### 其他功能
 
-- **封装转换**: MP4/MKV/MOV/TS/WEBM/MXF，不重新编码
+- **封装转换**: MP4/MKV/MOV/TS/WEBM/MXF，不重新编码（转换前预检容器/编码兼容性并给建议）
 - **素材质量检测**: 码率/分辨率/兼容性检测，生成报告
 - **音频处理**: 音频替换、音频抽取
 - **图片转换**: PNG/JPG/WEBP/BMP/GIF/TIFF 互转
