@@ -21,6 +21,7 @@ from ..capabilities import (
     start_capability_probe,
 )
 from ..gui_config import get_icon_path
+from ..platform.capabilities import platform_capabilities
 from ..utils import get_base_dir
 from ..process.progress import FFmpegProgressParser, ProgressEvent
 
@@ -32,7 +33,12 @@ from .collapsible_log import CollapsibleLog
 from .error_card import ErrorCard, error_info_from_user
 from .task_card import TaskArea
 from .task_state import TaskStatus as ViewTaskStatus
-from .update_dialog import UpdateDialog, UpdateWorker
+from .update_dialog import (
+    CheckOnlyWorker,
+    UpdateCheckOnlyDialog,
+    UpdateDialog,
+    UpdateWorker,
+)
 from .task_runner import TaskRunner
 from .animations import AnimatedStackedWidget, button_press_anim, status_flash
 from .home_page import HomePage
@@ -227,10 +233,30 @@ class MainWindow(QMainWindow):
     # 检查更新
     # ================================================================
 
+    def _self_update_available(self) -> bool:
+        """当前平台是否支持应用内自更新 (macOS/check-only 平台为 False)。"""
+        return bool(platform_capabilities().self_update_available)
+
     def _show_update_dialog(self, manual: bool):
-        """打开更新对话框; manual=True 时模态 (用户主动), 否则非模态。"""
+        """打开更新对话框; manual=True 时模态 (用户主动), 否则非模态。
+
+        M4.4: 平台不支持应用内自更新 (macOS/check-only) 时改走只检查
+        新版本的对话框 —— 只提示版本号 + 打开 Release 页面, 不下载/不安装。
+        """
+        if not self._self_update_available():
+            self._show_check_only_dialog(manual=manual)
+            return
         dlg = UpdateDialog(get_base_dir(), release=None, parent=self)
         dlg.install_requested.connect(self._apply_update_and_quit)
+        if manual:
+            dlg.exec()
+        else:
+            dlg.show()
+            self._update_dialog = dlg
+
+    def _show_check_only_dialog(self, manual: bool, release=None):
+        """只检查新版本的对话框 (check-only 平台)。"""
+        dlg = UpdateCheckOnlyDialog(release=release, parent=self)
         if manual:
             dlg.exec()
         else:
@@ -241,10 +267,16 @@ class MainWindow(QMainWindow):
         """启动后静默检查一次; 开发版/已跳过的版本不提示。
 
         设置环境变量 XIAOXUE_NO_UPDATE_CHECK=1 可完全禁用 (测试/调试用)。
+        check-only 平台用后端 ``check`` 查询 (不带 Windows 安装包资产要求)。
         """
         if os.environ.get("XIAOXUE_NO_UPDATE_CHECK"):
             return
         if updater.is_dev_version(_VERSION):
+            return
+        if not self._self_update_available():
+            self._check_worker = CheckOnlyWorker()
+            self._check_worker.checked.connect(self._on_silent_checked_check_only)
+            self._check_worker.start()
             return
         self._check_worker = UpdateWorker("check", get_base_dir())
         self._check_worker.checked.connect(self._on_silent_checked)
@@ -259,6 +291,14 @@ class MainWindow(QMainWindow):
         dlg.install_requested.connect(self._apply_update_and_quit)
         dlg.show()
         self._update_dialog = dlg
+
+    def _on_silent_checked_check_only(self, release):
+        """check-only 平台的静默检查结果: 有新版本才弹提示对话框。"""
+        if release is None:
+            return
+        if release.version == updater.get_skip_version():
+            return
+        self._show_check_only_dialog(manual=False, release=release)
 
     def _apply_update_and_quit(self):
         """更新器已拉起, 主窗口退出交由其完成替换与重启。"""

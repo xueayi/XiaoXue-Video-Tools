@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 """更新对话框 —— 检查 / 下载 / 校验 / 待重启 的状态机 UI。
 
+两个入口 (M4.4 按平台能力分流):
+    * :class:`UpdateDialog` —— Windows 自更新 (检查 → 下载 → 校验 → 重启安装);
+    * :class:`UpdateCheckOnlyDialog` —— check-only 平台 (macOS 等):
+      只调用 ``UpdateBackend.check`` 并打开 Release 页面, **不下载/不替换/不重启**。
+
 后台工作在 QThread 中执行 (检查与下载共用一个 Worker, 按 mode 区分),
 UI 只响应信号; 下载中点击主按钮 = 取消 (保留 .part 供续传)。
 """
@@ -15,6 +20,8 @@ from PyQt6.QtWidgets import (
 )
 
 from .. import updater
+from ..update.backend import get_update_backend
+from ..update.checker import UpdateError
 from . import icons
 
 _STATE_LABELS = {
@@ -26,6 +33,12 @@ _STATE_LABELS = {
     "ready": "更新已就绪",
     "error": "更新失败",
 }
+
+
+def _current_version() -> str:
+    """当前程序版本号。"""
+    from .._version import __version__
+    return __version__
 
 
 class UpdateWorker(QThread):
@@ -293,3 +306,126 @@ class UpdateDialog(QDialog):
         if self._worker is not None:
             self._worker.cancel = True
         super().reject()
+
+
+class CheckOnlyWorker(QThread):
+    """check-only 后端的版本检查线程 (只查询, 不下载任何文件)。
+
+    通过 :func:`src.update.backend.get_update_backend` 取当前平台后端
+    (macOS → MacUpdateBackend, 其它 → CheckOnlyBackend), 只需实现
+    ``check`` / ``open_release_page``; 写盘方法一律不会被调用。
+    """
+
+    checked = pyqtSignal(object)        # ReleaseInfo | None (已是最新)
+    failed = pyqtSignal(str)
+
+    def __init__(self, backend=None, current_version=None, parent=None):
+        super().__init__(parent)
+        self._backend = backend
+        self._current_version = current_version
+
+    def run(self):
+        try:
+            backend = self._backend or get_update_backend()
+            version = self._current_version or _current_version()
+            self.checked.emit(backend.check(version))
+        except UpdateError as e:
+            self.failed.emit(str(e))
+        except Exception as e:  # 兜底: 任何意外都不允许崩掉调用方
+            self.failed.emit(f"检查更新失败: {e}")
+
+
+class UpdateCheckOnlyDialog(QDialog):
+    """只检查新版本的对话框 (macOS / 其它 check-only 平台)。
+
+    与 :class:`UpdateDialog` 的区别: 不下载、不校验、不替换、不重启,
+    只展示版本信息并提供「打开 Release 页面」入口 (由后端决定 URL)。
+    """
+
+    def __init__(self, backend=None, release=None, parent=None):
+        super().__init__(parent)
+        self._backend = backend if backend is not None else get_update_backend()
+        self._release = release
+        self._worker = None
+        self.setMinimumWidth(440)
+        self.setWindowTitle("检查更新")
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 22, 20, 16)
+        layout.setSpacing(10)
+
+        self._status_label = QLabel()
+        self._status_label.setWordWrap(True)
+        layout.addWidget(self._status_label)
+
+        self._version_label = QLabel(f"当前版本: v{_current_version()}")
+        self._version_label.setObjectName("muted_label")
+        layout.addWidget(self._version_label)
+
+        self._hint_label = QLabel(
+            "当前平台仅支持检查更新: 新版本请到 Release 页面手动下载安装, "
+            "程序不会自动下载或替换文件。")
+        self._hint_label.setObjectName("muted_label")
+        self._hint_label.setWordWrap(True)
+        layout.addWidget(self._hint_label)
+
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
+        self._open_btn = QPushButton("打开 Release 页面")
+        self._open_btn.setObjectName("execute_btn")
+        self._open_btn.setVisible(False)
+        self._open_btn.clicked.connect(self._on_open_release_page)
+        btn_row.addWidget(self._open_btn)
+        btn_row.addStretch()
+
+        self._close_btn = QPushButton("关闭")
+        self._close_btn.setObjectName("clear_btn")
+        self._close_btn.clicked.connect(self.reject)
+        btn_row.addWidget(self._close_btn)
+        layout.addLayout(btn_row)
+
+        if release is not None:
+            self._on_checked(release)
+        else:
+            self._start_check()
+
+    # ----------------------------------------------------------------
+    # 检查
+    # ----------------------------------------------------------------
+
+    def _start_check(self):
+        self._status_label.setText(_STATE_LABELS["checking"])
+        self._open_btn.setVisible(False)
+        self._cleanup_worker()
+        self._worker = CheckOnlyWorker(self._backend)
+        self._worker.checked.connect(self._on_checked)
+        self._worker.failed.connect(self._on_failed)
+        self._worker.start()
+
+    def _on_checked(self, release):
+        if release is None:
+            self._release = None
+            self._status_label.setText(_STATE_LABELS["uptodate"])
+            self._open_btn.setVisible(False)
+            return
+        self._release = release
+        self._status_label.setText(
+            f"发现新版本 v{release.version}  (当前 v{_current_version()})")
+        self._open_btn.setVisible(True)
+
+    def _on_failed(self, message):
+        self._status_label.setText(f"{_STATE_LABELS['error']}\n{message}")
+        # 检查失败也给出 Release 页面入口, 方便用户手动核对
+        self._open_btn.setVisible(True)
+
+    def _on_open_release_page(self):
+        """在浏览器打开 Release 页面; 打不开也不影响对话框。"""
+        try:
+            self._backend.open_release_page(self._release)
+        except Exception:
+            pass
+
+    def _cleanup_worker(self):
+        if self._worker is not None:
+            self._worker.deleteLater()
+            self._worker = None
