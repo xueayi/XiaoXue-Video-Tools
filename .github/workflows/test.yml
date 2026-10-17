@@ -19,8 +19,12 @@ concurrency:
 
 jobs:
   pytest:
-    name: pytest (Windows / Python 3.12)
-    runs-on: windows-latest
+    name: pytest (${{ matrix.os }} / Python 3.12)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-15]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout code
@@ -47,8 +51,7 @@ jobs:
       # - tests/test_updater.py 只调用系统自带的 PowerShell (windows-latest 已有)。
       # 因此这里不安装/下载 FFmpeg, 门禁保持轻量, 也不受发行版二进制版本影响。
       - name: Run tests (offscreen)
-        shell: pwsh
-        run: |
-          $env:QT_QPA_PLATFORM = 'offscreen'
-          $env:XIAOXUE_NO_UPDATE_CHECK = '1'
-          python -m pytest -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+          XIAOXUE_NO_UPDATE_CHECK: '1'
+        run: python -m pytest -q

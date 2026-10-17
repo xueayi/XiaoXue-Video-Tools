@@ -1,0 +1,55 @@
+name: Build macOS Alpha
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'main.py'
+      - 'image/**'
+      - 'tools/*macos*'
+      - 'build-resources/**'
+      - 'requirements*.txt'
+      - 'XiaoXueToolbox-macOS.spec'
+      - '.github/workflows/build-macos.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    env:
+      QT_QPA_PLATFORM: offscreen
+      XIAOXUE_NO_UPDATE_CHECK: '1'
+      XIAOXUE_BUILD_VERSION: 2.3.0-alpha.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12.12'
+          architecture: arm64
+          cache: pip
+          cache-dependency-path: requirements-build-macos.txt
+      - name: Install build and test dependencies
+        run: python -m pip install -r requirements-build-macos.txt -r requirements-dev.txt
+      - name: Test
+        run: python -m pytest -q
+      - name: Build app and verify signature
+        env:
+          XIAOXUE_BUILD_PYTHON: python
+        run: tools/build_macos.sh
+      - name: Smoke test bundled media and frozen startup
+        run: python tools/smoke_macos.py
+      - name: Upload Alpha
+        uses: actions/upload-artifact@v4
+        with:
+          name: XiaoXueToolbox-macOS-arm64-alpha
+          path: dist/packages/*.zip
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-validation
+          path: build/macos-smoke/

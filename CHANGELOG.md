@@ -1,5 +1,13 @@
 # 更新日志
 
+## [Unreleased] - macOS Alpha
+
+- 接通 Apple VideoToolbox H.264/HEVC 下拉、硬件预设、执行摘要与真实编码参数；质量范围 0–100，未知编码器不再静默回退 CPU。
+- 两遍编码统计文件迁到任务独立的可写临时目录，失败/取消自动清理，不删除当前工作目录的同名文件。
+- 新增原生 arm64 `.app` spec、固定 SHA256 的自包含 FFmpeg/ffprobe（含 libass）、构建与真实媒体烟测工具；支持 FFmpeg 9 的两位滤镜标记。
+- 新增 macOS 测试/构建 CI，修正测试中的 Windows 路径、执行权限及更新器模拟假设。
+- 首版保持 AviSynth 隐藏、检查更新后手动下载；默认 ad-hoc 签名，Developer ID 公证和 macOS 13 最低系统实机验证待完成。
+
 ## [2.3.0] - 2026-10-17
 
 ### 数据安全

@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/FFmpeg-007808?logo=ffmpeg&logoColor=white" alt="FFmpeg">
   <img src="https://img.shields.io/badge/PyQt6-GUI-41CD52" alt="PyQt6">
-  <img src="https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white" alt="Platform">
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20Alpha-0078D6" alt="Platform">
   <img src="https://img.shields.io/badge/Maintenance-Active-green.svg" alt="Maintenance">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
 </p>
@@ -44,7 +44,7 @@
 
 支持 H.264/H.265 编码，内置 5 种输出方案（均衡 H.264 / 高质量 H.264 / HEVC 高压缩 / 硬件极速 / 自定义），可从「更多预设」选择全部预设；可选字幕烧录。
 
-- **编码器**: CPU (libx264/libx265)、NVIDIA NVENC、Intel QSV、AMD AMF
+- **编码器**: CPU (libx264/libx265)、NVIDIA NVENC、Intel QSV、AMD AMF；macOS 检测到后提供 Apple VideoToolbox H.264/HEVC
 - **码率控制**: CRF/CQ 恒定质量、VBR 可变码率、CBR 恒定码率、真 2-Pass 编码（仅 CPU 编码器）
 - **NVENC 档位**: p1(最快) ~ p7(最慢) 可调
 - **Debug 模式**: 仅输出 FFmpeg 命令，不实际执行
@@ -152,6 +152,29 @@ python -m pytest tests/test_encode_params.py::TestNvencPresetOverride -v
 ```
 
 ---
+
+## macOS Apple Silicon Alpha
+
+macOS 原生版沿用现有界面与功能，提供 Apple VideoToolbox H.264/HEVC 和 CPU 编码。
+「硬件极速」卡在探测到 Apple 编码器时选择 Apple 预设；Apple 质量值为 0–100，越高画质越好，不能与 x264 CRF 数值直接比较。首版仅提供恒定质量/VBR；AviSynth 兼容模式隐藏，字幕烧录使用 libass；更新为检查版本并打开下载页面。
+
+当前为本地/CI Alpha，尚未提供正式 Release 的 Mac 下载。目标最低系统为 **macOS 13 + Apple Silicon**，目前真机验证在 macOS 27；最低系统仍需实机验收。
+
+### 本地构建
+
+使用最低部署版本不高于 macOS 13 的 **arm64 Python 3.12**；部分 Homebrew Python 只支持安装时的较新系统，构建脚本会检查并拒绝。可使用 Python.org 的兼容发行版，或在项目内用 uv 准备局部运行时：
+
+```bash
+uv python install 3.12.12 --install-dir build/python --no-bin
+uv venv --python build/python/cpython-3.12.12-macos-aarch64-none/bin/python3.12 build/macos-venv
+uv pip install --python build/macos-venv/bin/python -r requirements-build-macos.txt -r requirements-dev.txt
+XIAOXUE_BUILD_PYTHON=build/macos-venv/bin/python tools/build_macos.sh
+build/macos-venv/bin/python tools/smoke_macos.py
+```
+
+产物为 `dist/小雪工具箱.app` 和 `dist/packages/XiaoXueToolbox_v2.3.0-alpha.1_macOS_arm64.zip`，可解压后拖入「应用程序」。应用内置固定 SHA256 校验的 arm64 FFmpeg/ffprobe（包括 libass），无需安装 Homebrew 或配置 PATH。配置、缓存和日志保存在用户 `~/Library` 中。
+
+构建配置见 `XiaoXueToolbox-macOS.spec`，媒体来源及校验和见 `build-resources/macos-media.json`。`Build macOS Alpha` workflow 在 macOS arm64 构建、跑测试并上传 artifact，不自动创建 Release。需要正式签名时可设置 `XIAOXUE_CODESIGN_IDENTITY`；默认包仅做 ad-hoc 签名，尚未完成 Developer ID 公证。
 
 ## 许可证
 
