@@ -38,7 +38,7 @@
 
 > 界面基于 Windows 11 Fluent Design 风格，支持亮色/暗色双主题，可在「视图」菜单或侧边栏底部切换。
 
-> 一级导航采用分组平铺布局：常用（首页）、视频处理、格式与媒体、质量与批量、系统（设置 / 使用说明）；视频压制页按「输入媒体 → 输出方案 → 常用设置 → 高级设置（默认折叠）→ 执行摘要」组织，任务区以任务卡展示进度，失败时显示错误摘要，详细日志默认折叠。任务可随时取消（停止后不会残留 FFmpeg 进程）；进度来自 FFmpeg 结构化协议，失败按错误类别给出原因与建议操作。
+> 一级导航采用分组平铺布局：常用（首页）、视频处理、格式与媒体、质量与批量、系统（设置）；视频压制页按「输入媒体 → 常用设置 → 输出方案 → 高级设置（默认折叠）→ 执行摘要」组织，任务区以任务卡展示进度，失败时显示错误摘要，详细日志默认折叠。任务可随时取消（停止后不会残留 FFmpeg 进程）；进度来自 FFmpeg 结构化协议，失败按错误类别给出原因与建议操作。
 
 ### 视频压制
 
@@ -73,6 +73,8 @@
   
 本模式需要程序在非中文路径下运行，否则会出错。
 
+> 兼容模式依赖 AviSynth / VSFilter，**仅 Windows 可用**；其它平台会自动隐藏该选项，字幕仍走 FFmpeg 内置 libass 渲染。
+
 ```mermaid
 flowchart TD
     A[用户选择视频+字幕] --> B{兼容模式?}
@@ -102,6 +104,7 @@ flowchart TD
 - **音频处理**: 音频替换、音频抽取
 - **图片转换**: PNG/JPG/WEBP/BMP/GIF/TIFF 互转
 - **批量文件管理**: 文件夹批量创建、序列重命名
+- **能力检测**: 启动后台检测 FFmpeg 编码器/滤镜/硬件加速与平台能力（AviSynth / 自更新 / VideoToolbox），设置页可查看存储位置并重新检测
 
 ---
 
@@ -125,23 +128,26 @@ flowchart TD
 # 1. 下载 FFmpeg 并放入 bin/ 目录
 # 推荐: https://github.com/BtbN/FFmpeg-Builds/releases
 
-# 2. 安装依赖
+# 2. 安装运行时依赖
 pip install -r requirements.txt
 
 # 3. 运行程序
 python main.py
 ```
 
+> 配置、缓存与日志默认保存在程序目录（便携模式）；当目录不可写时自动回退到用户目录（`%APPDATA%` / `%LOCALAPPDATA%`），不会因此启动失败。
+
 ### 运行测试
 
-```bash
-# 安装 pytest (已包含在 requirements.txt)
-pip install pytest
+```powershell
+# 安装测试依赖 (pytest 在 requirements-dev.txt 中)
+pip install -r requirements-dev.txt
 
-# 运行所有测试
+# 运行全量测试 (与 CI 一致; CI 已在 main 的 push/PR 上自动执行)
+$env:QT_QPA_PLATFORM='offscreen'; python -m pytest -q
+
+# 运行单个文件 / 测试类
 python -m pytest tests/test_encode_params.py -v --tb=short
-
-# 运行特定测试类
 python -m pytest tests/test_encode_params.py::TestNvencPresetOverride -v
 ```
 
