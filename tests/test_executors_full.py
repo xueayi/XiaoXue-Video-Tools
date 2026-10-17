@@ -327,7 +327,9 @@ def _probe_info(path):
 def test_execute_media_probe_no_files(capsys):
     args = NS(probe_input_files=None, probe_input_dir="",
               probe_recursive=True, probe_report_output="")
-    probe_ex.execute_media_probe(args)
+    result = probe_ex.execute_media_probe(args)
+    assert result.status is TaskStatus.FAILED
+    assert "未找到可分析的媒体文件" in result.message
     assert "未找到可分析的媒体文件" in capsys.readouterr().out
 
 
@@ -339,7 +341,9 @@ def test_execute_media_probe_with_files(capsys, monkeypatch, tmp_path):
     args = NS(probe_input_files=[str(f)], probe_input_dir="",
               probe_recursive=True,
               probe_report_output=str(tmp_path / "report.txt"))
-    probe_ex.execute_media_probe(args)
+    result = probe_ex.execute_media_probe(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.outputs == (str(tmp_path / "report.txt"),)
     out = capsys.readouterr().out
     assert "共分析 1 个文件" in out
     assert (tmp_path / "report.txt").exists()
@@ -355,7 +359,8 @@ def test_execute_media_probe_dir_scan(capsys, monkeypatch, tmp_path):
                         lambda p: _probe_info(p))
     args = NS(probe_input_files=None, probe_input_dir=str(tmp_path),
               probe_recursive=False, probe_report_output="")
-    probe_ex.execute_media_probe(args)
+    result = probe_ex.execute_media_probe(args)
+    assert result.status is TaskStatus.SUCCESS
     assert "共分析 1 个文件" in capsys.readouterr().out
 
 
@@ -370,7 +375,9 @@ def test_execute_media_probe_errors_counted(capsys, monkeypatch, tmp_path):
     monkeypatch.setattr(probe_ex, "probe_detailed", bad_probe)
     args = NS(probe_input_files=[str(f)], probe_input_dir="",
               probe_recursive=True, probe_report_output="")
-    probe_ex.execute_media_probe(args)
+    result = probe_ex.execute_media_probe(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert any("坏" in warning for warning in result.warnings)
     assert "探测出错" in capsys.readouterr().out
 
 
@@ -396,7 +403,9 @@ def test_execute_qc_full(capsys, monkeypatch, tmp_path):
               max_bitrate=5000, min_bitrate=0, check_pr_video=True,
               check_pr_image=False, custom_containers="mkv",
               custom_codecs="", custom_images="")
-    qc_ex.execute_qc(args)
+    result = qc_ex.execute_qc(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert result.outputs == (str(report),)
     assert report.exists()
     assert "报告预览" in capsys.readouterr().out
 
@@ -421,5 +430,7 @@ def test_execute_qc_auto_report_path(capsys, monkeypatch, tmp_path):
 
 def test_execute_help(capsys):
     args = NS(help_topic="视频压制")
-    misc_ex.execute_help(args)
+    result = misc_ex.execute_help(args)
+    assert result.status is TaskStatus.SUCCESS
+    assert "使用说明" in result.message
     assert "使用说明" in capsys.readouterr().out

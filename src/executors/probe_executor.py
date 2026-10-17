@@ -12,10 +12,11 @@ from ..media_probe import (
     generate_media_report,
     PROBE_EXTENSIONS,
 )
+from ..task.result import TaskResult
 from .common import print_task_header
 
 
-def execute_media_probe(args):
+def execute_media_probe(args) -> TaskResult:
     """
     执行媒体元数据检测任务。
 
@@ -25,6 +26,10 @@ def execute_media_probe(args):
 
     Args:
         args: argparse 解析后的参数对象
+
+    Returns:
+        TaskResult: 无输入/全部文件探测失败=FAILED；成功=SUCCESS
+        （部分文件失败/探测告警进 warnings，报告路径进 outputs）。
     """
     print_task_header("媒体元数据检测")
 
@@ -63,13 +68,15 @@ def execute_media_probe(args):
 
     if not input_files:
         print(f"{Fore.YELLOW}[提示] 未找到可分析的媒体文件。请选择文件或目录。{Style.RESET_ALL}")
-        return
+        return TaskResult.failed("未找到可分析的媒体文件")
 
     print(f"[文件数量] {len(input_files)}")
     print("-" * 50)
 
     # 逐个探测并打印报告
     results = []
+    failed_files = []
+    warnings = []
     for i, file_path in enumerate(input_files, 1):
         print(f"\n{Fore.CYAN}[{i}/{len(input_files)}] 正在分析: {os.path.basename(file_path)}{Style.RESET_ALL}")
 
@@ -79,11 +86,23 @@ def execute_media_probe(args):
             # 控制台实时打印报告
             report = format_media_report(info)
             print(report)
+            for error in info.errors:
+                warnings.append(f"{info.filename}: {error}")
+        else:
+            failed_files.append(file_path)
+            warnings.append(f"{os.path.basename(file_path)}: 探测失败")
 
     # 保存报告文件（如果指定了输出路径）
     report_output = getattr(args, 'probe_report_output', '')
+    outputs = ()
     if report_output and results:
-        generate_media_report(results, report_output)
+        try:
+            generate_media_report(results, report_output)
+        except Exception as e:  # 报告落盘失败按任务失败处理
+            print(f"{Fore.RED}[错误] 报告写入失败: {e}{Style.RESET_ALL}")
+            return TaskResult.failed(
+                f"报告写入失败: {e}", warnings=warnings)
+        outputs = (report_output,)
 
     # 汇总
     print(f"\n{'=' * 50}")
@@ -98,3 +117,18 @@ def execute_media_probe(args):
     print(f"  视频流: {total_video} | 音频流: {total_audio} | 字幕流: {total_subtitle}")
     if total_errors > 0:
         print(f"  {Fore.YELLOW}有 {total_errors} 个文件探测出错{Style.RESET_ALL}")
+
+    if not results:
+        return TaskResult.failed(
+            f"探测失败: {len(failed_files)} 个文件均无法解析",
+            warnings=warnings,
+            details={"failed_count": len(failed_files)})
+
+    return TaskResult.ok(
+        outputs=outputs,
+        warnings=warnings,
+        details={
+            "file_count": len(results),
+            "failed_count": len(failed_files),
+        },
+    )
