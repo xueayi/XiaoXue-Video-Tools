@@ -41,6 +41,11 @@ def test_stream_map_digit_and_fallback():
 # 命令构建
 # ----------------------------------------------------------------
 
+def _flag_value(cmd, flag):
+    """返回命令中 flag 后紧跟的参数值。"""
+    return cmd[cmd.index(flag) + 1]
+
+
 def test_build_encode_basic():
     cmd = build_encode_command("in.mp4", "out.mp4")
     assert cmd[0].endswith("ffmpeg") or "ffmpeg" in cmd[0]
@@ -79,24 +84,33 @@ def test_build_encode_rc_modes():
     assert "-rc" in nvenc_vbr and "vbr" in nvenc_vbr
     amf_cbr = build_encode_command("i.mp4", "o.mp4", encoder="h264_amf",
                                    bitrate="8M", rc_mode="cbr")
-    assert "-minrate" in amf_cbr
+    # M3.2: AMF CBR = -rc cbr -b:v X -maxrate X (无 minrate)
+    assert "-rc" in amf_cbr and "cbr" in amf_cbr
+    assert "-maxrate" in amf_cbr and "-minrate" not in amf_cbr
     qsv_cq = build_encode_command("i.mp4", "o.mp4", encoder="h264_qsv", crf=20)
     assert "-global_quality" in qsv_cq
     amf_crf = build_encode_command("i.mp4", "o.mp4", encoder="h264_amf", crf=20)
     assert "-qp_i" in amf_crf
     cpu_2pass = build_encode_command("i.mp4", "o.mp4", bitrate="8M",
                                      rc_mode="2pass")
-    assert "-maxrate" in cpu_2pass
+    # M3.2: CPU 2pass 在单命令层面只给 -b:v (真两遍由 build_2pass_commands 负责)
+    assert _flag_value(cpu_2pass, "-b:v") == "8M"
+    assert "-maxrate" not in cpu_2pass
     nvenc_2pass = build_encode_command("i.mp4", "o.mp4", encoder="h264_nvenc",
                                        bitrate="8M", rc_mode="2pass")
-    assert "vbr_hq" in nvenc_2pass
+    # 硬件不再伪装 2-Pass: NVENC 回退 VBR + multipass
+    assert "vbr_hq" not in nvenc_2pass
+    assert "-2pass" not in nvenc_2pass
+    assert "-multipass" in nvenc_2pass and "fullres" in nvenc_2pass
     amf_2pass = build_encode_command("i.mp4", "o.mp4", encoder="h264_amf",
                                      bitrate="8M", rc_mode="2pass")
     assert "vbr_peak" in amf_2pass
+    assert "-2pass" not in amf_2pass
     nvenc_2pass_cq = build_encode_command("i.mp4", "o.mp4",
                                           encoder="h264_nvenc", crf=20,
                                           rc_mode="2pass")
     assert "-cq" in nvenc_2pass_cq
+    assert "-2pass" not in nvenc_2pass_cq
     qsv_2pass_cq = build_encode_command("i.mp4", "o.mp4", encoder="h264_qsv",
                                         crf=20, rc_mode="2pass")
     assert "-global_quality" in qsv_2pass_cq
@@ -118,10 +132,73 @@ def test_build_encode_rc_modes():
     assert "-cq" in vbr_nv_cq
     vbr_amf_cq = build_encode_command("i.mp4", "o.mp4", encoder="h264_amf",
                                       crf=20, rc_mode="vbr")
-    assert "-crf" in vbr_amf_cq  # AMF 无专属 vbr-cq, 回退 crf
+    # AMF 无码率时回退 CQP (M3.2: 不再是 CPU 的 -crf)
+    assert "-rc" in vbr_amf_cq and "cqp" in vbr_amf_cq
+    assert "-qp_i" in vbr_amf_cq and "-crf" not in vbr_amf_cq
     cbr_qsv_cq = build_encode_command("i.mp4", "o.mp4", encoder="h264_qsv",
                                       crf=20, rc_mode="cbr")
     assert "-global_quality" in cbr_qsv_cq
+
+
+def test_build_encode_hardware_rc_real_mapping():
+    """M3.2: 硬件 RC 映射到自身参数, 不再出现假的 -2pass。"""
+    nvenc_crf = build_encode_command(
+        "i.mp4", "o.mp4", encoder="h264_nvenc", crf=20, rc_mode="crf")
+    assert _flag_value(nvenc_crf, "-rc") == "vbr"
+    assert _flag_value(nvenc_crf, "-cq") == "20"
+    assert _flag_value(nvenc_crf, "-b:v") == "0"
+    assert "-2pass" not in nvenc_crf
+
+    nvenc_cbr = build_encode_command(
+        "i.mp4", "o.mp4", encoder="h264_nvenc", bitrate="8M", rc_mode="cbr")
+    assert _flag_value(nvenc_cbr, "-rc") == "cbr"
+    assert "-minrate" in nvenc_cbr and "-maxrate" in nvenc_cbr
+
+    qsv_crf = build_encode_command(
+        "i.mp4", "o.mp4", encoder="h264_qsv", crf=22, rc_mode="crf")
+    assert _flag_value(qsv_crf, "-global_quality") == "22"
+
+    amf_crf = build_encode_command(
+        "i.mp4", "o.mp4", encoder="h264_amf", crf=22, rc_mode="crf")
+    assert _flag_value(amf_crf, "-rc") == "cqp"
+    assert _flag_value(amf_crf, "-qp_i") == "22"
+
+
+def test_build_encode_amf_uses_quality_speed_flag():
+    """AMF 速度档使用 -quality, 而不是 x264 风格的 -preset。"""
+    cmd = build_encode_command(
+        "i.mp4", "o.mp4", encoder="h264_amf", crf=20, rc_mode="crf",
+        speed_preset="balanced")
+    assert _flag_value(cmd, "-quality") == "balanced"
+    assert "-preset" not in cmd
+    cpu = build_encode_command(
+        "i.mp4", "o.mp4", encoder="libx264", crf=20, rc_mode="crf",
+        speed_preset="medium")
+    assert _flag_value(cpu, "-preset") == "medium"
+    assert "-quality" not in cpu
+
+
+def test_build_encode_hardware_2pass_prints_fallback_hint(capsys):
+    build_encode_command("i.mp4", "o.mp4", encoder="h264_nvenc",
+                         bitrate="8M", rc_mode="2pass")
+    out = capsys.readouterr().out
+    assert "[提示]" in out and "不支持 2-Pass" in out and "multipass" in out
+
+    # CPU 真正的两遍编码分支不打印回退提示
+    build_encode_command("i.mp4", "o.mp4", bitrate="8M", rc_mode="2pass")
+    out_cpu = capsys.readouterr().out
+    assert "[提示]" not in out_cpu
+
+
+def test_build_encode_hardware_never_fake_2pass():
+    for encoder in ("h264_nvenc", "hevc_nvenc", "h264_qsv", "h264_amf"):
+        for rc in ("2pass", "vbr", "cbr", "crf"):
+            cmd = build_encode_command(
+                "i.mp4", "o.mp4", encoder=encoder, bitrate="8M",
+                crf=20, rc_mode=rc)
+            assert "-2pass" not in cmd, (encoder, rc)
+            assert "vbr_hq" not in cmd, (encoder, rc)
+
 
 
 def test_build_encode_audio_subtitle_switches():

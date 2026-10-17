@@ -10,6 +10,7 @@ from colorama import Fore, Style
 
 from .utils import get_ffmpeg_path, escape_path_for_ffmpeg
 from .presets import QUALITY_PRESETS, ENCODERS
+from .capabilities.encoder import encoder_capability, plan_rate_control
 from .process import (
     CompletedProcess,
     ExecutableMissingError,
@@ -172,74 +173,25 @@ def build_encode_command(
 
     # 编码参数 - 根据编码器类型自动适配
     if actual_encoder != "copy":
-        # 识别编码器类型
+        # 识别编码器类型 (预设模式的恒定质量分支仍按家族选择参数名)
         is_nvenc = "nvenc" in actual_encoder
         is_qsv = "qsv" in actual_encoder
         is_amf = "amf" in actual_encoder
-        is_cpu = actual_encoder in ("libx264", "libx265")
-        
-        # 处理码率控制模式
-        if rc_mode == "2pass":
-            # 2-Pass 编码逻辑 (当前简化为 VBR 高质量模式)
-            # 注意: 真正的 2-pass 需要运行两次 ffmpeg，这里用高质量 VBR 替代
-            if bitrate:
-                cmd.extend(["-b:v", bitrate])
-                if is_nvenc:
-                    cmd.extend(["-rc", "vbr_hq", "-2pass", "1"])
-                elif is_amf:
-                    cmd.extend(["-rc", "vbr_peak", "-2pass", "1"])
-                else:
-                    # CPU 编码器使用 VBR 高质量
-                    cmd.extend(["-maxrate", bitrate, "-bufsize", bitrate])
-            elif crf is not None:
-                # 没有码率时回退到 CRF/CQ 模式
-                if is_nvenc:
-                    cmd.extend(["-cq", str(crf)])
-                elif is_qsv:
-                    cmd.extend(["-global_quality", str(crf)])
-                else:
-                    cmd.extend(["-crf", str(crf)])
-                    
-        elif rc_mode == "vbr":
-            # VBR 可变码率模式
-            if bitrate:
-                cmd.extend(["-b:v", bitrate])
-                if is_nvenc:
-                    cmd.extend(["-rc", "vbr"])
-                elif is_amf:
-                    cmd.extend(["-rc", "vbr_peak"])
-                # CPU 编码器默认就是 VBR
-                cmd.extend(["-maxrate", bitrate, "-bufsize", bitrate])
-            elif crf is not None:
-                # 没有码率时回退到 CRF/CQ 模式
-                if is_nvenc:
-                    cmd.extend(["-cq", str(crf)])
-                elif is_qsv:
-                    cmd.extend(["-global_quality", str(crf)])
-                else:
-                    cmd.extend(["-crf", str(crf)])
-                    
-        elif rc_mode == "cbr":
-            # CBR 恒定码率模式
-            if bitrate:
-                cmd.extend(["-b:v", bitrate])
-                if is_nvenc:
-                    cmd.extend(["-rc", "cbr"])
-                elif is_amf:
-                    cmd.extend(["-rc", "cbr"])
-                # CPU 编码器通过 minrate=maxrate=bitrate 实现 CBR
-                cmd.extend(["-minrate", bitrate, "-maxrate", bitrate, "-bufsize", bitrate])
-            elif crf is not None:
-                # CBR 必须有码率，回退到 CRF
-                if is_nvenc:
-                    cmd.extend(["-cq", str(crf)])
-                elif is_qsv:
-                    cmd.extend(["-global_quality", str(crf)])
-                else:
-                    cmd.extend(["-crf", str(crf)])
-                    
+
+        capability = encoder_capability(actual_encoder)
+        speed_flag = capability.speed_flag if capability is not None else "-preset"
+
+        if rc_mode:
+            # M3.2: 自定义模式走能力模型的真实 RC 映射
+            # (硬件不再写 -2pass 假两遍; 不支持时回退到自身 VBR/多遍模式)
+            plan = plan_rate_control(
+                capability, rc_mode, crf=crf, bitrate=bitrate)
+            cmd.extend(plan.args)
+            if plan.effective_mode != rc_mode and plan.note:
+                print(f"{Fore.YELLOW}[提示] {plan.note}{Style.RESET_ALL}",
+                      flush=True)
         else:
-            # 默认 CRF/CQ 恒定质量模式
+            # 预设模式: 保持既有 CRF/CQ 行为, 避免破坏预设命令快照
             if bitrate:
                 # 如果指定了码率，优先使用码率
                 cmd.extend(["-b:v", bitrate])
@@ -250,15 +202,15 @@ def build_encode_command(
                 elif is_qsv:
                     cmd.extend(["-global_quality", str(crf)])
                 elif is_amf:
-                    # AMF 使用 qp_i/qp_p/qp_b
+                    # AMF 使用 qp_i/qp_p
                     cmd.extend(["-qp_i", str(crf), "-qp_p", str(crf)])
                 else:
                     # CPU 编码器 (libx264/libx265)
                     cmd.extend(["-crf", str(crf)])
 
-        # 速度预设
+        # 速度预设 (AMF 使用 -quality speed/balanced/quality, 其余 -preset)
         if speed_preset:
-            cmd.extend(["-preset", speed_preset])
+            cmd.extend([speed_flag, speed_preset])
 
     # 帧率
     if fps:
