@@ -1,0 +1,28 @@
+# 项目元数据 (最小集, 不参与打包/分发)。
+#
+# 版本号唯一来源: src/_version.py —— 打 tag 的 CI 构建会把 __version__ 注入该文件,
+# 开发环境则由 git describe 推导; 本文件不重复声明 version, 避免两处漂移。
+# 本项目以 PyInstaller onedir 形式发布, 不作为 wheel/sdist 安装包分发,
+# 因此不声明 [build-system]; pytest 配置仍由 pytest.ini 提供 (不迁移到本文件,
+# 避免改变测试发现行为)。
+[project]
+name = "xiaoxue-video-tools"
+description = "基于 Python + PyQt6 + FFmpeg 的视频压制与素材管理工具"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [
+    { name = "雪阿宜" },
+]
+keywords = ["ffmpeg", "video", "pyqt6", "encoding"]
+classifiers = [
+    "Environment :: Win32 (MS Windows)",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/xueayi/XiaoXue-Video-Tools"
+Repository = "https://github.com/xueayi/XiaoXue-Video-Tools"
+Wiki = "https://github.com/xueayi/XiaoXue-Video-Tools/wiki"
+Issues = "https://github.com/xueayi/XiaoXue-Video-Tools/issues"
