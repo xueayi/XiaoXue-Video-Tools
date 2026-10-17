@@ -144,6 +144,51 @@ class TestExecuteEncode:
         assert result.exit_code is None
 
 
+    @patch('src.executors.video_executor.run_ffmpeg_command')
+    @patch('src.executors.video_executor.build_encode_command')
+    def test_execute_encode_webm_rejects_h264_preflight(
+            self, mock_build, mock_run, mock_video_file):
+        """输出 WebM + H.264 编码: 预检失败，不构建/执行 ffmpeg。"""
+        args = MockArgs()
+        args.input = mock_video_file
+        args.output = ""
+        args.preset = "自定义 (Custom)"
+        args.encoder = "H.264 (CPU - libx264)"
+        args.output_format = "自定义"
+        args.output_format_custom = "webm"
+        args.debug_mode = True  # dry_run 也必须提前报错
+
+        result = execute_encode(args)
+
+        assert result.status is TaskStatus.FAILED
+        assert "WebM" in result.message and "H.264" in result.message
+        assert "VP9/AV1" in result.message  # 可操作建议
+        mock_build.assert_not_called()
+        mock_run.assert_not_called()
+        assert result.details.get("reason") == "container"
+
+    @patch('src.executors.video_executor.run_ffmpeg_command')
+    @patch('src.executors.video_executor.build_encode_command')
+    def test_execute_encode_mkv_hevc_preflight_ok(
+            self, mock_build, mock_run, mock_video_file):
+        """输出 MKV + HEVC 编码: 预检通过，正常构建命令。"""
+        mock_build.return_value = ["ffmpeg", "-i", "in.mp4", "out.mkv"]
+        mock_run.return_value = 0
+        args = MockArgs()
+        args.input = mock_video_file
+        args.output = ""
+        args.preset = "自定义 (Custom)"
+        args.encoder = "H.265/HEVC (CPU - libx265)"
+        args.output_format = "自定义"
+        args.output_format_custom = ".mkv"
+        args.debug_mode = True
+
+        result = execute_encode(args)
+
+        assert result.status is TaskStatus.SUCCESS
+        mock_build.assert_called_once()
+
+
 class TestExecuteReplaceAudio:
     """测试音频替换执行器"""
     

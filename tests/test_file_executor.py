@@ -16,6 +16,8 @@ from src.executors.file_executor import (
     execute_image_convert,
 )
 from src.image_converter import FileConvertResult
+from src.media_probe import DetailedMediaInfo, StreamInfo
+from src.task.status import TaskStatus
 
 
 def success_results(input_paths, target_ext=".png"):
@@ -167,6 +169,100 @@ class TestExecuteRemux:
             call_kwargs = mock_build.call_args.kwargs
             output_path = call_kwargs.get("output_path", "")
             assert output_path.endswith(expected_ext), f"预设 {preset} 应使用扩展名 {expected_ext}"
+
+
+    # ------------------------------------------------------------
+    # 容器预检 (M3.3): 不兼容时不启动 ffmpeg，失败的源绝不删
+    # ------------------------------------------------------------
+
+    @staticmethod
+    def _probe_info(path, video="h264", audio="aac", errors=None):
+        info = DetailedMediaInfo(path=str(path))
+        if video is not None:
+            info.video_streams.append(StreamInfo(
+                index=0, stream_index=0, codec_type="video",
+                codec_name=video))
+        if audio is not None:
+            info.audio_streams.append(StreamInfo(
+                index=0, stream_index=1, codec_type="audio",
+                codec_name=audio))
+        info.errors.extend(errors or [])
+        return info
+
+    def test_execute_remux_preflight_incompatible_skips_ffmpeg(
+            self, monkeypatch, tmp_path):
+        """容器预检不兼容: 不构建/执行 ffmpeg，记失败，源文件保留。"""
+        src = tmp_path / "vp9.mkv"
+        src.write_bytes(b"x")
+        info = self._probe_info(src, video="vp9")
+        monkeypatch.setattr(
+            "src.executors.file_executor.probe_detailed", lambda p: info)
+        run_calls = []
+        build_calls = []
+        monkeypatch.setattr(
+            "src.executors.file_executor.run_ffmpeg_command",
+            lambda cmd, **k: run_calls.append(cmd) or 0)
+        monkeypatch.setattr(
+            "src.executors.file_executor.build_remux_command",
+            lambda **k: build_calls.append(k) or ["ffmpeg"])
+
+        args = MockRemuxArgs()
+        args.remux_input = [str(src)]
+        args.remux_preset = "MP4 (H.264 兼容)"
+        args.remux_overwrite = True
+
+        result = execute_remux(args)
+
+        assert run_calls == [] and build_calls == []  # 未启动 ffmpeg
+        assert result.status is TaskStatus.FAILED
+        assert "MP4" in result.message and "vp9" in result.message
+        assert "建议" in result.message and "MKV" in result.message
+        assert src.exists()  # 预检失败 -> 源文件绝不删
+        assert not (tmp_path / "vp9_remux.mp4").exists()
+
+    def test_execute_remux_preflight_compatible_runs_ffmpeg(
+            self, monkeypatch, tmp_path):
+        """容器预检兼容: 正常进入 ffmpeg 流程。"""
+        src = tmp_path / "ok.mkv"
+        src.write_bytes(b"x")
+        info = self._probe_info(src, video="h264", audio="aac")
+        monkeypatch.setattr(
+            "src.executors.file_executor.probe_detailed", lambda p: info)
+        run_calls = []
+        monkeypatch.setattr(
+            "src.executors.file_executor.run_ffmpeg_command",
+            lambda cmd, **k: run_calls.append(cmd) or 0)
+
+        args = MockRemuxArgs()
+        args.remux_input = [str(src)]
+        args.remux_preset = "MP4 (H.264 兼容)"
+
+        result = execute_remux(args)
+
+        assert len(run_calls) == 1
+        assert result.status is TaskStatus.SUCCESS
+
+    def test_execute_remux_preflight_probe_error_continues(
+            self, monkeypatch, tmp_path):
+        """预检探测失败: 跳过预检，按原流程继续（避免误伤）。"""
+        src = tmp_path / "broken.mkv"
+        src.write_bytes(b"x")
+        info = self._probe_info(src, video=None, audio=None,
+                                errors=["ffprobe 无法读取文件"])
+        monkeypatch.setattr(
+            "src.executors.file_executor.probe_detailed", lambda p: info)
+        run_calls = []
+        monkeypatch.setattr(
+            "src.executors.file_executor.run_ffmpeg_command",
+            lambda cmd, **k: run_calls.append(cmd) or 0)
+
+        args = MockRemuxArgs()
+        args.remux_input = [str(src)]
+
+        result = execute_remux(args)
+
+        assert len(run_calls) == 1
+        assert result.status is TaskStatus.SUCCESS
 
 
 class TestExecuteImageConvert:

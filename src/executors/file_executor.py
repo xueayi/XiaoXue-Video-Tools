@@ -10,6 +10,8 @@ from ..core import build_remux_command, run_ffmpeg_command
 from ..presets import REMUX_PRESETS, IMAGE_FORMATS, AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS
 from ..utils import auto_generate_output_path
 from ..image_converter import batch_convert_images
+from ..capabilities.container import ContainerCheckResult, check_remux
+from ..media_probe import probe_detailed
 from ..task.report import TaskReport
 from ..task.result import TaskResult
 from .common import print_task_header
@@ -44,6 +46,28 @@ def _reserve_remux_output(candidate: str, reserved: set) -> str:
         index += 1
         current = f"{base}_{index}{ext}"
     return current
+
+
+def _preflight_remux_container(
+    input_path: str, extension: str,
+) -> ContainerCheckResult | None:
+    """封装转换前的容器预检。
+
+    Returns:
+        ContainerCheckResult；返回 None 表示跳过预检（探测异常/探测失败/
+        探测结果无有效流），此时继续按原流程处理，避免误伤用户。
+    """
+    try:
+        info = probe_detailed(input_path)
+    except Exception:  # noqa: BLE001 - 探测异常不应阻断原流程
+        return None
+    if info is None or getattr(info, "errors", None):
+        # 探测失败（文件损坏/ffprobe 不可用等）：跳过预检，交给 ffmpeg 原流程
+        return None
+    try:
+        return check_remux(info, extension)
+    except Exception:  # noqa: BLE001 - 预检自身异常不阻断任务
+        return None
 
 
 def execute_remux(args) -> TaskResult:
@@ -123,6 +147,20 @@ def execute_remux(args) -> TaskResult:
 
     for i, input_path in enumerate(input_files, 1):
         print(f"\n[{i}/{len(input_files)}] 处理: {os.path.basename(input_path)}")
+
+        # 容器预检：不兼容时不启动 ffmpeg，直接按文件记失败（源文件保留）
+        preflight = _preflight_remux_container(input_path, extension)
+        if preflight is not None and not preflight.ok:
+            reasons = "；".join(preflight.reasons)
+            message = f"容器不兼容，未执行转换: {reasons}"
+            if preflight.suggestions:
+                message += f"。建议: {'；'.join(preflight.suggestions)}"
+            print(
+                f"{Fore.RED}[跳过] {os.path.basename(input_path)}: "
+                f"{message}{Style.RESET_ALL}"
+            )
+            report.add_failure(f"{os.path.basename(input_path)}: {message}")
+            continue
 
         # 生成输出路径（同批输出冲突时追加 _1/_2 后缀）
         if output_dir:

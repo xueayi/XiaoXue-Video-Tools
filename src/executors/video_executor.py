@@ -16,6 +16,7 @@ from ..core import (
     run_2pass_encode,
 )
 from ..compat_encoder import run_compat_encode
+from ..capabilities.container import check_encode_output
 from ..presets import (
     QUALITY_PRESETS,
     AUDIO_ENCODERS,
@@ -71,7 +72,24 @@ def execute_encode(args) -> TaskResult:
     # 自动生成输出路径提示
     if args.output != params.output_path:
         print(f"[自动生成输出路径] {params.output_path}", flush=True)
-    
+
+    # 输出容器 × 实际编码器预检: 不兼容时不构建/执行命令 (dry_run 同样提前报错)
+    output_extension = os.path.splitext(params.output_path)[1]
+    container_check = check_encode_output(params.encoder, output_extension)
+    if not container_check.ok:
+        message = f"输出容器不兼容: {'；'.join(container_check.reasons)}"
+        if container_check.suggestions:
+            message += f"。建议: {'；'.join(container_check.suggestions)}"
+        print(f"{Fore.RED}[错误] {message}{Style.RESET_ALL}", flush=True)
+        return TaskResult.failed(
+            message,
+            details={
+                "reason": "container",
+                "reasons": container_check.reasons,
+                "suggestions": container_check.suggestions,
+            },
+        )
+
     # 根据编码模式执行
     mode = params.get_encode_mode()
     
