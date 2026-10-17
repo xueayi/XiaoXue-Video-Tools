@@ -1,0 +1,5 @@
+# 开发 / 测试依赖 (CI test workflow 与本机 pytest 使用)
+# 使用: pip install -r requirements.txt -r requirements-dev.txt
+-r requirements.txt
+pytest>=7.0.0
+pytest-cov>=4.1.0
