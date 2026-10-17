@@ -24,7 +24,6 @@ from colorama import init as colorama_init
 colorama_init()
 
 from src.notify_config import load_notify_config, get_notify_config
-from src.executors import SHIELD_AVAILABLE
 
 
 def main():
@@ -48,7 +47,6 @@ def main():
 
     notify_config = get_notify_config()
     window = MainWindow(
-        shield_available=SHIELD_AVAILABLE,
         notify_config=notify_config,
     )
     window.show()

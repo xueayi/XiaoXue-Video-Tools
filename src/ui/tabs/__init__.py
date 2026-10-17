@@ -12,7 +12,6 @@ from .qc_tab import QcTab
 from .media_probe_tab import MediaProbeTab
 from .notification_tab import NotificationTab
 from .encode_tab import EncodeTab
-from .shield_tab import ShieldTab
 
 __all__ = [
     "HelpTab",
@@ -26,5 +25,4 @@ __all__ = [
     "MediaProbeTab",
     "NotificationTab",
     "EncodeTab",
-    "ShieldTab",
 ]

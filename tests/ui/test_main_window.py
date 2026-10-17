@@ -12,7 +12,7 @@ from src.ui.task_runner import TaskRunner
 
 @pytest.fixture
 def win(qapp):
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     yield w
     w.close()
 
@@ -30,10 +30,10 @@ def _pump_until(qapp, cond, timeout_ms=5000):
 # ----------------------------------------------------------------
 
 def test_window_builds_all_pages(win):
-    assert win._stack.count() == 12
-    assert len(win._tabs) == 12
-    assert len(win._handlers) == 12
-    assert win._sidebar.count() == 12
+    assert win._stack.count() == 11
+    assert len(win._tabs) == 11
+    assert len(win._handlers) == 11
+    assert win._sidebar.count() == 11
     assert win.windowTitle() == "小雪工具箱"
     assert win.minimumSize().width() == 960
 
@@ -198,7 +198,7 @@ def test_about_dialog_opens_and_links(win, qapp, monkeypatch):
 
 def test_geometry_persisted_on_close(qapp):
     from src.gui_config import get_qsettings
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     w.resize(1000, 700)
     w.close()
     geo = get_qsettings().value("ui/geometry")
@@ -212,7 +212,7 @@ def test_geometry_restored_on_reopen(qapp, monkeypatch):
     restoreGeometry」而非最终尺寸。
     """
     from src.gui_config import get_qsettings
-    w1 = MainWindow(shield_available=True, notify_config=None)
+    w1 = MainWindow()
     w1.resize(1010, 705)
     w1.close()
     saved = get_qsettings().value("ui/geometry")
@@ -225,7 +225,7 @@ def test_geometry_restored_on_reopen(qapp, monkeypatch):
         calls.append(geo)
         return real_restore(self, geo)
     monkeypatch.setattr(MainWindow, "restoreGeometry", spy)
-    w2 = MainWindow(shield_available=True, notify_config=None)
+    w2 = MainWindow()
     assert calls and calls[0] == saved
     w2.close()
 
@@ -245,7 +245,7 @@ def test_close_terminates_running_runner(qapp):
             self.calls.append("wait")
             return True
 
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     fake = FakeRunner()
     w._runner = fake
     w.close()
@@ -285,7 +285,6 @@ def test_main_entrypoint(monkeypatch, qapp):
     monkeypatch.setattr(mw, "MainWindow", fake_mainwindow)
     monkeypatch.setattr(entry, "load_notify_config", lambda: None)
     monkeypatch.setattr(entry, "get_notify_config", lambda: {})
-    monkeypatch.setattr(entry, "SHIELD_AVAILABLE", True, raising=False)
 
     import src.ui.theme as theme_mod
     monkeypatch.setattr(theme_mod, "apply_theme", lambda *a, **k: None)

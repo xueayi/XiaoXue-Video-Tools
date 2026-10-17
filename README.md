@@ -98,7 +98,6 @@ flowchart TD
 - **图片转换**: PNG/JPG/WEBP/BMP/GIF/TIFF 互转
 - **批量文件管理**: 文件夹批量创建、序列重命名
 - **任务通知**: 飞书通知、自定义 Webhook(可用于astrbot向QQ等消息平台推送任务完成消息)
-- **露骨图片识别** *(Shield 增强版)*: B 站过审风险检测，自动打码
 
 ---
 
@@ -108,10 +107,9 @@ flowchart TD
 
 在 [Release](https://github.com/xueayi/XiaoXue-Video-Tools/releases) 页面下载：
 
-| 版本                                           | 说明                              |
-| ---------------------------------------------- | --------------------------------- |
-| `XiaoXueToolbox_vX.X.X_Windows_x64.zip`        | 标准版，体积较小                  |
-| `XiaoXueToolbox_vX.X.X_Shield_Windows_x64.zip` | Shield 增强版，含露骨图片识别功能 |
+| 版本                                    | 说明     |
+| --------------------------------------- | -------- |
+| `XiaoXueToolbox_vX.X.X_Windows_x64.zip` | 标准版   |
 
 解压后双击 `XiaoXueToolbox.exe` 运行即可。
 

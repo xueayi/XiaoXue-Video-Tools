@@ -2,7 +2,6 @@
 """
 pytest 配置和通用 fixtures。
 """
-import sys
 
 import pytest
 
@@ -84,45 +83,6 @@ def custom_args(mock_video_file):
         encoder="H.264 (CPU - libx264)",
         crf=20,
     )
-
-
-@pytest.fixture
-def fake_imgutils(monkeypatch):
-    """注入假 imgutils 包, 记录调用并可控返回。"""
-    import types
-
-    import src.nsfw_detect as nsfw
-
-    state = {"rating": ("general", 0.9), "censors": []}
-
-    fake_validate_mod = types.ModuleType("imgutils.validate")
-
-    def fake_rating(path):
-        return state["rating"]
-    fake_validate_mod.anime_rating = fake_rating
-
-    fake_censor_mod = types.ModuleType("imgutils.detect.censor")
-
-    def fake_censors(path):
-        return state["censors"]
-    fake_censor_mod.detect_censors = fake_censors
-
-    fake_detect_mod = types.ModuleType("imgutils.detect")
-    fake_root = types.ModuleType("imgutils")
-
-    sys.modules["imgutils"] = fake_root
-    sys.modules["imgutils.validate"] = fake_validate_mod
-    sys.modules["imgutils.detect"] = fake_detect_mod
-    sys.modules["imgutils.detect.censor"] = fake_censor_mod
-
-    nsfw._imgutils_available = None
-
-    yield state
-
-    for m in ["imgutils", "imgutils.validate", "imgutils.detect",
-              "imgutils.detect.censor"]:
-        sys.modules.pop(m, None)
-    nsfw._imgutils_available = None
 
 
 @pytest.fixture

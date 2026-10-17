@@ -66,24 +66,17 @@ def test_is_dev_version():
 ASSETS = [
     {"name": "XiaoXueToolbox_v2.2.0_Windows_x64.zip",
      "browser_download_url": "https://dl/std.zip", "size": 10},
-    {"name": "XiaoXueToolbox_v2.2.0_Shield_Windows_x64.zip",
-     "browser_download_url": "https://dl/shield.zip", "size": 20},
 ]
 
 
-def test_pick_asset_standard_excludes_shield():
-    a = _pick_asset(ASSETS, shield=False)
+def test_pick_asset_standard():
+    a = _pick_asset(ASSETS)
     assert a["browser_download_url"] == "https://dl/std.zip"
-
-
-def test_pick_asset_shield():
-    a = _pick_asset(ASSETS, shield=True)
-    assert a["browser_download_url"] == "https://dl/shield.zip"
 
 
 def test_pick_asset_missing():
     with pytest.raises(UpdateError):
-        _pick_asset([], shield=False)
+        _pick_asset([])
 
 
 # ----------------------------------------------------------------
@@ -116,20 +109,12 @@ def test_fetch_latest_has_update(monkeypatch):
     import src.updater as m
     monkeypatch.setattr(m.requests, "get",
                         lambda *a, **k: api_response(RELEASE_PAYLOAD))
-    info = fetch_latest("2.1.0", shield=False)
+    info = fetch_latest("2.1.0")
     assert info.version == "2.2.0"
     assert info.asset_url == "https://dl/std.zip"
     assert info.sha256_url == "https://dl/std.zip.sha256"
     assert info.asset_size == 10
     assert "更新说明" in info.notes
-
-
-def test_fetch_latest_shield_variant(monkeypatch):
-    import src.updater as m
-    monkeypatch.setattr(m.requests, "get",
-                        lambda *a, **k: api_response(RELEASE_PAYLOAD))
-    info = fetch_latest("2.1.0", shield=True)
-    assert info.asset_url == "https://dl/shield.zip"
 
 
 def test_fetch_latest_no_update(monkeypatch):
@@ -539,7 +524,6 @@ BODY_WITH_SHA = (
     "### SHA256 校验和" + chr(10) + chr(10) +
     "```" + chr(10) +
     "a" * 64 + "  XiaoXueToolbox_v2.2.1_Windows_x64.zip" + chr(10) +
-    "b" * 64 + "  XiaoXueToolbox_v2.2.1_Shield_Windows_x64.zip" + chr(10) +
     "```" + chr(10)
 )
 
@@ -549,7 +533,6 @@ def test_parse_checksums_from_body():
     got = parse_checksums_from_body(BODY_WITH_SHA)
     assert got == {
         "XiaoXueToolbox_v2.2.1_Windows_x64.zip": "a" * 64,
-        "XiaoXueToolbox_v2.2.1_Shield_Windows_x64.zip": "b" * 64,
     }
 
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""覆盖率收尾: 执行器打印分支、批量重命名边界、通知头解析、nsfw 报告图标。"""
+"""覆盖率收尾: 执行器打印分支、批量重命名边界、通知头解析。"""
 
 import io
 import json
@@ -14,12 +14,9 @@ import src.executors.file_executor as file_ex
 import src.executors.misc_executor as misc_ex
 import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
-import src.executors.shield_executor as shield_ex
 import src.folder_creator as fc
 import src.log_utils as log_utils
 import src.notify as notify
-import src.nsfw_detect as nsfw
-from src.nsfw_detect import NSFWResult
 
 
 # ----------------------------------------------------------------
@@ -60,7 +57,7 @@ def test_probe_recursive_dir(capsys, monkeypatch, tmp_path):
 
 
 # ----------------------------------------------------------------
-# qc_executor / shield_executor / misc
+# qc_executor / misc
 # ----------------------------------------------------------------
 
 def test_qc_custom_resolution_scan_dir_not_dir(capsys, monkeypatch, tmp_path):
@@ -73,22 +70,6 @@ def test_qc_custom_resolution_scan_dir_not_dir(capsys, monkeypatch, tmp_path):
               custom_codecs="", custom_images="")
     qc_ex.execute_qc(args)
     assert "自动生成报告路径" in capsys.readouterr().out
-
-
-def test_shield_censor_custom_print(capsys, monkeypatch, tmp_path):
-    monkeypatch.setattr(shield_ex, "SHIELD_AVAILABLE", True)
-    shield_mod = NS(scan_directory=lambda **kw: [],
-                    scan_files=lambda **kw: [],
-                    generate_report=lambda res, path: "")
-    monkeypatch.setitem(sys.modules, "src.nsfw_detect", shield_mod)
-    args = NS(shield_input_dir=str(tmp_path), shield_input_files=None,
-              shield_output_dir="", shield_report="",
-              shield_threshold="Questionable 及以上 (推荐)",
-              shield_recursive=True, shield_enable_censor=True,
-              shield_censor_type="自定义图片 (Custom)", shield_mosaic_size="16",
-              shield_overlay_image="cover.png", shield_expand_pixels="5")
-    shield_ex.execute_shield(args)
-    assert "覆盖图片" in capsys.readouterr().out
 
 
 def test_notification_no_channels(capsys):
@@ -304,25 +285,3 @@ def send_webhook_with_headers_json(monkeypatch):
     return send_webhook_notification("https://hook",
                                      headers_json='{"X-B": "2"}',
                                      body_json='{"b": 2}')
-
-
-# ----------------------------------------------------------------
-# nsfw_detect 报告图标与扫描打印
-# ----------------------------------------------------------------
-
-def test_scan_files_medium_rating_print(capsys, fake_imgutils, tmp_path):
-    src = tmp_path / "a.png"
-    Image.new("RGB", (16, 16), (1, 2, 3)).save(src)
-    fake_imgutils["rating"] = ("questionable", 0.8)
-    results = nsfw.scan_files([str(src)], threshold="questionable")
-    assert results[0].risk_level == "medium"
-    out = capsys.readouterr().out
-    assert "⚠" in out
-
-
-def test_nsfw_report_safe_and_unknown_icons(tmp_path):
-    safe = NSFWResult(path="C:/s.png", rating="general")
-    unknown = NSFWResult(path="C:/u.png", rating="weird-rating")
-    content = nsfw.generate_report([safe, unknown], str(tmp_path / "r.txt"))
-    assert "[✓]" in content
-    assert "[?]" in content

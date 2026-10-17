@@ -36,7 +36,7 @@ def _info(**kw):
 
 @pytest.fixture
 def win(qapp):
-    w = MainWindow(shield_available=True, notify_config=None)
+    w = MainWindow()
     yield w
     w.close()
 
@@ -218,7 +218,7 @@ def test_try_set_duration_probe_raises(qapp, monkeypatch, tmp_path):
     def boom(p):
         raise RuntimeError("probe 挂了")
     monkeypatch.setattr(mp, "probe_detailed", boom)
-    win = MainWindow(shield_available=True, notify_config=None)
+    win = MainWindow()
 
     class A:
         input = str(video)
@@ -244,7 +244,7 @@ def test_first_run_centers_when_no_saved_geometry(qapp, monkeypatch):
     from PyQt6.QtCore import QSettings
     monkeypatch.setattr(QSettings, "value",
                         lambda self, key, default=None: default)
-    win = MainWindow(shield_available=True, notify_config=None)
+    win = MainWindow()
     center = win.screen().availableGeometry().center()
     assert win.frameGeometry().center().x() == pytest.approx(center.x(), abs=2)
     win.close()

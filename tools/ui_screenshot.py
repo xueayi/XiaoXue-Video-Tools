@@ -41,7 +41,7 @@ def main():
     set_theme(args.theme)  # 让代码侧取色 (图标/Logo) 与目标主题一致
     apply_theme(app, args.theme)
 
-    window = MainWindow(shield_available=True, notify_config=None)
+    window = MainWindow()
     window.resize(1180, 800)
     # 不调用 show()：窗口保持隐藏，grab() 仍可离屏渲染，不干扰桌面
     app.processEvents()

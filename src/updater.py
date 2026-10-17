@@ -91,20 +91,17 @@ def is_dev_version(version: str) -> bool:
 # 检查更新
 # ----------------------------------------------------------------
 
-def _pick_asset(assets: list, shield: bool) -> dict:
-    """按当前发行版变体挑选安装包资产。"""
-    suffix = "_Shield_Windows_x64.zip" if shield else "_Windows_x64.zip"
+def _pick_asset(assets: list) -> dict:
+    """从发行资产中挑选标准版安装包。"""
+    suffix = "_Windows_x64.zip"
     for asset in assets:
         name = str(asset.get("name", ""))
-        if shield and name.endswith(suffix):
-            return asset
-        if not shield and name.endswith(suffix) and "_Shield" not in name:
+        if name.endswith(suffix):
             return asset
     raise UpdateError("新版本中没有找到与当前版本匹配的安装包")
 
 
-def fetch_latest(current_version: str, shield: bool = False,
-                 timeout: float = 10.0):
+def fetch_latest(current_version: str, timeout: float = 10.0):
     """查询最新正式版; 有更新返回 ReleaseInfo, 已是最新返回 None。
 
     网络/接口异常抛出 UpdateError (由调用方展示)。
@@ -123,7 +120,7 @@ def fetch_latest(current_version: str, shield: bool = False,
     except ValueError as e:
         raise UpdateError(f"更新服务器响应解析失败: {e}") from e
 
-    asset = _pick_asset(data.get("assets", []), shield)
+    asset = _pick_asset(data.get("assets", []))
     remote_version = str(data.get("tag_name", "")).lstrip("vV")
     info = ReleaseInfo(
         version=remote_version,

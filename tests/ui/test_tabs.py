@@ -7,7 +7,7 @@ from src.media_probe import DetailedMediaInfo, StreamInfo
 from src.ui.tabs import (
     EncodeTab, ReplaceAudioTab, RemuxTab, QcTab, MediaProbeTab,
     ExtractAvTab, ImageConvertTab, FolderCreatorTab, BatchRenameTab,
-    ShieldTab, NotificationTab, HelpTab,
+    NotificationTab, HelpTab,
 )
 from src.ui.tabs.help_tab import _plain_to_html
 
@@ -57,18 +57,6 @@ def test_tab_instantiation_and_build_args(qapp, cls, command):
     assert tab.command_name == command
     args = tab.build_args()
     assert args.command == command
-
-
-def test_shield_tab_full(qapp):
-    tab = ShieldTab(shield_available=True)
-    args = tab.build_args()
-    assert args.command == "露骨图片识别"
-    tab.on_theme_changed()
-
-
-def test_shield_tab_unavailable(qapp):
-    tab = ShieldTab(shield_available=False)
-    assert tab.command_name == "露骨图片识别"
 
 
 def test_notification_tab_none_config(qapp):

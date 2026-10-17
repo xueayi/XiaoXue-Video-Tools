@@ -37,20 +37,18 @@ class UpdateWorker(QThread):
     progress = pyqtSignal(int, int)     # (已下载, 总量, 0 表示未知)
     ready = pyqtSignal(str)             # updater.ps1 路径
 
-    def __init__(self, mode, install_dir, release=None, shield=False,
-                 parent=None):
+    def __init__(self, mode, install_dir, release=None, parent=None):
         super().__init__(parent)
         self._mode = mode
         self._install_dir = install_dir
         self._release = release
-        self._shield = shield
         self.cancel = False
 
     def run(self):
         try:
             if self._mode == "check":
                 self.checked.emit(updater.fetch_latest(
-                    self._local_version(), shield=self._shield))
+                    self._local_version()))
             else:
                 self._download_and_prepare()
         except updater.UpdateError as e:
@@ -94,10 +92,9 @@ class UpdateDialog(QDialog):
 
     install_requested = pyqtSignal()
 
-    def __init__(self, install_dir, shield=False, release=None, parent=None):
+    def __init__(self, install_dir, release=None, parent=None):
         super().__init__(parent)
         self._install_dir = install_dir
-        self._shield = shield
         self._release = release
         self._worker = None
         self._state = "checking"
@@ -188,8 +185,7 @@ class UpdateDialog(QDialog):
     def _start_check(self):
         self._apply_state("checking")
         self._cleanup_worker()
-        self._worker = UpdateWorker("check", self._install_dir,
-                                    shield=self._shield)
+        self._worker = UpdateWorker("check", self._install_dir)
         self._worker.checked.connect(self._on_checked)
         self._worker.failed.connect(self._on_failed)
         self._worker.start()
@@ -218,8 +214,7 @@ class UpdateDialog(QDialog):
         self._progress.setRange(0, 1000)
         self._cleanup_worker()
         self._worker = UpdateWorker("full", self._install_dir,
-                                    release=self._release,
-                                    shield=self._shield)
+                                    release=self._release)
         self._worker.stage.connect(lambda s: self._status_label.setText(s))
         self._worker.progress.connect(self._on_progress)
         self._worker.ready.connect(self._on_ready)

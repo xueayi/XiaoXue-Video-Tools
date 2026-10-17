@@ -20,17 +20,6 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    strategy:
-      matrix:
-        include:
-          - variant: standard
-            requirements: requirements.txt
-            suffix: ""
-            display_name: "标准版"
-          - variant: shield
-            requirements: requirements-shield.txt
-            suffix: "_Shield"
-            display_name: "Shield 增强版"
     
     steps:
       - name: Checkout code
@@ -42,10 +31,10 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
       
-      - name: Install dependencies (${{ matrix.display_name }})
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r ${{ matrix.requirements }}
+          pip install -r requirements.txt
       
       - name: Download FFmpeg
         run: |
@@ -85,19 +74,19 @@ jobs:
           
           Get-Content "src/_version.py" | Select-String -Pattern '__version__'
       
-      - name: Build with PyInstaller (${{ matrix.display_name }})
+      - name: Build with PyInstaller
         run: |
           pyinstaller XiaoXueToolbox.spec --noconfirm
       
-      - name: Create release package (${{ matrix.display_name }})
+      - name: Create release package
         run: |
-          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip"
+          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip"
       
-      - name: Upload artifact (${{ matrix.display_name }})
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}
-          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
+          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}
+          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
           retention-days: 14
       
       - name: Extract changelog
@@ -122,7 +111,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}${{ matrix.suffix }}_Windows_x64.zip
+          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
           generate_release_notes: false
           draft: false
           prerelease: true
