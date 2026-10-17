@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
-"""首页 —— 快速压制 / 最近任务 / 最近输出 / 环境能力概览的骨架。
+"""首页 —— 快速压制 / 最近任务 / 最近输出 / 环境能力概览。
 
-导航重做后首页成为「常用」分组的第一个入口:
+首页是「常用」分组的第一个入口; PR-06 把「最近任务」占位替换为
+由 ``MOCK_TASKS`` 渲染的 TaskArea (示例数据):
 
+- 最近任务区展示 5 种状态的任务卡片, 取消只在本地把卡片置为「已取消」,
+  不接后端、不创建 TaskRunner;
 - 快速压制入口通过 ``navigate_requested`` 通知主窗口跳转到视频压制页;
-- 最近任务区占位, PR-06 接入 TaskCard 后替换;
 - 最近输出占位, 后续接入真实输出记录;
 - 环境能力概览展示 FFmpeg 路径与「待能力检测」占位 (真实探测后续接入)。
 
 首页不参与执行 (``is_executable()`` 恒为 False), 底部「开始执行」禁用。
 """
+
+from dataclasses import replace
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton
@@ -18,6 +22,9 @@ from .._version import __version__
 from ..utils import get_ffmpeg_path
 from . import icons
 from .base_tab import BaseTab
+from .mock_data import MOCK_TASKS
+from .task_card import TaskArea
+from .task_state import TaskStatus
 
 
 class HomePage(BaseTab):
@@ -69,13 +76,27 @@ class HomePage(BaseTab):
 
     def _build_recent_tasks(self):
         recent = self.add_group(
-            "最近任务", "任务卡片后续接入 (PR-06), 当前为占位区域")
-        self._recent_tasks_placeholder = QLabel("暂无任务记录")
+            "最近任务",
+            "示例数据: 展示任务卡片的 5 种状态 "
+            "(执行中 / 成功 / 部分完成 / 失败 / 已取消)",
+        )
+        self._recent_tasks_placeholder = QLabel(
+            "示例数据 · 仅用于演示任务卡样式, 不接入真实任务")
         self._recent_tasks_placeholder.setObjectName("muted_label")
         recent.addRow(self._recent_tasks_placeholder)
+
+        # 首页独立任务区, 与主窗口底部执行区互不影响
+        self._mock_tasks = [replace(task) for task in MOCK_TASKS]
+        self._recent_tasks_area = TaskArea()
+        self._recent_tasks_area.set_tasks(self._mock_tasks)
+        self._recent_tasks_area.cancel_requested.connect(
+            self._on_mock_task_cancel)
+        recent.addRow(self._recent_tasks_area)
+
         self.add_hint(
             recent,
-            "后续版本将在此展示最近任务的状态、进度与结果。",
+            "以上为演示任务: 点击「取消」只在本地把该卡置为「已取消」, "
+            "不会影响真实任务。",
             "info",
         )
 
@@ -103,8 +124,24 @@ class HomePage(BaseTab):
         )
 
     # ----------------------------------------------------------------
-    # 主题联动 / 执行能力
+    # 示例任务交互 / 主题联动 / 执行能力
     # ----------------------------------------------------------------
+
+    def _on_mock_task_cancel(self, task_id: str):
+        """示例任务取消: 只在本地保留结果, 不接后端、不启动 TaskRunner。"""
+        for index, task in enumerate(self._mock_tasks):
+            if task.task_id != task_id:
+                continue
+            updated = replace(
+                task,
+                status=TaskStatus.CANCELLED,
+                message="已取消（示例数据）",
+                speed=0.0,
+                eta_sec=None,
+            )
+            self._mock_tasks[index] = updated
+            self._recent_tasks_area.update_task(updated)
+            return
 
     def on_theme_changed(self):
         """主题切换后刷新快速入口图标颜色。"""

@@ -11,8 +11,10 @@ from src.executors import execute_encode, execute_help
 from src.ui import theme
 from src.ui.home_page import HomePage
 from src.ui.main_window import MainWindow, _tab_defs
+from src.ui.mock_data import MOCK_TASKS
 from src.ui.settings_page import SettingsPage
 from src.ui.tabs import HelpTab
+from src.ui.task_card import TaskArea
 from src.utils import get_ffmpeg_path, get_ffprobe_path
 
 #: 侧边栏期望的 5 个分组与 12 个页面 (顺序即显示顺序)
@@ -212,7 +214,10 @@ def test_home_page_skeleton_sections(win):
     home = win._tabs[0]
     assert isinstance(home, HomePage)
     assert home.is_executable() is False
-    assert home._recent_tasks_placeholder.text() == "暂无任务记录"
+    # PR-06: 最近任务占位替换为 mock 任务卡示例
+    assert home._recent_tasks_placeholder.text()
+    assert isinstance(home._recent_tasks_area, TaskArea)
+    assert len(home._recent_tasks_area.task_ids) == len(MOCK_TASKS)
     assert home._recent_outputs_placeholder.text() == "暂无输出文件"
     assert home._ffmpeg_path_label.text() == get_ffmpeg_path()
     assert "待能力检测" in home._capability_label.text()
