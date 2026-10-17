@@ -84,8 +84,44 @@ def test_logo_path_exists():
 
 
 def test_logo_path_missing_returns_none(monkeypatch, tmp_path):
-    monkeypatch.setattr(theme, "get_base_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(theme, "get_internal_dir", lambda: str(tmp_path / "internal"))
+    monkeypatch.setattr(theme, "get_base_dir", lambda: str(tmp_path / "exe"))
     assert theme.logo_path("light") is None
+
+
+def test_logo_path_prefers_internal_resource_dir(monkeypatch, tmp_path):
+    """冻结 onedir 时 datas 位于 _internal/image, 必须优先命中。"""
+    internal = tmp_path / "internal"
+    logo_dir = internal / "image"
+    logo_dir.mkdir(parents=True)
+    logo = logo_dir / theme._LOGO_FILES["light"]
+    logo.write_bytes(b"png")
+    monkeypatch.setattr(theme, "get_internal_dir", lambda: str(internal))
+    monkeypatch.setattr(theme, "get_base_dir", lambda: str(tmp_path / "exe"))
+    assert theme.logo_path("light") == str(logo)
+
+
+def test_logo_path_falls_back_to_exe_dir(monkeypatch, tmp_path):
+    """便携布局: 资源未打进 _internal 时回退 exe 同级 image/。"""
+    exe = tmp_path / "exe"
+    logo_dir = exe / "image"
+    logo_dir.mkdir(parents=True)
+    logo = logo_dir / theme._LOGO_FILES["dark"]
+    logo.write_bytes(b"png")
+    monkeypatch.setattr(theme, "get_internal_dir", lambda: str(tmp_path / "none"))
+    monkeypatch.setattr(theme, "get_base_dir", lambda: str(exe))
+    assert theme.logo_path("dark") == str(logo)
+
+
+def test_logo_path_falls_back_to_flat_exe_logo(monkeypatch, tmp_path):
+    """兼容旧版便携布局: logo 直接散放在 exe 同级目录。"""
+    exe = tmp_path / "exe"
+    exe.mkdir()
+    logo = exe / theme._LOGO_FILES["light"]
+    logo.write_bytes(b"png")
+    monkeypatch.setattr(theme, "get_internal_dir", lambda: str(tmp_path / "none"))
+    monkeypatch.setattr(theme, "get_base_dir", lambda: str(exe))
+    assert theme.logo_path("light") == str(logo)
 
 
 def test_apply_theme_sets_palette_and_stylesheet(qapp):
