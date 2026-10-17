@@ -18,7 +18,7 @@ from ..core import (
 from ..compat_encoder import run_compat_encode
 from ..capabilities.container import check_encode_output
 from ..presets import (
-    QUALITY_PRESETS,
+    ALL_QUALITY_PRESETS as QUALITY_PRESETS,
     AUDIO_ENCODERS,
     ENCODERS,
     RATE_CONTROL_MODES,

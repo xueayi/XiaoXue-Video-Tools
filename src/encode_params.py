@@ -14,7 +14,7 @@ from colorama import Fore, Style
 
 from .capabilities.encoder import (
     default_speed_preset,
-    encoder_capability,
+    encoder_definition as encoder_capability,
 )
 
 #: 真正支持 2-Pass 的编码器 (M3.2: 硬件编码器不支持真两遍, 选择 2-Pass 时回退)
@@ -106,9 +106,12 @@ class EncodeParams:
         if self.subtitle_path and not os.path.exists(self.subtitle_path):
             return False, f"字幕文件不存在: {self.subtitle_path}"
         
-        # 验证 CRF 范围
-        if self.crf is not None and not (0 <= self.crf <= 51):
-            return False, f"CRF 值超出范围 (0-51): {self.crf}"
+        capability = encoder_capability(self.encoder)
+        if capability is None:
+            return False, f"未知的视频编码器: {self.encoder}"
+        maximum = 100 if capability.quality_flag == "-q:v" else 51
+        if self.crf is not None and not (0 <= self.crf <= maximum):
+            return False, f"CRF 值超出范围 (0-{maximum}): {self.crf}"
         
         # 验证分辨率格式
         if self.resolution:
@@ -162,7 +165,7 @@ def resolve_encoder_params(
         # 预设模式：从预设中读取参数
         preset = quality_presets[preset_name]
         encoder = preset.get("encoder", "libx264")
-        crf = preset.get("cq") or preset.get("crf")
+        crf = preset.get("cq") if preset.get("cq") is not None else preset.get("crf")
         speed_preset = preset.get("preset")
         audio_encoder = preset.get("audio_encoder", "copy")
         audio_bitrate = preset.get("audio_bitrate", "192k")
@@ -175,7 +178,8 @@ def resolve_encoder_params(
                 speed_preset = nvenc_preset
     else:
         # 自定义模式：从 args 中读取参数
-        encoder = encoders.get(args.encoder, "libx264")
+        definition = encoder_capability(args.encoder)
+        encoder = encoders.get(args.encoder) or (definition.name if definition else args.encoder)
         crf = args.crf
         audio_encoder = audio_encoders.get(args.audio_encoder, "copy")
         audio_bitrate = args.audio_bitrate

@@ -93,6 +93,23 @@ QUALITY_PRESETS = {
     }
 }
 
+# Apple 预设仅在探测到对应编码器后加入界面；执行器可稳定解析已选预设。
+APPLE_H264_PRESET = "【硬件极速】Apple VideoToolbox H.264"
+APPLE_HEVC_PRESET = "【高效压缩】Apple VideoToolbox HEVC"
+APPLE_QUALITY_PRESETS = {
+    APPLE_H264_PRESET: {
+        "encoder": "h264_videotoolbox", "cq": 65, "crf": None,
+        "preset": "auto", "audio_encoder": "copy", "audio_bitrate": "192k",
+        "description": "Apple 硬件 H.264 编码，质量值 65（越高画质越好）。",
+    },
+    APPLE_HEVC_PRESET: {
+        "encoder": "hevc_videotoolbox", "cq": 65, "crf": None,
+        "preset": "auto", "audio_encoder": "copy", "audio_bitrate": "192k",
+        "description": "Apple 硬件 HEVC 编码，适合高效压缩。",
+    },
+}
+ALL_QUALITY_PRESETS = {**QUALITY_PRESETS, **APPLE_QUALITY_PRESETS}
+
 # 音频编码器
 AUDIO_ENCODERS = {
     "AAC (推荐)": "aac",

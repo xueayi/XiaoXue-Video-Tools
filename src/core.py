@@ -9,8 +9,8 @@ from typing import Optional, List, Tuple
 from colorama import Fore, Style
 
 from .utils import get_ffmpeg_path, escape_path_for_ffmpeg
-from .presets import QUALITY_PRESETS, ENCODERS
-from .capabilities.encoder import encoder_capability, plan_rate_control
+from .presets import ALL_QUALITY_PRESETS as QUALITY_PRESETS, ENCODERS
+from .capabilities.encoder import encoder_definition as encoder_capability, plan_rate_control
 from .process import (
     CompletedProcess,
     ExecutableMissingError,
@@ -205,8 +205,8 @@ def build_encode_command(
                     # AMF 使用 qp_i/qp_p
                     cmd.extend(["-qp_i", str(crf), "-qp_p", str(crf)])
                 else:
-                    # CPU 编码器 (libx264/libx265)
-                    cmd.extend(["-crf", str(crf)])
+                    flag = capability.quality_flag if capability is not None else "-crf"
+                    cmd.extend([flag, str(crf)])
 
         # 速度预设 (AMF 使用 -quality speed/balanced/quality, 其余 -preset)
         if speed_preset:
@@ -761,64 +761,26 @@ def build_2pass_commands(
 
 
 def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool = False) -> int:
-    """
-    执行真正的两遍编码。
-
-    Args:
-        pass1_cmd: 第一遍命令。
-        pass2_cmd: 第二遍命令。
-        dry_run: 若为 True，仅打印命令不执行。
-
-    Returns:
-        最终返回码 (0 表示成功)。
-    """
+    """两遍共用独立的可写统计文件；成功、失败和取消均自动清理。"""
     if dry_run:
-        logger.info(f"[2-Pass] Dry Run")
-        logger.info(f"Pass 1: {' '.join(pass1_cmd)}")
-        logger.info(f"Pass 2: {' '.join(pass2_cmd)}")
-        
-        print(f"{Fore.CYAN}[小雪工具箱] 执行命令 (2-Pass):{Style.RESET_ALL}", flush=True)
+        print(f"[小雪工具箱] 执行命令 (2-Pass):", flush=True)
         print(f"Pass 1: {' '.join(pass1_cmd)}", flush=True)
         print(f"Pass 2: {' '.join(pass2_cmd)}", flush=True)
-        print(f"{Fore.YELLOW}[Debug 模式] 仅输出命令，不执行。{Style.RESET_ALL}", flush=True)
+        print("[Debug 模式] 仅输出命令，不执行。", flush=True)
         return 0
-    print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}[Pass 1/2] 分析视频...{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
 
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}[Pass 1/2] 分析视频...{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-
-    result1 = run_ffmpeg_command(pass1_cmd, dry_run=False)
-    
-    if result1 != 0:
-        print(f"\n{Fore.RED}[错误] Pass 1 失败，终止编码{Style.RESET_ALL}")
-        return result1
-
-    # Pass 1 完成后检查取消: 用户可能已点击停止, 不应再启动 Pass 2
-    context = current_task()
-    if context is not None:
-        context.raise_if_cancelled()
-
-    print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}[Pass 2/2] 正式编码...{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}[Pass 2/2] 正式编码...{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
-
-    result2 = run_ffmpeg_command(pass2_cmd, dry_run=False)
-
-    # 清理 2-pass 临时文件
-    for ext in [".log", ".log.mbtree", "-0.log", "-0.log.mbtree"]:
-        log_file = f"ffmpeg2pass{ext}"
-        if os.path.exists(log_file):
-            try:
-                os.remove(log_file)
-            except Exception:
-                pass
-
-    return result2
-
+    from .platform.paths import platform_paths
+    with tempfile.TemporaryDirectory(prefix="encode-", dir=platform_paths().temp_dir) as directory:
+        prefix = os.path.join(directory, "ffmpeg2pass")
+        commands = [cmd[:-1] + ["-passlogfile", prefix] + cmd[-1:]
+                    for cmd in (pass1_cmd, pass2_cmd)]
+        print("[Pass 1/2] 分析视频...", flush=True)
+        result = run_ffmpeg_command(commands[0], dry_run=False)
+        if result != 0:
+            print("[错误] Pass 1 失败，终止编码", flush=True)
+            return result
+        context = current_task()
+        if context is not None:
+            context.raise_if_cancelled()
+        print("[Pass 2/2] 正式编码...", flush=True)
+        return run_ffmpeg_command(commands[1], dry_run=False)

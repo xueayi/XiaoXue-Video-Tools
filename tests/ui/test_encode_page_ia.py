@@ -548,7 +548,8 @@ def test_summary_uses_shared_resolver(qapp, monkeypatch, tmp_path):
 
     assert calls, "执行摘要未调用 resolve_encoder_params"
     last = calls[-1]
-    assert last["quality_presets"] is QUALITY_PRESETS
+    from src.presets import ALL_QUALITY_PRESETS
+    assert last["quality_presets"] is ALL_QUALITY_PRESETS
     assert last["encoders"] is ENCODERS
     assert last["audio_encoders"] is AUDIO_ENCODERS
     assert last["rate_control_modes"] is RATE_CONTROL_MODES

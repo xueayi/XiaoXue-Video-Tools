@@ -261,6 +261,16 @@ def encoder_capability(binary_or_display, caps=None,
     return None
 
 
+def encoder_definition(binary_or_display) -> Optional[EncoderCapability]:
+    """编码器参数定义独立于当前平台与探测结果；可见性仍由能力目录控制。"""
+    key = str(binary_or_display or "").strip()
+    for display, name in tuple(ENCODERS.items()) + tuple(
+            (display, name) for name, display in VIDEOTOOLBOX_ENCODER_SPECS):
+        if key in (name, display):
+            return _build_capability(name, display, None)
+    return None
+
+
 def _coerce_capability(cap) -> EncoderCapability:
     """把 ``EncoderCapability | str | None`` 归一为能力快照。
 
@@ -268,7 +278,7 @@ def _coerce_capability(cap) -> EncoderCapability:
     """
     if isinstance(cap, EncoderCapability):
         return cap
-    resolved = encoder_capability(cap)
+    resolved = encoder_definition(cap)
     if resolved is not None:
         return resolved
     name = str(cap or "libx264").strip() or "libx264"
@@ -490,6 +500,7 @@ __all__ = [
     "current_platform",
     "default_speed_preset",
     "encoder_capability",
+    "encoder_definition",
     "plan_rate_control",
     "supported_rc_modes",
     "visible_encoders",

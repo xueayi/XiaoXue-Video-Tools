@@ -296,7 +296,7 @@ def test_run_2pass_success_cleans_log(monkeypatch, tmp_path, monkeypatch_tmp=Non
     monkeypatch.setattr(core, "run_ffmpeg_command", fake_run)
     rc = run_2pass_encode(["a"], ["b"])
     assert rc == 0 and len(calls) == 2
-    assert not (tmp_path / "ffmpeg2pass.log").exists()
+    assert (tmp_path / "ffmpeg2pass.log").read_text() == "x"  # 不删除工作目录的用户文件
 
 
 # ----------------------------------------------------------------

@@ -30,6 +30,7 @@ from ...capabilities.encoder import (
     build_encoder_capabilities,
     default_speed_preset,
     encoder_capability,
+    encoder_definition,
 )
 from ...capabilities.container import (
     EMBEDDED_SUBTITLE_FORMATS,
@@ -37,7 +38,8 @@ from ...capabilities.container import (
     supports_embedded_subtitles,
 )
 from ...presets import (
-    ENCODERS, QUALITY_PRESETS, CPU_PRESETS, NVENC_PRESETS,
+    ENCODERS, QUALITY_PRESETS, ALL_QUALITY_PRESETS, APPLE_QUALITY_PRESETS,
+    APPLE_H264_PRESET, APPLE_HEVC_PRESET, CPU_PRESETS, NVENC_PRESETS,
     AUDIO_ENCODERS, AUDIO_BITRATES, RATE_CONTROL_MODES,
     VIDEO_BITRATES, AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS,
     POST_TRANSFER_MODES, ENCODE_OUTPUT_FORMATS,
@@ -418,7 +420,7 @@ class EncodeTab(BaseTab):
         self.video_bitrate_combo.setEnabled(is_custom)
         self._apply_preset_lock(is_custom)
 
-        preset = QUALITY_PRESETS.get(preset_name)
+        preset = ALL_QUALITY_PRESETS.get(preset_name)
         if not preset or preset.get("encoder") is None:
             if is_custom:
                 self._on_rate_control_changed(self.rate_control_combo.currentText())
@@ -426,10 +428,9 @@ class EncodeTab(BaseTab):
             self._update_quality_mirror()
             return
 
-        for name, value in ENCODERS.items():
-            if value == preset["encoder"]:
-                self.encoder_combo.setCurrentText(name)
-                break
+        definition = encoder_definition(preset["encoder"])
+        if definition is not None:
+            self.encoder_combo.setCurrentText(definition.display)
 
         if preset.get("crf") is not None:
             self.crf_spin.setValue(preset["crf"])
@@ -477,6 +478,15 @@ class EncodeTab(BaseTab):
         is_custom = self._is_custom_mode()
         capability = self._capability_for_display(encoder_name)
         is_nvenc = capability is not None and "nvenc" in capability.name
+
+        is_apple = capability is not None and capability.quality_flag == "-q:v"
+        previous_apple = self.crf_spin.maximum() == 100
+        self.crf_spin.setRange(0, 100 if is_apple else 51)
+        if previous_apple != is_apple:
+            self.crf_spin.setValue(65 if is_apple else 18)
+        self.crf_spin.setToolTip(
+            "Apple 质量值 0–100，越高画质越好" if is_apple
+            else "CRF/CQ 质量值 0–51，越低画质越好")
 
         # 速度档: NVENC 用 p1..p7 档位下拉; QSV/AMF/CPU 用各自速度下拉
         if capability is not None and not is_nvenc:
@@ -549,7 +559,7 @@ class EncodeTab(BaseTab):
 
     def _preset_enabled(self, preset_name) -> bool:
         """预设依赖的编码器是否可用 (未知/CPU 视为可用)。"""
-        preset = QUALITY_PRESETS.get(preset_name)
+        preset = ALL_QUALITY_PRESETS.get(preset_name)
         if not preset:
             return True
         encoder = preset.get("encoder")
@@ -593,6 +603,16 @@ class EncodeTab(BaseTab):
         self._caps = caps
         self.encoder_capabilities = build_encoder_capabilities(caps)
         by_display = {cap.display: cap for cap in self.encoder_capabilities}
+
+        current_encoder = self.encoder_combo.currentText()
+        self._set_combo_items(self.encoder_combo, by_display, current_encoder)
+        presets = dict(QUALITY_PRESETS)
+        for name, preset in APPLE_QUALITY_PRESETS.items():
+            if any(cap.name == preset["encoder"] for cap in self.encoder_capabilities):
+                presets[name] = preset
+        current_preset = self.preset_combo.currentText()
+        self.output_plan_card.presets = presets
+        self._set_combo_items(self.preset_combo, presets, current_preset)
 
         # 0) M4.4: 平台能力 (AviSynth) 决定兼容模式行是否展示
         #    (主窗口在推送前已刷新平台能力快照)
@@ -649,7 +669,15 @@ class EncodeTab(BaseTab):
                     break
 
         # 4) 硬件目标卡三态
-        self.output_plan_card.set_hardware_available(self._nvenc_state(caps))
+        apple_names = {cap.name for cap in self.encoder_capabilities
+                       if "videotoolbox" in cap.name}
+        apple_preset = (APPLE_H264_PRESET if "h264_videotoolbox" in apple_names
+                        else APPLE_HEVC_PRESET if "hevc_videotoolbox" in apple_names else None)
+        self.output_plan_card.set_hardware_available(
+            True if apple_preset else self._nvenc_state(caps))
+        self.output_plan_card.set_hardware_preset(
+            apple_preset or "【速度优先】NVIDIA 显卡加速",
+            "Apple VideoToolbox" if apple_preset else "NVENC")
 
         # 5) 重新应用当前编码器联动 + 刷新摘要
         self._on_encoder_changed(self.encoder_combo.currentText())

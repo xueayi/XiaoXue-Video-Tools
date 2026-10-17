@@ -275,6 +275,17 @@ class OutputPlanCard(QGroupBox):
     # 能力联动
     # ----------------------------------------------------------------
 
+    def set_hardware_preset(self, preset_name: str, label: str) -> None:
+        """硬件卡共享平台对应的预设与状态文案。"""
+        card = next(card for card in self.cards if card.target.hardware)
+        card.preset_name = preset_name
+        card.setToolTip(preset_name)
+        card.badge_label.setText(encoder_badge(preset_name, self.presets))
+        card.desc_label.setText(self.presets[preset_name].get("description", ""))
+        if self.hardware_available is not None:
+            card.capability_label.setText(f"{label} {'可用' if self.hardware_available else '不可用'}")
+        self._sync_selection(self.selected_preset)
+
     def set_hardware_available(self, available) -> None:
         """硬件目标卡三态: None=待能力检测 / True=可用 / False=不可用(禁用)。"""
         self.hardware_available = available

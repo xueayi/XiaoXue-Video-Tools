@@ -15,7 +15,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QFormLayout, QGroupBox, QLabel
 
 from ..encode_params import EncodeMode, resolve_encoder_params
-from ..presets import AUDIO_ENCODERS, ENCODERS, QUALITY_PRESETS, RATE_CONTROL_MODES
+from ..presets import AUDIO_ENCODERS, ENCODERS, ALL_QUALITY_PRESETS as QUALITY_PRESETS, RATE_CONTROL_MODES
 from ..utils import generate_output_path
 from .base_tab import set_label_kind
 
@@ -39,7 +39,7 @@ def format_video_summary(params) -> str:
     if params.bitrate:
         parts.append(f"码率 {params.bitrate}")
     elif params.crf is not None:
-        parts.append(f"CRF {params.crf}")
+        parts.append(f"质量 {params.crf}" if "videotoolbox" in params.encoder else f"CRF {params.crf}")
     mode = params.get_encode_mode()
     if mode == EncodeMode.TWO_PASS:
         parts.append("2-Pass VBR")
