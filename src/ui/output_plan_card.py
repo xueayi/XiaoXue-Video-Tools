@@ -13,12 +13,13 @@ from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QComboBox, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+    QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
     QSizePolicy, QVBoxLayout,
 )
 
 from ..presets import ENCODERS, QUALITY_PRESETS
 from .base_tab import repolish, set_label_kind
+from .widgets import WheelGuardComboBox
 
 TITLE = "输出方案"
 MORE_PRESETS_LABEL = "更多预设"
@@ -251,7 +252,7 @@ class OutputPlanCard(QGroupBox):
         combo_row.setSpacing(8)
         combo_label = QLabel(MORE_PRESETS_LABEL)
         combo_label.setObjectName("muted_label")
-        self.preset_combo = QComboBox()
+        self.preset_combo = WheelGuardComboBox()
         self.preset_combo.addItems(list(self.presets.keys()))
         self.preset_combo.setToolTip(
             f"完整预设列表（共 {len(self.presets)} 项）"

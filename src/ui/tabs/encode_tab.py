@@ -78,15 +78,7 @@ class EncodeTab(BaseTab):
         )
 
         # ================================================================
-        # B. 输出方案卡（5 张目标卡 + 更多预设）
-        # ================================================================
-        self.output_plan_card = OutputPlanCard(current=DEFAULT_PRESET)
-        self._main_layout.addWidget(self.output_plan_card)
-        # 复用卡内的预设下拉作为唯一 preset_combo（全部 7 项保持可选）
-        self.preset_combo = self.output_plan_card.preset_combo
-
-        # ================================================================
-        # C. 常用设置
+        # B. 常用设置
         # ================================================================
         common = self.add_group(
             "常用设置",
@@ -178,6 +170,14 @@ class EncodeTab(BaseTab):
         )
 
         # ================================================================
+        # C. 输出方案卡（5 张目标卡 + 更多预设）
+        # ================================================================
+        self.output_plan_card = OutputPlanCard(current=DEFAULT_PRESET)
+        self._main_layout.addWidget(self.output_plan_card)
+        # 复用卡内的预设下拉作为唯一 preset_combo（全部 7 项保持可选）
+        self.preset_combo = self.output_plan_card.preset_combo
+
+        # ================================================================
         # D. 轨道自动检测（既有能力，保留独立分组）
         # ================================================================
         self._audio_checks: list = []
@@ -186,7 +186,7 @@ class EncodeTab(BaseTab):
         self._build_track_panel()
 
         # ================================================================
-        # E. 压制后分发（文档未提但保留，位置固定在常用设置之后）
+        # E. 压制后分发（文档未提但保留，位置固定在输出方案之后）
         # ================================================================
         transfer = self.add_group(
             "压制后分发",
@@ -200,12 +200,6 @@ class EncodeTab(BaseTab):
         self.post_transfer_dir_edit = self.add_dir_chooser(
             transfer, "目标目录",
             "选择成品分发的目标目录 (支持已挂载的网络位置)",
-        )
-        self.add_hint(
-            transfer,
-            "将 WebDAV / SMB / 网盘 挂载为本地磁盘后，\n"
-            "选择该挂载路径即可实现 压制完成 → 自动上传到 NAS/云端",
-            "tip",
         )
 
         # ================================================================

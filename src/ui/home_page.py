@@ -1,25 +1,23 @@
 # -*- coding: utf-8 -*-
 """首页 —— 快速压制 / 最近任务 / 最近输出 / 环境能力概览。
 
-首页是「常用」分组的第一个入口; PR-06 把「最近任务」占位替换为
-由 ``MOCK_TASKS`` 渲染的 TaskArea (示例数据):
+首页是「常用」分组的第一个入口:
 
-- 最近任务区展示 5 种状态的任务卡片, 取消只在本地把卡片置为「已取消」,
-  不接后端、不创建 TaskRunner;
 - 快速压制入口通过 ``navigate_requested`` 通知主窗口跳转到视频压制页;
-- 最近输出占位, 后续接入真实输出记录;
-- 环境能力概览展示 FFmpeg 路径, 以及后台能力探测的结果 (M3.1):
-  检测中 / 关键编码器可用数 / NVENC 可用性 / 失败原因。
+- 「最近任务」记录真实任务结果: 主窗口 ``_on_task_result`` 通过
+  :meth:`add_task_record` 转发 command / status / message / outputs,
+  最多保留 :data:`MAX_RECENT_RECORDS` 条, 用任务卡渲染;
+- 「最近输出」记录真实产出路径, 通过 :meth:`add_recent_outputs` 追加;
+- 「一键清空」同时清空最近任务与最近输出, 两个列表都空时按钮禁用;
+- 环境能力概览展示 FFmpeg 路径与后台能力探测结果 (M3.1)。
 
 首页不参与执行 (``is_executable()`` 恒为 False), 底部「开始执行」禁用。
 首页也不发起探测: 探测由主窗口在窗口显示后启动, 结果通过
 :meth:`update_capabilities` 推送过来, 首页只做展示。
 """
 
-from dataclasses import replace
-
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton
+from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
 from .._version import __version__
 from ..capabilities import (
@@ -33,13 +31,15 @@ from ..capabilities import (
 from ..utils import get_ffmpeg_path
 from . import icons
 from .base_tab import BaseTab
-from .mock_data import MOCK_TASKS
 from .task_card import TaskArea
-from .task_state import TaskStatus
+from .task_state import TaskStatus, TaskViewState
+
+#: 首页「最近任务 / 最近输出」各自最多保留的条数
+MAX_RECENT_RECORDS = 10
 
 
 class HomePage(BaseTab):
-    """首页: 骨架占位 + 快速入口。"""
+    """首页: 快速入口 + 真实任务/输出记录 + 环境能力概览。"""
 
     #: 请求跳转到功能页 (参数为页面名, 如 "视频压制")
     navigate_requested = pyqtSignal(str)
@@ -47,6 +47,12 @@ class HomePage(BaseTab):
     def __init__(self, parent=None):
         super().__init__("", parent)
         self.setObjectName("home_page")
+
+        #: 真实任务记录 (最新在前, TaskViewState)
+        self._task_records = []
+        #: 真实输出路径 (最新在前, 去重)
+        self._output_paths = []
+        self._record_seq = 0
 
         title = QLabel("小雪工具箱")
         title.setObjectName("brand_title")
@@ -62,6 +68,7 @@ class HomePage(BaseTab):
         self._build_recent_outputs()
         self._build_environment()
         self.add_stretch()
+        self._refresh_records()
 
     # ----------------------------------------------------------------
     # 分区
@@ -87,35 +94,41 @@ class HomePage(BaseTab):
 
     def _build_recent_tasks(self):
         recent = self.add_group(
-            "最近任务",
-            "示例数据: 展示任务卡片的 5 种状态 "
-            "(执行中 / 成功 / 部分完成 / 失败 / 已取消)",
-        )
-        self._recent_tasks_placeholder = QLabel(
-            "示例数据 · 仅用于演示任务卡样式, 不接入真实任务")
+            "最近任务", f"完成的任务会记录在这里, 最多保留 {MAX_RECENT_RECORDS} 条")
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
+        self._clear_records_btn = QPushButton("一键清空")
+        self._clear_records_btn.setObjectName("clear_btn")
+        self._clear_records_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._clear_records_btn.setIcon(
+            icons.secondary("ri.delete-bin-7-line"))
+        self._clear_records_btn.setToolTip(
+            "清空首页的「最近任务」与「最近输出」记录")
+        self._clear_records_btn.clicked.connect(self.clear_records)
+        toolbar.addWidget(self._clear_records_btn)
+        toolbar.addStretch(1)
+        recent.addRow(toolbar)
+
+        self._recent_tasks_placeholder = QLabel("暂无任务记录")
         self._recent_tasks_placeholder.setObjectName("muted_label")
         recent.addRow(self._recent_tasks_placeholder)
 
         # 首页独立任务区, 与主窗口底部执行区互不影响
-        self._mock_tasks = [replace(task) for task in MOCK_TASKS]
         self._recent_tasks_area = TaskArea()
-        self._recent_tasks_area.set_tasks(self._mock_tasks)
-        self._recent_tasks_area.cancel_requested.connect(
-            self._on_mock_task_cancel)
         recent.addRow(self._recent_tasks_area)
 
-        self.add_hint(
-            recent,
-            "以上为演示任务: 点击「取消」只在本地把该卡置为「已取消」, "
-            "不会影响真实任务。",
-            "info",
-        )
-
     def _build_recent_outputs(self):
-        outputs = self.add_group("最近输出", "后续接入真实输出记录")
+        outputs = self.add_group(
+            "最近输出", f"任务产出的文件会记录在这里, 最多保留 {MAX_RECENT_RECORDS} 条")
         self._recent_outputs_placeholder = QLabel("暂无输出文件")
         self._recent_outputs_placeholder.setObjectName("muted_label")
         outputs.addRow(self._recent_outputs_placeholder)
+
+        # 每行一个输出路径, 动态重建
+        self._recent_outputs_box = QVBoxLayout()
+        self._recent_outputs_box.setSpacing(4)
+        outputs.addRow(self._recent_outputs_box)
 
     def _build_environment(self):
         env = self.add_group(
@@ -154,6 +167,79 @@ class HomePage(BaseTab):
             caps = get_capabilities()
             if caps is not None:
                 self.update_capabilities(caps)
+
+    # ----------------------------------------------------------------
+    # 最近任务 / 最近输出记录 (真实任务结果, 由主窗口转发)
+    # ----------------------------------------------------------------
+
+    @property
+    def task_records(self):
+        """最近任务记录 (TaskViewState 列表, 最新在前)。"""
+        return list(self._task_records)
+
+    @property
+    def recent_outputs(self):
+        """最近输出路径 (最新在前, 已去重)。"""
+        return list(self._output_paths)
+
+    def add_task_record(self, command, status, message="", outputs=()):
+        """追加一条真实任务记录 (最新在前, 最多 MAX_RECENT_RECORDS 条)。"""
+        view_status = TaskStatus.coerce(getattr(status, "value", status))
+        output_list = [str(path) for path in (outputs or ()) if path]
+        self._record_seq += 1
+        record = TaskViewState(
+            task_id=f"recent-task-{self._record_seq}",
+            title=str(command or "任务"),
+            status=view_status,
+            message=str(message or ""),
+            output_path=output_list[0] if output_list else "",
+        )
+        self._task_records.insert(0, record)
+        self._task_records = self._task_records[:MAX_RECENT_RECORDS]
+        self._refresh_records()
+        return record
+
+    def add_recent_outputs(self, paths):
+        """追加真实产出路径 (最新在前, 去重, 最多 MAX_RECENT_RECORDS 条)。"""
+        new_paths = [str(path) for path in (paths or ()) if path]
+        if not new_paths:
+            return
+        merged = []
+        for path in list(reversed(new_paths)) + self._output_paths:
+            if path not in merged:
+                merged.append(path)
+        self._output_paths = merged[:MAX_RECENT_RECORDS]
+        self._refresh_records()
+
+    def clear_records(self):
+        """一键清空「最近任务」与「最近输出」两个列表。"""
+        self._task_records = []
+        self._output_paths = []
+        self._refresh_records()
+
+    def _refresh_records(self):
+        """按当前记录刷新任务卡区/输出行/空态与清空按钮可用性。"""
+        self._recent_tasks_area.set_tasks(list(self._task_records))
+        self._recent_tasks_area.setVisible(bool(self._task_records))
+        self._recent_tasks_placeholder.setVisible(not self._task_records)
+
+        while self._recent_outputs_box.count():
+            item = self._recent_outputs_box.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        for path in self._output_paths:
+            label = QLabel(path)
+            label.setObjectName("muted_label")
+            label.setWordWrap(True)
+            label.setToolTip(path)
+            label.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse)
+            self._recent_outputs_box.addWidget(label)
+        self._recent_outputs_placeholder.setVisible(not self._output_paths)
+
+        self._clear_records_btn.setEnabled(
+            bool(self._task_records or self._output_paths))
 
     # ----------------------------------------------------------------
     # 环境与能力展示 (M3.1)
@@ -204,28 +290,14 @@ class HomePage(BaseTab):
             self._nvenc_label.setToolTip("FFmpeg 未提供 NVENC 编码器 (无 N 卡或构建未启用)")
 
     # ----------------------------------------------------------------
-    # 示例任务交互 / 主题联动 / 执行能力
+    # 主题联动 / 执行能力
     # ----------------------------------------------------------------
 
-    def _on_mock_task_cancel(self, task_id: str):
-        """示例任务取消: 只在本地保留结果, 不接后端、不启动 TaskRunner。"""
-        for index, task in enumerate(self._mock_tasks):
-            if task.task_id != task_id:
-                continue
-            updated = replace(
-                task,
-                status=TaskStatus.CANCELLED,
-                message="已取消（示例数据）",
-                speed=0.0,
-                eta_sec=None,
-            )
-            self._mock_tasks[index] = updated
-            self._recent_tasks_area.update_task(updated)
-            return
-
     def on_theme_changed(self):
-        """主题切换后刷新快速入口图标颜色。"""
+        """主题切换后刷新快速入口与清空按钮图标颜色。"""
         self._quick_encode_btn.setIcon(icons.icon("ri.play-fill"))
+        self._clear_records_btn.setIcon(
+            icons.secondary("ri.delete-bin-7-line"))
 
     def is_executable(self) -> bool:
         """首页不参与执行。"""

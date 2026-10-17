@@ -3,13 +3,14 @@
 
 from PyQt6.QtWidgets import (
     QScrollArea, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QGroupBox, QLabel, QLineEdit, QPushButton, QComboBox,
+    QGroupBox, QLabel, QLineEdit, QPushButton,
     QCheckBox, QSpinBox, QPlainTextEdit, QFileDialog, QToolButton,
 )
 from PyQt6.QtCore import Qt, QMimeData
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 
 from .args_builder import ArgsNamespace
+from .widgets import WheelGuardComboBox
 
 # 表单内容列的最大宽度: 避免宽窗口下输入框被无限拉长
 CONTENT_MAX_WIDTH = 860
@@ -227,8 +228,8 @@ class BaseTab(QScrollArea):
         return edit
 
     def add_combo(self, layout, label, choices, default="", tooltip=""):
-        """下拉选择框。"""
-        combo = QComboBox()
+        """下拉选择框 (未聚焦时忽略滚轮, 自绘三角箭头)。"""
+        combo = WheelGuardComboBox()
         combo.addItems(choices)
         if default in choices:
             combo.setCurrentText(default)
@@ -286,13 +287,15 @@ class BaseTab(QScrollArea):
 
         hint_type 可选 "info"(蓝), "warning"(橙), "tip"(绿)。
         颜色由主题 QSS 中的 QLabel#hint_* 规则提供，随亮暗主题联动。
+        使用单控件行 (整行宽), 避免空标签列 + QFormLayout 行距造成
+        注释框上下留白过大。
         """
         label = QLabel(text)
         label.setWordWrap(True)
         label.setObjectName(f"hint_{hint_type}" if hint_type in ("info", "warning", "tip")
                            else "hint_info")
         label.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addRow("", label)
+        layout.addRow(label)
         return label
 
     def add_stretch(self):

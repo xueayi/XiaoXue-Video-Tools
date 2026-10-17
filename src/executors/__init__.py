@@ -27,10 +27,6 @@ from .qc_executor import (
     execute_qc,
 )
 
-from .misc_executor import (
-    execute_help,
-)
-
 # 媒体元数据检测执行器
 from .probe_executor import execute_media_probe
 
@@ -50,8 +46,6 @@ __all__ = [
     "execute_batch_rename",
     # 质量检测
     "execute_qc",
-    # 杂项
-    "execute_help",
     # 媒体元数据检测
     "execute_media_probe",
 ]
