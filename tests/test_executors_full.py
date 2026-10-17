@@ -14,6 +14,7 @@ import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.executors.video_executor as ve
 from src.image_converter import FileConvertResult
+from src.task.result import TaskResult
 from src.task.status import TaskStatus
 
 
@@ -161,7 +162,9 @@ def test_execute_remux_missing_custom_ext(capsys):
     args = NS(remux_input=["a.mp4"], remux_preset="自定义",
               remux_format_custom="", remux_output="",
               remux_overwrite=False)
-    file_ex.execute_remux(args)
+    result = file_ex.execute_remux(args)
+    assert result.status is TaskStatus.FAILED
+    assert "必须输入自定义后缀名" in result.message
     assert "必须输入自定义后缀名" in capsys.readouterr().out
 
 
@@ -176,7 +179,10 @@ def test_execute_remux_run(capsys, monkeypatch, tmp_path):
               remux_overwrite=False, remux_audio_tracks="全部保留",
               remux_audio_tracks_custom="", remux_subtitle_tracks="全部保留",
               remux_subtitle_tracks_custom="")
-    file_ex.execute_remux(args)
+    result = file_ex.execute_remux(args)
+    assert isinstance(result, TaskResult)
+    assert result.status is TaskStatus.SUCCESS
+    assert len(result.outputs) == 1
     assert len(cmds) == 1
     assert "批量转换完成: 成功 1 个" in capsys.readouterr().out
 
@@ -195,7 +201,8 @@ def test_execute_remux_overwrite_deletes_original(capsys, monkeypatch, tmp_path)
               remux_overwrite=True, remux_audio_tracks="全部保留",
               remux_audio_tracks_custom="", remux_subtitle_tracks="全部保留",
               remux_subtitle_tracks_custom="")
-    file_ex.execute_remux(args)
+    result = file_ex.execute_remux(args)
+    assert result.status is TaskStatus.SUCCESS
     # mkv -> mkv 同名不同后缀 (a.mkv -> a_remux.mkv)，输出存在才删除原文件
     assert not src.exists()
     assert (tmp_path / "a_remux.mkv").exists()
@@ -211,7 +218,9 @@ def test_execute_remux_failure_counts(capsys, monkeypatch, tmp_path):
               remux_overwrite=False, remux_audio_tracks="不保留音轨",
               remux_audio_tracks_custom="", remux_subtitle_tracks="不保留字幕",
               remux_subtitle_tracks_custom="")
-    file_ex.execute_remux(args)
+    result = file_ex.execute_remux(args)
+    assert result.status is TaskStatus.FAILED
+    assert result.exit_code == 1
     assert "成功 0 个, 失败 1 个" in capsys.readouterr().out
 
 
@@ -219,7 +228,9 @@ def test_execute_image_convert_custom_empty(capsys):
     args = NS(img_input=["a.png"], img_format="自定义",
               img_format_custom="", img_output_dir="", img_quality=95,
               img_overwrite=False, img_skip_same_format=True)
-    file_ex.execute_image_convert(args)
+    result = file_ex.execute_image_convert(args)
+    assert result.status is TaskStatus.FAILED
+    assert "必须输入扩展名" in result.message
     assert "必须输入扩展名" in capsys.readouterr().out
 
 
@@ -235,7 +246,8 @@ def test_execute_image_convert_run(capsys, monkeypatch, tmp_path):
     args = NS(img_input=[str(src)], img_format="自定义",
               img_format_custom="webp", img_output_dir=str(tmp_path / "o"),
               img_quality=90, img_overwrite=False, img_skip_same_format=True)
-    file_ex.execute_image_convert(args)
+    result = file_ex.execute_image_convert(args)
+    assert result.status is TaskStatus.FAILED
     assert "部分转换失败" in capsys.readouterr().out
 
 
@@ -253,7 +265,8 @@ def test_execute_image_convert_overwrite_deletes(capsys, monkeypatch, tmp_path):
     args = NS(img_input=[str(src)], img_format="PNG (无损)",
               img_format_custom="", img_output_dir="", img_quality=95,
               img_overwrite=True, img_skip_same_format=False)
-    file_ex.execute_image_convert(args)
+    result = file_ex.execute_image_convert(args)
+    assert result.status is TaskStatus.SUCCESS
     assert "覆盖模式" in capsys.readouterr().out
     assert not src.exists()
 
@@ -267,7 +280,8 @@ def test_execute_folder_creator(capsys, tmp_path):
     txt.write_text("动漫\n", encoding="utf-8")
     args = NS(folder_txt=str(txt), folder_output_dir=str(tmp_path / "o"),
               folder_auto_number=True)
-    batch_ex.execute_folder_creator(args)
+    result = batch_ex.execute_folder_creator(args)
+    assert result.status is TaskStatus.SUCCESS
     assert "批量创建文件夹" in capsys.readouterr().out
 
 
@@ -275,7 +289,8 @@ def test_execute_folder_creator_auto_output_dir(capsys, tmp_path):
     txt = tmp_path / "names.txt"
     txt.write_text("动漫\n", encoding="utf-8")
     args = NS(folder_txt=str(txt), folder_output_dir="", folder_auto_number=True)
-    batch_ex.execute_folder_creator(args)
+    result = batch_ex.execute_folder_creator(args)
+    assert result.status is TaskStatus.SUCCESS
     assert (tmp_path / "1_动漫").is_dir()
 
 
@@ -291,7 +306,8 @@ def test_execute_batch_rename(capsys, tmp_path):
               rename_sort_method="按文件名排序",
               rename_sort_order="升序（从小到大）",
               rename_priority_keyword="")
-    batch_ex.execute_batch_rename(args)
+    result = batch_ex.execute_batch_rename(args)
+    assert result.status is TaskStatus.SUCCESS
     assert "批量序列重命名" in capsys.readouterr().out
 
 

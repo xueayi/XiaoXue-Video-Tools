@@ -23,6 +23,8 @@ from PIL import Image
 import src.executors.file_executor as file_ex
 import src.image_converter as ic
 from src.image_converter import FileConvertResult
+from src.task.result import TaskResult
+from src.task.status import TaskStatus
 
 
 # ----------------------------------------------------------------
@@ -312,9 +314,12 @@ def test_execute_image_convert_all_success_deletes_sources(capsys, tmp_path):
     a = make_image(tmp_path / "a.png")
     b = make_image(tmp_path / "b.png")
     out_dir = tmp_path / "out"
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([a, b], output_dir=out_dir, overwrite=True))
-    assert [r.status for r in results] == ["success", "success"]
+    assert result.status is TaskStatus.SUCCESS
+    per_file = result.details["results"]
+    assert [r.status for r in per_file] == ["success", "success"]
+    assert {Path(p).name for p in result.outputs} == {"a.jpg", "b.jpg"}
     assert not a.exists() and not b.exists()
     assert (out_dir / "a.jpg").exists() and (out_dir / "b.jpg").exists()
     assert "已删除 2 个原文件" in capsys.readouterr().out
@@ -324,11 +329,12 @@ def test_execute_image_convert_partial_failure_keeps_failed_source(capsys, tmp_p
     good = make_image(tmp_path / "good.png")
     bad = make_broken(tmp_path / "bad.png")
     out_dir = tmp_path / "out"
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([good, bad], output_dir=out_dir, overwrite=True,
                    skip_same=False))
-    assert results[0].status == "success"
-    assert results[1].status == "failed"
+    assert result.status is TaskStatus.PARTIAL
+    assert result.message == "成功 1 个, 失败 1 个"
+    assert [r.status for r in result.details["results"]] == ["success", "failed"]
     assert not good.exists()  # A 成功 -> 删除
     assert bad.exists()  # B 失败 -> 源保留
     assert not (out_dir / "bad.jpg").exists()
@@ -340,10 +346,12 @@ def test_execute_image_convert_partial_failure_keeps_failed_source(capsys, tmp_p
 def test_execute_image_convert_all_failed_zero_delete(capsys, tmp_path):
     b1 = make_broken(tmp_path / "b1.png")
     b2 = make_broken(tmp_path / "b2.png")
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([b1, b2], output_dir=tmp_path / "out", overwrite=True,
                    skip_same=False))
-    assert [r.status for r in results] == ["failed", "failed"]
+    assert result.status is TaskStatus.FAILED
+    assert result.details["failure_count"] == 2
+    assert [r.status for r in result.details["results"]] == ["failed", "failed"]
     assert b1.exists() and b2.exists()  # 零删除
     out = capsys.readouterr().out
     assert "已删除 0 个原文件" in out
@@ -352,26 +360,32 @@ def test_execute_image_convert_all_failed_zero_delete(capsys, tmp_path):
 
 def test_execute_image_convert_skip_same_format_keeps_source(capsys, tmp_path):
     src = make_image(tmp_path / "a.png")
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([src], target_ext="png", overwrite=True, skip_same=True))
-    assert results[0].status == "skipped"
+    # 全部跳过不是失败: SUCCESS + 跳过 warning, 源文件保留
+    assert result.status is TaskStatus.SUCCESS
+    assert "跳过" in result.message
+    assert result.details["results"][0].status == "skipped"
+    assert any("跳过" in warning for warning in result.warnings)
     assert src.exists()  # 跳过不删
     assert "没有可安全删除的原文件" in capsys.readouterr().out
 
 
 def test_execute_image_convert_alias_jpeg_skip_keeps_source(capsys, tmp_path):
     src = make_image(tmp_path / "a.jpeg")
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([src], target_ext="jpg", overwrite=True, skip_same=True))
-    assert results[0].status == "skipped"
+    assert result.status is TaskStatus.SUCCESS
+    assert result.details["results"][0].status == "skipped"
     assert src.exists()  # .jpeg 被 skip 后绝不删除
 
 
 def test_execute_image_convert_alias_tif_skip_keeps_source(capsys, tmp_path):
     src = make_image(tmp_path / "a.tif")
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([src], target_ext="tiff", overwrite=True, skip_same=True))
-    assert results[0].status == "skipped"
+    assert result.status is TaskStatus.SUCCESS
+    assert result.details["results"][0].status == "skipped"
     assert src.exists()  # .tif 被 skip 后绝不删除
 
 
@@ -379,9 +393,10 @@ def test_execute_image_convert_no_overwrite_keeps_all_sources(capsys, tmp_path):
     a = make_image(tmp_path / "a.png")
     b = make_image(tmp_path / "b.png")
     out_dir = tmp_path / "out"
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([a, b], output_dir=out_dir, overwrite=False))
-    assert [r.status for r in results] == ["success", "success"]
+    assert result.status is TaskStatus.SUCCESS
+    assert [r.status for r in result.details["results"]] == ["success", "success"]
     assert a.exists() and b.exists()
     assert "已删除" not in capsys.readouterr().out
 
@@ -392,8 +407,9 @@ def test_execute_image_convert_output_missing_keeps_source(monkeypatch, capsys, 
         file_ex, "batch_convert_images",
         lambda **kw: [FileConvertResult(
             source=src, output=tmp_path / "gone.jpg", status="success")])
-    file_ex.execute_image_convert(image_args([src], overwrite=True))
+    result = file_ex.execute_image_convert(image_args([src], overwrite=True))
     assert src.exists()  # 输出不存在 -> 不删源
+    assert any("未删除源文件" in warning for warning in result.warnings)
     assert "没有可安全删除的原文件" in capsys.readouterr().out
 
 
@@ -410,11 +426,13 @@ def test_execute_image_convert_delete_failure_warns_and_continues(
         return real_remove(path)
 
     monkeypatch.setattr(file_ex.os, "remove", failing_remove)
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([a, b], output_dir=out_dir, overwrite=True))
-    assert len(results) == 2
+    assert result.status is TaskStatus.SUCCESS
+    assert len(result.details["results"]) == 2
     assert a.exists()  # 删除失败 -> 源保留
     assert not b.exists()  # 其余继续删除
+    assert any("删除失败" in warning for warning in result.warnings)
     out = capsys.readouterr().out
     assert "删除失败" in out
     assert "已删除 1 个原文件" in out
@@ -425,26 +443,30 @@ def test_execute_image_convert_output_conflict_keeps_both_sources(capsys, tmp_pa
     red_png = make_image(tmp_path / "a.png", color=(255, 0, 0))
     green_jpg = make_image(tmp_path / "a.jpg", color=(0, 255, 0))
     original_jpg = green_jpg.read_bytes()
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([red_png, green_jpg], overwrite=False, skip_same=False))
-    assert [r.status for r in results] == ["success", "success"]
+    assert result.status is TaskStatus.SUCCESS
+    per_file = result.details["results"]
+    assert [r.status for r in per_file] == ["success", "success"]
     assert red_png.exists() and green_jpg.exists()  # 两源都保留
     assert green_jpg.read_bytes() == original_jpg  # 另一输入未被覆盖
-    assert results[0].output != results[1].output
-    assert results[0].output.is_file() and results[1].output.is_file()
+    assert len(result.outputs) == 2
+    assert per_file[0].output != per_file[1].output
+    assert all(Path(p).is_file() for p in result.outputs)
 
 
-def test_execute_image_convert_returns_result_list(capsys, tmp_path):
+def test_execute_image_convert_returns_task_result(capsys, tmp_path):
     src = make_image(tmp_path / "a.png")
-    results = file_ex.execute_image_convert(
+    result = file_ex.execute_image_convert(
         image_args([src], output_dir=tmp_path / "out", overwrite=False))
-    assert isinstance(results, list)
-    # 用模块属性取当前类，避免其他测试 importlib.reload 后类对象替换导致误判
-    assert len(results) == 1 and isinstance(results[0], ic.FileConvertResult)
+    assert isinstance(result, TaskResult)
+    assert result.status is TaskStatus.SUCCESS
 
-    # 自定义格式为空时提前返回空列表（仍打印错误提示）
+    # 自定义格式为空时提前返回 FAILED（仍打印错误提示）
     empty = file_ex.execute_image_convert(image_args([src], target_ext=""))
-    assert empty == []
+    assert isinstance(empty, TaskResult)
+    assert empty.status is TaskStatus.FAILED
+    assert "必须输入扩展名" in empty.message
     assert "必须输入扩展名" in capsys.readouterr().out
 
 
@@ -457,7 +479,10 @@ def test_execute_remux_success_overwrite_deletes_source(monkeypatch, tmp_path):
     src.write_bytes(b"x")
     outputs = []
     monkeypatch.setattr(file_ex, "run_ffmpeg_command", fake_ffmpeg_ok(outputs))
-    file_ex.execute_remux(remux_args([src], custom_ext="mp4", overwrite=True))
+    result = file_ex.execute_remux(
+        remux_args([src], custom_ext="mp4", overwrite=True))
+    assert result.status is TaskStatus.SUCCESS
+    assert result.outputs == (str(tmp_path / "a_remux.mp4"),)
     assert not src.exists()  # rc==0 且输出存在 -> 删除
     assert (tmp_path / "a_remux.mp4").exists()
 
@@ -469,8 +494,11 @@ def test_execute_remux_partial_failure_keeps_failed_source(monkeypatch, capsys, 
     bad.write_bytes(b"y")
     monkeypatch.setattr(file_ex, "run_ffmpeg_command",
                         fake_ffmpeg_partial_fail({"bad.mkv"}))
-    file_ex.execute_remux(
+    result = file_ex.execute_remux(
         remux_args([good, bad], custom_ext="mp4", overwrite=True))
+    assert result.status is TaskStatus.PARTIAL
+    assert result.message == "成功 1 个, 失败 1 个"
+    assert len(result.outputs) == 1
     assert not good.exists()  # 成功的源删除
     assert bad.exists()  # 失败的源 100% 保留
     assert not (tmp_path / "bad_remux.mp4").exists()
@@ -482,7 +510,10 @@ def test_execute_remux_output_missing_keeps_source(monkeypatch, capsys, tmp_path
     src = tmp_path / "a.mkv"
     src.write_bytes(b"x")
     monkeypatch.setattr(file_ex, "run_ffmpeg_command", fake_ffmpeg_no_output)
-    file_ex.execute_remux(remux_args([src], custom_ext="mp4", overwrite=True))
+    result = file_ex.execute_remux(
+        remux_args([src], custom_ext="mp4", overwrite=True))
+    assert result.status is TaskStatus.SUCCESS
+    assert any("输出文件不存在" in w for w in result.warnings)
     assert src.exists()  # rc==0 但输出不存在 -> 保留源
     out = capsys.readouterr().out
     assert "输出文件不存在" in out
@@ -499,7 +530,10 @@ def test_execute_remux_nonzero_rc_keeps_source_even_with_output(
         return 1
 
     monkeypatch.setattr(file_ex, "run_ffmpeg_command", failing_with_output)
-    file_ex.execute_remux(remux_args([src], custom_ext="mp4", overwrite=True))
+    result = file_ex.execute_remux(
+        remux_args([src], custom_ext="mp4", overwrite=True))
+    assert result.status is TaskStatus.FAILED
+    assert result.exit_code == 1
     assert src.exists()  # rc!=0 -> 绝不删源
     out = capsys.readouterr().out
     assert "成功 0 个, 失败 1 个" in out
@@ -517,9 +551,11 @@ def test_execute_remux_output_conflict_gets_suffix(monkeypatch, tmp_path):
     out_dir = tmp_path / "out"
     outputs = []
     monkeypatch.setattr(file_ex, "run_ffmpeg_command", fake_ffmpeg_ok(outputs))
-    file_ex.execute_remux(
+    result = file_ex.execute_remux(
         remux_args([s1, s2], custom_ext="mp4", output_dir=out_dir,
                    overwrite=False))
+    assert result.status is TaskStatus.SUCCESS
+    assert len(result.outputs) == 2
     names = sorted(Path(out).name for _, out in outputs)
     assert names == ["a_remux.mp4", "a_remux_1.mp4"]  # 批内冲突加 _1
     assert all(Path(out).is_file() for _, out in outputs)
@@ -533,7 +569,10 @@ def test_execute_remux_samefile_guard_keeps_source(monkeypatch, capsys, tmp_path
     monkeypatch.setattr(file_ex, "auto_generate_output_path",
                         lambda input_path, suffix, extension=None: input_path)
     monkeypatch.setattr(file_ex, "run_ffmpeg_command", fake_ffmpeg_no_output)
-    file_ex.execute_remux(remux_args([src], custom_ext="mkv", overwrite=True))
+    result = file_ex.execute_remux(
+        remux_args([src], custom_ext="mkv", overwrite=True))
+    assert result.status is TaskStatus.SUCCESS
+    assert any("同一文件" in w for w in result.warnings)
     assert src.exists()
     out = capsys.readouterr().out
     assert "同一文件" in out

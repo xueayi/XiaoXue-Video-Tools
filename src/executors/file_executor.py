@@ -10,6 +10,8 @@ from ..core import build_remux_command, run_ffmpeg_command
 from ..presets import REMUX_PRESETS, IMAGE_FORMATS, AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS
 from ..utils import auto_generate_output_path
 from ..image_converter import batch_convert_images
+from ..task.report import TaskReport
+from ..task.result import TaskResult
 from .common import print_task_header
 
 
@@ -44,7 +46,7 @@ def _reserve_remux_output(candidate: str, reserved: set) -> str:
     return current
 
 
-def execute_remux(args):
+def execute_remux(args) -> TaskResult:
     """
     执行封装转换任务（支持批量）。
 
@@ -53,6 +55,10 @@ def execute_remux(args):
 
     Args:
         args: argparse 解析后的参数对象
+
+    Returns:
+        TaskResult: 全部成功=SUCCESS、全部失败=FAILED、混合=PARTIAL；
+        输出路径进 outputs，删除失败/删除跳过进 warnings。
     """
     print_task_header("封装转换")
 
@@ -63,7 +69,7 @@ def execute_remux(args):
         extension = getattr(args, 'remux_format_custom', '')
         if not extension:
             print(f"{Fore.RED}[错误] 选择自定义格式时必须输入自定义后缀名{Style.RESET_ALL}")
-            return
+            return TaskResult.failed("选择自定义格式时必须输入自定义后缀名")
         if not extension.startswith('.'):
             extension = '.' + extension
     else:
@@ -109,8 +115,7 @@ def execute_remux(args):
         print(f"{Fore.YELLOW}[警告] 覆盖模式已开启，原文件将被删除{Style.RESET_ALL}")
     print("-" * 50)
 
-    success_count = 0
-    fail_count = 0
+    report = TaskReport()
     deleted_count = 0
     delete_errors = []
     files_to_delete = []  # 成功且输出校验通过后需要删除的原文件
@@ -139,26 +144,32 @@ def execute_remux(args):
             subtitle_tracks_custom=subtitle_tracks_custom,
         )
 
-        result = run_ffmpeg_command(cmd)
-        if result == 0:
-            success_count += 1
+        return_code = run_ffmpeg_command(cmd)
+        if return_code == 0:
+            report.add_success(output_path)
             # 删除门槛：rc==0 且输出文件真实存在且与源文件不是同一文件；
             # 任何不确定都保留源文件（就低不就高），失败的源绝不删。
             if overwrite:
                 if not os.path.isfile(output_path):
-                    print(
-                        f"{Fore.YELLOW}[警告] 输出文件不存在，保留源文件: "
-                        f"{os.path.basename(input_path)}{Style.RESET_ALL}"
+                    message = (
+                        f"输出文件不存在，保留源文件: "
+                        f"{os.path.basename(input_path)}"
                     )
+                    print(f"{Fore.YELLOW}[警告] {message}{Style.RESET_ALL}")
+                    report.warn(message)
                 elif _is_same_file(input_path, output_path):
-                    print(
-                        f"{Fore.YELLOW}[警告] 输出与源文件为同一文件，保留源文件: "
-                        f"{os.path.basename(input_path)}{Style.RESET_ALL}"
+                    message = (
+                        f"输出与源文件为同一文件，保留源文件: "
+                        f"{os.path.basename(input_path)}"
                     )
+                    print(f"{Fore.YELLOW}[警告] {message}{Style.RESET_ALL}")
+                    report.warn(message)
                 else:
                     files_to_delete.append(input_path)
         else:
-            fail_count += 1
+            report.add_failure(
+                f"{os.path.basename(input_path)}: FFmpeg 退出码 {return_code}",
+                exit_code=return_code)
 
     # 覆盖模式：删除校验通过的原文件（删除失败逐条收集，不中断）
     if overwrite and files_to_delete:
@@ -171,15 +182,17 @@ def execute_remux(args):
             try:
                 os.remove(f)
             except OSError as e:
-                delete_errors.append(f"{os.path.basename(f)}: {e}")
-                print(f"  ✗ 删除失败: {os.path.basename(f)} - {e}")
+                message = f"删除失败: {os.path.basename(f)} - {e}"
+                delete_errors.append(message)
+                report.warn(message)
+                print(f"  ✗ {message}")
             else:
                 deleted_keys.add(key)
                 deleted_count += 1
                 print(f"  ✓ 已删除: {os.path.basename(f)}")
 
     print(f"\n{'='*50}")
-    summary = f"批量转换完成: 成功 {success_count} 个, 失败 {fail_count} 个"
+    summary = f"批量转换完成: 成功 {report.success_count} 个, 失败 {report.failure_count} 个"
     if overwrite:
         summary += f", 已删除 {deleted_count} 个原文件"
         if delete_errors:
@@ -189,8 +202,14 @@ def execute_remux(args):
     if delete_errors:
         print(f"{Fore.YELLOW}[警告] {len(delete_errors)} 个原文件删除失败（源文件已保留，请手动处理）{Style.RESET_ALL}")
 
+    report.details.update({
+        "deleted_count": deleted_count,
+        "delete_errors": tuple(delete_errors),
+    })
+    return report.finalize()
 
-def execute_image_convert(args):
+
+def execute_image_convert(args) -> TaskResult:
     """
     执行图片格式转换任务。
 
@@ -201,7 +220,9 @@ def execute_image_convert(args):
         args: argparse 解析后的参数对象
 
     Returns:
-        逐文件转换结果列表 (Phase 2 再包成 TaskResult)
+        TaskResult: 全部成功=SUCCESS、全部失败=FAILED、混合=PARTIAL；
+        输出路径进 outputs，跳过/删除失败/删除跳过进 warnings，
+        逐文件明细保留在 details["results"]。
     """
     print_task_header("图片格式转换")
 
@@ -216,7 +237,7 @@ def execute_image_convert(args):
         target_ext = getattr(args, 'img_format_custom', 'png')
         if not target_ext:
             print(f"{Fore.RED}[错误] 选择自定义格式时必须输入扩展名{Style.RESET_ALL}")
-            return []
+            return TaskResult.failed("选择自定义格式时必须输入扩展名")
     else:
         target_ext = IMAGE_FORMATS.get(format_preset, ".png")
 
@@ -247,10 +268,27 @@ def execute_image_convert(args):
     fail_count = sum(1 for r in results if r.status == "failed")
     skip_count = sum(1 for r in results if r.status == "skipped")
 
+    report = TaskReport()
+    for r in results:
+        if r.status == "success":
+            report.add_success(str(r.output) if r.output is not None else None)
+        elif r.status == "failed":
+            report.add_failure(
+                f"{os.path.basename(str(r.source))}: {r.error or '转换失败'}")
+    if skip_count > 0:
+        report.warn(f"{skip_count} 个文件已是目标格式，已跳过转换")
+
     # 覆盖模式：只删除“转换成功 + 输出存在 + 非同一文件”的源文件
     deleted_count = 0
     delete_errors = []
     if overwrite:
+        # 成功但输出不存在/与源同文件 -> 无法安全删除，计入 warnings
+        for r in results:
+            if r.status == "success" and not r.can_delete_source():
+                report.warn(
+                    f"未删除源文件（输出不存在或与源同文件）: "
+                    f"{os.path.basename(str(r.source))}")
+
         deletable = [r for r in results if r.can_delete_source()]
         if deletable:
             print(f"\n{Fore.YELLOW}[覆盖模式] 删除转换成功的原文件...{Style.RESET_ALL}")
@@ -263,8 +301,10 @@ def execute_image_convert(args):
                 try:
                     os.remove(source)
                 except OSError as e:
-                    delete_errors.append(f"{os.path.basename(source)}: {e}")
-                    print(f"  ✗ 删除失败: {os.path.basename(source)} - {e}")
+                    message = f"删除失败: {os.path.basename(source)} - {e}"
+                    delete_errors.append(message)
+                    report.warn(message)
+                    print(f"  ✗ {message}")
                 else:
                     deleted_keys.add(key)
                     deleted_count += 1
@@ -298,4 +338,19 @@ def execute_image_convert(args):
         for r in failed[:5]:
             print(f"  - {os.path.basename(str(r.source))}: {r.error}")
 
-    return results
+    report.details.update({
+        "results": tuple(results),
+        "skip_count": skip_count,
+        "deleted_count": deleted_count,
+        "delete_errors": tuple(delete_errors),
+    })
+    task_result = report.finalize()
+    if (report.success_count == 0 and report.failure_count == 0
+            and skip_count > 0):
+        # 全部跳过（已是目标格式）不是失败：没有需要转换的文件但输入有效
+        task_result = TaskResult.ok(
+            f"跳过 {skip_count} 个（已是目标格式）",
+            warnings=report.warnings,
+            details=task_result.details,
+        )
+    return task_result

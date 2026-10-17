@@ -9,15 +9,32 @@ from colorama import Fore, Style
 from ..presets import RENAME_MODES, RENAME_TARGETS, RENAME_BEHAVIORS, RENAME_SORT_METHODS, RENAME_SORT_ORDERS
 from ..folder_creator import batch_create_folders
 from ..batch_renamer import batch_rename, RenameConfig
+from ..task.report import TaskReport
+from ..task.result import TaskResult
 from .common import print_task_header
 
 
-def execute_folder_creator(args):
+def _report_from_counts(report: TaskReport, success: int, fail: int,
+                        errors, fallback_reason: str) -> None:
+    """把底层 (成功数, 失败数, 错误列表) 汇总进 TaskReport。"""
+    for _ in range(success):
+        report.add_success()
+    error_list = list(errors or ())
+    for index in range(fail):
+        reason = (error_list[index] if index < len(error_list)
+                  else fallback_reason)
+        report.add_failure(str(reason))
+
+
+def execute_folder_creator(args) -> TaskResult:
     """
     执行批量创建文件夹任务。
-    
+
     Args:
         args: argparse 解析后的参数对象
+
+    Returns:
+        TaskResult: 全部成功=SUCCESS、全部失败=FAILED、混合=PARTIAL。
     """
     print_task_header("批量创建文件夹")
 
@@ -44,13 +61,20 @@ def execute_folder_creator(args):
         for err in errors[:5]:
             print(f"  - {err}")
 
+    report = TaskReport()
+    _report_from_counts(report, success, fail, errors, "创建文件夹失败")
+    return report.finalize()
 
-def execute_batch_rename(args):
+
+def execute_batch_rename(args) -> TaskResult:
     """
     执行批量序列重命名任务。
-    
+
     Args:
         args: argparse 解析后的参数对象
+
+    Returns:
+        TaskResult: 全部成功=SUCCESS、全部失败=FAILED、混合=PARTIAL。
     """
     print_task_header("批量序列重命名")
 
@@ -110,3 +134,7 @@ def execute_batch_rename(args):
         print(f"\n{Fore.YELLOW}[警告] 部分重命名失败:{Style.RESET_ALL}")
         for err in errors[:5]:
             print(f"  - {err}")
+
+    report = TaskReport()
+    _report_from_counts(report, success, fail, errors, "重命名失败")
+    return report.finalize()
