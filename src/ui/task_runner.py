@@ -14,9 +14,6 @@ from ..task.context import (
 )
 from ..task.result import TaskResult
 
-#: 过渡期 None 返回值产生的警告（M2.2 收紧为 FAILED 后删除）
-_NONE_RETURN_WARNING = "executor 未返回 TaskResult（过渡兼容）"
-
 
 class _StreamRedirect:
     """将 write() 调用转发为 Qt 信号，用于捕获 print 输出。"""
@@ -71,10 +68,11 @@ class TaskRunner(QThread):
     def _normalize(cls, ret) -> TaskResult:
         """把 handler 返回值归一为 TaskResult。
 
-        过渡兼容规则（M2.1）：
+        规则（M2.2 起收紧）：
             * TaskResult 原样返回；
-            * int: 0 -> SUCCESS；非 0 -> FAILED(exit_code=ret)；
-            * None -> SUCCESS + 过渡警告（TODO(M2.2) 收紧为 FAILED）；
+            * None -> FAILED（executor 必须返回 TaskResult）；
+            * int: 0 -> SUCCESS；非 0 -> FAILED(exit_code=ret)（兜底兼容）；
+            * bool: True -> SUCCESS；False -> FAILED（int 子类，先显式处理）；
             * 其它类型 -> FAILED。
         """
         if isinstance(ret, TaskResult):
@@ -87,7 +85,7 @@ class TaskRunner(QThread):
                 return TaskResult.ok()
             return TaskResult.failed(f"任务失败 (exit_code={ret})", exit_code=ret)
         if ret is None:
-            return TaskResult.ok(warnings=(_NONE_RETURN_WARNING,))
+            return TaskResult.failed("executor 未返回 TaskResult")
         return TaskResult.failed(
             f"executor 返回未知类型: {type(ret).__name__}")
 

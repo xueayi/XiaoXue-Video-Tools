@@ -5,6 +5,8 @@ import time
 
 from PyQt6.QtWidgets import QLabel, QWidget
 
+from src.task.result import TaskResult
+from src.task.status import TaskStatus
 from src.ui import theme
 from src.ui.animations import (
     AnimatedStackedWidget, button_press_anim, status_flash,
@@ -97,15 +99,17 @@ def _run_and_wait(runner, app, timeout_ms=5000):
 
 def test_task_runner_success(qapp):
     logs = []
-    runner = TaskRunner(lambda args: print("working"), None, "任务")
+
+    def handler(args):
+        print("working")
+        return TaskResult.ok("完成")
+
+    runner = TaskRunner(handler, None, "任务")
     runner.log_signal.connect(logs.append)
     result = _run_and_wait(runner, qapp)
     assert result["ok"] is True
     assert result["name"] == "任务"
-    # None 返回值过渡期归一为 SUCCESS + 过渡警告
-    from src.task.status import TaskStatus
     assert result["task_result"].status is TaskStatus.SUCCESS
-    assert result["task_result"].warnings
     assert any("working" in s for s in logs)
 
 

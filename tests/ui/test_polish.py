@@ -168,7 +168,8 @@ def test_feed_line_fps_and_bad_values(qapp):
 # ----------------------------------------------------------------
 
 def test_task_runner_run_sync_success(qapp):
-    runner = TaskRunner(lambda a: print("sync ok"), None, "c")
+    from src.task.result import TaskResult
+    runner = TaskRunner(lambda a: TaskResult.ok(), None, "c")
     runner.run()  # 直接在主线程执行, 覆盖 run() 语句
     assert True
 

@@ -53,13 +53,14 @@ def test_int_nonzero_is_failed_with_exit_code():
     assert finished == [(False, "任务")]
 
 
-def test_none_is_success_with_transition_warning():
+def test_none_is_failed():
+    """M2.2 起收紧: executor 必须返回 TaskResult, None 不再视为成功。"""
     runner, results, finished, _ = _make_runner(lambda args: None)
     runner.run()
     result = results[0]
-    assert result.status is TaskStatus.SUCCESS
-    assert any("过渡兼容" in warning for warning in result.warnings)
-    assert finished == [(True, "任务")]
+    assert result.status is TaskStatus.FAILED
+    assert "未返回 TaskResult" in result.message
+    assert finished == [(False, "任务")]
 
 
 def test_bool_return_is_normalized():
@@ -183,5 +184,6 @@ def test_normalize_direct_cases():
     assert TaskRunner._normalize(TaskResult.ok()).status is TaskStatus.SUCCESS
     failed = TaskRunner._normalize(7)
     assert failed.status is TaskStatus.FAILED and failed.exit_code == 7
-    assert TaskRunner._normalize(None).status is TaskStatus.SUCCESS
+    assert TaskRunner._normalize(None).status is TaskStatus.FAILED
+    assert TaskRunner._normalize("x").status is TaskStatus.FAILED
     assert TaskRunner._normalize("x").status is TaskStatus.FAILED

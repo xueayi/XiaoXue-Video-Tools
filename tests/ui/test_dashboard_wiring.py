@@ -164,7 +164,7 @@ def test_stop_hides_error_card(win):
 
 def test_new_task_hides_previous_error_card(win, qapp):
     win._error_card.show(ErrorInfo(title="旧错误", causes=["原因"]))
-    win._handlers["视频压制"] = lambda args: None
+    win._handlers["视频压制"] = lambda args: TaskResult.ok()
     win._sidebar.setCurrentRow(1)  # 视频压制
 
     win._on_execute()

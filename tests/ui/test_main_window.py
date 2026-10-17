@@ -5,6 +5,7 @@ import pytest
 from PyQt6.QtWidgets import QDialog
 
 import src.ui.main_window as mw
+from src.task.result import TaskResult
 from src.ui import theme
 from src.ui.main_window import MainWindow, _CenteredColumnWidget
 from src.ui.task_runner import TaskRunner
@@ -94,7 +95,7 @@ def test_status_bar_ready(win):
 # ----------------------------------------------------------------
 
 def test_execute_success_flow(win, qapp, monkeypatch):
-    win._handlers["视频压制"] = lambda args: print("fake encode")
+    win._handlers["视频压制"] = lambda args: TaskResult.ok("完成")
     # 首页执行按钮禁用, 切到「视频压制」(索引 1) 才能执行
     win._sidebar.setCurrentRow(1)
     win._on_execute()
