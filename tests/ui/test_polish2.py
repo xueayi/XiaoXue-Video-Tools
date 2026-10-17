@@ -226,20 +226,6 @@ def test_try_set_duration_probe_raises(qapp, monkeypatch, tmp_path):
     win.close()
 
 
-def test_auto_notification_failure_swallowed(win, qapp, monkeypatch):
-    def broken(name):
-        raise RuntimeError("通知挂了")
-    monkeypatch.setattr(mw_module(), "send_auto_notification", broken)
-    win._handlers["视频压制"] = lambda args: None
-    win._sidebar.setCurrentRow(0)
-    win._on_execute()
-    import time
-    deadline = time.time() + 5
-    while "完成" not in win.statusBar().currentMessage() and time.time() < deadline:
-        qapp.processEvents()
-    assert "完成" in win.statusBar().currentMessage()
-
-
 def test_first_run_centers_when_no_saved_geometry(qapp, monkeypatch):
     from PyQt6.QtCore import QSettings
     monkeypatch.setattr(QSettings, "value",
@@ -248,8 +234,3 @@ def test_first_run_centers_when_no_saved_geometry(qapp, monkeypatch):
     center = win.screen().availableGeometry().center()
     assert win.frameGeometry().center().x() == pytest.approx(center.x(), abs=2)
     win.close()
-
-
-def mw_module():
-    import src.ui.main_window as m
-    return m

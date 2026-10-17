@@ -28,7 +28,6 @@ from .qc_executor import (
 )
 
 from .misc_executor import (
-    execute_notification,
     execute_help,
 )
 
@@ -52,7 +51,6 @@ __all__ = [
     # 质量检测
     "execute_qc",
     # 杂项
-    "execute_notification",
     "execute_help",
     # 媒体元数据检测
     "execute_media_probe",

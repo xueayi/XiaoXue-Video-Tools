@@ -90,15 +90,3 @@ def png_file(tmp_path):
     p = tmp_path / "pic.png"
     Image.new("RGB", (32, 32), (200, 100, 100)).save(p)
     return str(p)
-
-
-@pytest.fixture(autouse=True)
-def _restore_notify_globals():
-    """保护 notify_config 模块级全局状态, 防止测试间污染。"""
-    import src.notify_config as nc
-    saved = dict(nc._notify_config)
-    loaded = nc._notify_config_loaded
-    yield
-    nc._notify_config.clear()
-    nc._notify_config.update(saved)
-    nc._notify_config_loaded = loaded

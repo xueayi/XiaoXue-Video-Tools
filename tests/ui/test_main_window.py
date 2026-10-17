@@ -30,10 +30,10 @@ def _pump_until(qapp, cond, timeout_ms=5000):
 # ----------------------------------------------------------------
 
 def test_window_builds_all_pages(win):
-    assert win._stack.count() == 11
-    assert len(win._tabs) == 11
-    assert len(win._handlers) == 11
-    assert win._sidebar.count() == 11
+    assert win._stack.count() == 10
+    assert len(win._tabs) == 10
+    assert len(win._handlers) == 10
+    assert win._sidebar.count() == 10
     assert win.windowTitle() == "小雪工具箱"
     assert win.minimumSize().width() == 960
 
@@ -66,14 +66,10 @@ def test_status_bar_ready(win):
 # ----------------------------------------------------------------
 
 def test_execute_success_flow(win, qapp, monkeypatch):
-    notified = []
-    monkeypatch.setattr(mw, "send_auto_notification",
-                        lambda name: notified.append(name))
     win._handlers["视频压制"] = lambda args: print("fake encode")
     win._sidebar.setCurrentRow(0)
     win._on_execute()
     _pump_until(qapp, lambda: "完成" in win.statusBar().currentMessage())
-    assert notified == ["视频压制"]
     assert win._execute_btn.isEnabled()
     assert not win._stop_btn.isEnabled()
 
@@ -283,8 +279,6 @@ def test_main_entrypoint(monkeypatch, qapp):
     import PyQt6.QtWidgets as QtW
     monkeypatch.setattr(QtW, "QApplication", FakeApp)
     monkeypatch.setattr(mw, "MainWindow", fake_mainwindow)
-    monkeypatch.setattr(entry, "load_notify_config", lambda: None)
-    monkeypatch.setattr(entry, "get_notify_config", lambda: {})
 
     import src.ui.theme as theme_mod
     monkeypatch.setattr(theme_mod, "apply_theme", lambda *a, **k: None)
@@ -347,8 +341,6 @@ def test_main_normal_start_no_pending(monkeypatch):
     monkeypatch.setattr(QtW, "QApplication", FakeApp)
     monkeypatch.setattr(mw, "MainWindow",
                         lambda **k: type("W", (), {"show": lambda s: None})())
-    monkeypatch.setattr(entry, "load_notify_config", lambda: None)
-    monkeypatch.setattr(entry, "get_notify_config", lambda: {})
 
     import src.ui.theme as theme_mod
     monkeypatch.setattr(theme_mod, "apply_theme", lambda *a, **k: None)

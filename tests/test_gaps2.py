@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""覆盖率收尾: 执行器打印分支、批量重命名边界、通知头解析。"""
+"""覆盖率收尾: 执行器打印分支、批量重命名边界。"""
 
 import io
-import json
 import sys
 from types import SimpleNamespace as NS
 
@@ -16,7 +15,6 @@ import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.folder_creator as fc
 import src.log_utils as log_utils
-import src.notify as notify
 
 
 # ----------------------------------------------------------------
@@ -71,19 +69,6 @@ def test_qc_custom_resolution_scan_dir_not_dir(capsys, monkeypatch, tmp_path):
     qc_ex.execute_qc(args)
     assert "自动生成报告路径" in capsys.readouterr().out
 
-
-def test_notification_no_channels(capsys):
-    args = NS(enabled=False, save_notify_config=False,
-              delete_notify_config=False, feishu_webhook="",
-              feishu_title="", feishu_content="", feishu_color="blue",
-              webhook_url="", webhook_headers="", webhook_body="")
-    misc_ex.execute_notification(args)
-    assert "未配置任何通知渠道" in capsys.readouterr().out
-
-
-# ----------------------------------------------------------------
-# file_executor 打印与删除分支
-# ----------------------------------------------------------------
 
 def _remux_args(tmp_path, src, **kw):
     defaults = dict(remux_input=[str(src)], remux_preset="自定义",
@@ -218,7 +203,7 @@ def test_batch_rename_failure_branch(tmp_path, monkeypatch):
 
 
 # ----------------------------------------------------------------
-# folder_creator / log_utils / notify
+# folder_creator / log_utils
 # ----------------------------------------------------------------
 
 def test_detect_encoding_final_fallback(monkeypatch, tmp_path):
@@ -246,42 +231,3 @@ def test_fix_sys_io_fdopen_success(monkeypatch):
 
 
 import logging  # noqa: E402
-
-
-class _Resp:
-    def __init__(self, status_code, payload):
-        self.status_code = status_code
-        self._payload = payload
-        self.text = "raw"
-
-    def json(self):
-        if self._payload is None:
-            raise ValueError("no json")
-        return self._payload
-
-
-def test_webhook_headers_dict_and_json(monkeypatch):
-    calls = []
-
-    def fake_post(url, **kw):
-        calls.append(kw)
-        return _Resp(200, {"ok": 1})
-    monkeypatch.setattr(notify.requests, "post", fake_post)
-    assert send_webhook_with_headers_dict(monkeypatch) is True
-    assert send_webhook_with_headers_json(monkeypatch) is True
-    assert calls[0]["headers"]["X-A"] == "1"
-    assert calls[1]["headers"]["X-B"] == "2"
-    assert calls[1]["json"] == {"b": 2}
-
-
-def send_webhook_with_headers_dict(monkeypatch):
-    from src.notify import send_webhook_notification
-    return send_webhook_notification("https://hook", headers={"X-A": "1"},
-                                     body={"a": 1})
-
-
-def send_webhook_with_headers_json(monkeypatch):
-    from src.notify import send_webhook_notification
-    return send_webhook_notification("https://hook",
-                                     headers_json='{"X-B": "2"}',
-                                     body_json='{"b": 2}')

@@ -379,54 +379,6 @@ def test_execute_qc_auto_report_path(capsys, monkeypatch, tmp_path):
 # misc_executor
 # ----------------------------------------------------------------
 
-def test_execute_notification_full(capsys, monkeypatch):
-    import src.notify_config as nc
-    sent = []
-    monkeypatch.setattr(misc_ex, "send_feishu_notification",
-                        lambda **kw: sent.append("feishu") or True)
-    monkeypatch.setattr(misc_ex, "send_webhook_notification",
-                        lambda **kw: sent.append("webhook") or True)
-    monkeypatch.setattr(misc_ex, "save_notify_config", lambda cfg: None)
-    nc._notify_config.clear()
-    nc._notify_config.update({"enabled": True})
-    args = NS(enable_auto_notify=True, save_notify_config=True,
-              delete_notify_config=False,
-              feishu_webhook="https://f", feishu_title="t",
-              feishu_content="c", feishu_color="blue",
-              webhook_url="https://h", webhook_headers="{}",
-              webhook_body="{}")
-    misc_ex.execute_notification(args)
-    assert sent == ["feishu", "webhook"]
-    assert "自动通知已启用" in capsys.readouterr().out
-
-
-def test_execute_notification_delete_config(capsys, monkeypatch):
-    calls = []
-    monkeypatch.setattr(misc_ex, "delete_notify_config",
-                        lambda: calls.append("del"))
-    args = NS(enabled=False, save_notify_config=False,
-              delete_notify_config=True, feishu_webhook="",
-              feishu_title="", feishu_content="", feishu_color="blue",
-              webhook_url="", webhook_headers="", webhook_body="")
-    misc_ex.execute_notification(args)
-    assert calls == ["del"]
-    assert "配置文件已删除" in capsys.readouterr().out
-
-
-def test_execute_notification_test_failure(capsys, monkeypatch):
-    monkeypatch.setattr(misc_ex, "send_feishu_notification",
-                        lambda **kw: False)
-    monkeypatch.setattr(misc_ex, "send_webhook_notification",
-                        lambda **kw: False)
-    args = NS(enabled=False, save_notify_config=False,
-              delete_notify_config=False, feishu_webhook="https://f",
-              feishu_title="t", feishu_content="c", feishu_color="blue",
-              webhook_url="https://h", webhook_headers="{}",
-              webhook_body="{}")
-    misc_ex.execute_notification(args)
-    assert "失败 2 个" in capsys.readouterr().out
-
-
 def test_execute_help(capsys):
     args = NS(help_topic="视频压制")
     misc_ex.execute_help(args)

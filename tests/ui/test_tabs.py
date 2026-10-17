@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""12 个功能 Tab 的实例化、build_args 与控件联动测试。"""
+"""10 个功能 Tab 的实例化、build_args 与控件联动测试。"""
 
 import pytest
 
@@ -7,7 +7,7 @@ from src.media_probe import DetailedMediaInfo, StreamInfo
 from src.ui.tabs import (
     EncodeTab, ReplaceAudioTab, RemuxTab, QcTab, MediaProbeTab,
     ExtractAvTab, ImageConvertTab, FolderCreatorTab, BatchRenameTab,
-    NotificationTab, HelpTab,
+    HelpTab,
 )
 from src.ui.tabs.help_tab import _plain_to_html
 
@@ -43,25 +43,16 @@ TAB_CASES = [
     (ImageConvertTab, "图片转换"),
     (FolderCreatorTab, "文件夹创建"),
     (BatchRenameTab, "批量重命名"),
-    (NotificationTab, "通知设置"),
     (HelpTab, "使用说明"),
 ]
 
 
 @pytest.mark.parametrize("cls, command", TAB_CASES)
 def test_tab_instantiation_and_build_args(qapp, cls, command):
-    if cls is NotificationTab:
-        tab = cls(config={})
-    else:
-        tab = cls()
+    tab = cls()
     assert tab.command_name == command
     args = tab.build_args()
     assert args.command == command
-
-
-def test_notification_tab_none_config(qapp):
-    tab = NotificationTab(config=None)
-    assert tab.build_args().command == "通知设置"
 
 
 # ----------------------------------------------------------------

@@ -5,8 +5,8 @@
 -> 生成 PowerShell 更新器 -> 主程序退出后由更新器完成 替换 + 重启。
 
 安全与健壮性设计:
-- 只替换 exe 与 _internal; config.ini / notify_config.json 等用户数据
-  都在安装目录下且不在发行包内, 天然保留
+- 只替换 exe 与 _internal; config.ini 等用户数据都在安装目录下且
+  不在发行包内, 天然保留
 - 更新前整目录磁盘空间预检; 下载支持断点续传与取消
 - 更新器先把旧版移入 _backup 再换入新版, 移动失败自动回滚
 - 新版启动成功后, 下一次启动时清理 _backup 与 _update 暂存目录

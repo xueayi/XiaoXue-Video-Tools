@@ -51,7 +51,7 @@ class _PillIndicator(QWidget):
 class Sidebar(QWidget):
     """侧边栏: 品牌头部 + 分组导航列表 + 底部主题切换。
 
-    通过 tab_changed(页面索引) 通知页面切换。
+    通过 tab_changed(页面索引) 切换页面。
     分组标题行为不可选中的小节标签，不占用页面索引。
     """
 
