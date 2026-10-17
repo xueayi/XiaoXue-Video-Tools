@@ -223,28 +223,28 @@ def test_batch_convert_basic(tmp_path):
     a = make_png(tmp_path, "a.png")
     b = make_png(tmp_path, "b.png")
     out = tmp_path / "out"
-    ok, fail, skip, errors = ic.batch_convert_images(
-        [str(a), str(b)], str(out), ".jpg")
-    assert ok == 2 and fail == 0 and skip == 0 and errors == []
+    results = ic.batch_convert_images([str(a), str(b)], str(out), ".jpg")
+    assert [r.status for r in results] == ["success", "success"]
+    assert all(r.error is None for r in results)
     assert (out / "a.jpg").exists()
 
 
 def test_batch_convert_skip_same_format(tmp_path):
     a = make_png(tmp_path, "a.png")
-    ok, fail, skip, _ = ic.batch_convert_images([str(a)], None, ".png")
-    assert ok == 0 and skip == 1
+    results = ic.batch_convert_images([str(a)], None, ".png")
+    assert len(results) == 1 and results[0].status == "skipped"
 
 
 def test_batch_convert_unsupported_format(tmp_path):
     a = make_png(tmp_path, "a.png")
-    ok, fail, skip, errors = ic.batch_convert_images([str(a)], None, ".xyz")
-    assert ok == 0 and fail == 1 and errors
+    results = ic.batch_convert_images([str(a)], None, ".xyz")
+    assert results[0].status == "failed" and results[0].error
 
 
 def test_batch_convert_same_path_gets_suffix(tmp_path):
     # 目标输出与源文件同名同目录 -> 自动加 _converted 后缀
     a = make_png(tmp_path, "a.jpg")  # jpeg 源
     target = str(tmp_path / "a.png")
-    ok, fail, skip, _ = ic.batch_convert_images([str(a)], str(tmp_path), ".png",
-                                                skip_same_format=False)
-    assert ok == 1 and (tmp_path / "a.png").exists()
+    results = ic.batch_convert_images([str(a)], str(tmp_path), ".png",
+                                      skip_same_format=False)
+    assert results[0].status == "success" and (tmp_path / "a.png").exists()

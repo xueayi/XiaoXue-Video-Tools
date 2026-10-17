@@ -6,6 +6,7 @@
 """
 import pytest
 import os
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 from dataclasses import dataclass
 from typing import List, Optional
@@ -14,6 +15,19 @@ from src.executors.file_executor import (
     execute_remux,
     execute_image_convert,
 )
+from src.image_converter import FileConvertResult
+
+
+def success_results(input_paths, target_ext=".png"):
+    """构造一批“转换成功且输出存在”的逐文件结果。"""
+    return [
+        FileConvertResult(
+            source=p,
+            output=str(Path(p).with_suffix(target_ext)),
+            status="success",
+        )
+        for p in input_paths
+    ]
 
 
 @dataclass
@@ -171,7 +185,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_to_png(self, mock_convert, mock_image_files):
         """测试转换为 PNG 格式"""
-        mock_convert.return_value = (3, 0, 0, [])
+        mock_convert.return_value = success_results(mock_image_files)
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -186,7 +200,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_to_jpg(self, mock_convert, mock_image_files):
         """测试转换为 JPG 格式"""
-        mock_convert.return_value = (3, 0, 0, [])
+        mock_convert.return_value = success_results(mock_image_files)
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -201,7 +215,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_custom_format(self, mock_convert, mock_image_files):
         """测试自定义格式"""
-        mock_convert.return_value = (3, 0, 0, [])
+        mock_convert.return_value = success_results(mock_image_files)
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -217,7 +231,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_quality(self, mock_convert, mock_image_files):
         """测试质量参数传递"""
-        mock_convert.return_value = (3, 0, 0, [])
+        mock_convert.return_value = success_results(mock_image_files)
         
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -244,7 +258,9 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_skip_same_format(self, mock_convert, mock_image_files):
         """测试默认跳过同格式文件"""
-        mock_convert.return_value = (2, 0, 1, [])
+        mock_convert.return_value = success_results(mock_image_files[:2]) + [
+            FileConvertResult(source=mock_image_files[2], output=None, status="skipped")
+        ]
 
         args = MockImageConvertArgs()
         args.img_input = mock_image_files
@@ -260,7 +276,7 @@ class TestExecuteImageConvert:
     @patch('src.executors.file_executor.batch_convert_images')
     def test_execute_image_convert_no_skip(self, mock_convert, mock_image_files):
         """测试关闭跳过同格式时正常转换"""
-        mock_convert.return_value = (3, 0, 0, [])
+        mock_convert.return_value = success_results(mock_image_files)
 
         args = MockImageConvertArgs()
         args.img_input = mock_image_files

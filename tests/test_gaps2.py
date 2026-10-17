@@ -16,6 +16,7 @@ import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.executors.shield_executor as shield_ex
 import src.folder_creator as fc
+from src.image_converter import FileConvertResult
 import src.log_utils as log_utils
 import src.notify as notify
 import src.nsfw_detect as nsfw
@@ -146,7 +147,13 @@ def test_remux_digit_only_tracks(capsys, monkeypatch, tmp_path):
 def test_remux_overwrite_delete_failure(capsys, monkeypatch, tmp_path):
     src = tmp_path / "a.mkv"
     src.write_bytes(b"x")
-    monkeypatch.setattr(file_ex, "run_ffmpeg_command", lambda cmd, **k: 0)
+
+    def fake_run(cmd, **k):
+        # 模拟 ffmpeg 成功并真实产出输出文件（否则按新语义不删源）
+        from pathlib import Path
+        Path(cmd[-1]).write_bytes(b"remuxed")
+        return 0
+    monkeypatch.setattr(file_ex, "run_ffmpeg_command", fake_run)
 
     real_remove = file_ex.os.remove
 
@@ -158,7 +165,9 @@ def test_remux_overwrite_delete_failure(capsys, monkeypatch, tmp_path):
     args = _remux_args(tmp_path, src, remux_format_custom="mp4",
                        remux_overwrite=True)
     file_ex.execute_remux(args)
-    assert "删除失败" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "删除失败" in out
+    assert src.exists()  # 删除失败时源文件保留
 
 
 def test_image_convert_str_input(capsys, monkeypatch, tmp_path):
@@ -166,7 +175,10 @@ def test_image_convert_str_input(capsys, monkeypatch, tmp_path):
     src = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (255, 0, 0)).save(src)
     monkeypatch.setattr(file_ex, "batch_convert_images",
-                        lambda **kw: (1, 0, 0, []))
+                        lambda **kw: [
+                            FileConvertResult(source=src, output=None,
+                                              status="success")
+                        ])
     args = NS(img_input=str(src), img_format="PNG (无损)",
               img_format_custom="", img_output_dir="", img_quality=95,
               img_overwrite=False, img_skip_same_format=True)
@@ -178,14 +190,20 @@ def test_image_convert_overwrite_delete_runs(capsys, monkeypatch, tmp_path):
     from PIL import Image
     src = tmp_path / "a.png"
     Image.new("RGB", (4, 4), (255, 0, 0)).save(src)
+    out = tmp_path / "a.jpg"
+    out.write_bytes(b"converted")
     monkeypatch.setattr(file_ex, "batch_convert_images",
-                        lambda **kw: (1, 0, 0, []))
+                        lambda **kw: [
+                            FileConvertResult(source=src, output=out,
+                                              status="success")
+                        ])
     args = NS(img_input=[str(src)], img_format="JPG/JPEG (有损压缩)",
               img_format_custom="", img_output_dir="", img_quality=95,
               img_overwrite=True, img_skip_same_format=False)
     file_ex.execute_image_convert(args)
-    out = capsys.readouterr().out
-    assert "已删除 1 个原文件" in out
+    out_text = capsys.readouterr().out
+    assert "已删除 1 个原文件" in out_text
+    assert not src.exists()
 
 
 # ----------------------------------------------------------------
