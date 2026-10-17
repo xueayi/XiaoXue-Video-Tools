@@ -32,6 +32,7 @@ from ..encode_params import (
     resolve_encoder_params,
     print_encode_info,
 )
+from ..task.report import TaskReport
 from ..task.result import TaskResult
 from .common import print_task_header
 
@@ -212,12 +213,15 @@ def _post_transfer(args, output_path: str, return_code: int) -> list:
     return warnings
 
 
-def execute_replace_audio(args):
+def execute_replace_audio(args) -> TaskResult:
     """
     执行音频替换任务。
-    
+
     Args:
         args: argparse 解析后的参数对象
+
+    Returns:
+        TaskResult: rc 0 -> SUCCESS(outputs=[输出路径])；非 0 -> FAILED(exit_code)。
     """
     print_task_header("音频替换")
 
@@ -234,23 +238,33 @@ def execute_replace_audio(args):
         audio_bitrate=args.audio_br,
     )
 
-    run_ffmpeg_command(cmd)
+    return_code = run_ffmpeg_command(cmd)
+    if return_code == 0:
+        return TaskResult.ok(outputs=(output_path,), exit_code=0)
+    return TaskResult.failed(
+        f"FFmpeg 退出码 {return_code}", exit_code=return_code)
 
 
-def execute_extract_av(args):
+def execute_extract_av(args) -> TaskResult:
     """
     执行音视频抽取任务。
-    
+
     根据用户选择的抽取模式，分离输出纯音频和/或纯视频。
 
     Args:
         args: argparse 解析后的参数对象
+
+    Returns:
+        TaskResult: 单产物 rc 0 -> SUCCESS；音频+视频模式下单个失败为 PARTIAL，
+        全部失败为 FAILED；输出路径写入 outputs。
     """
     print_task_header("音视频抽取")
 
     # 获取抽取模式
     extract_mode_key = getattr(args, 'extract_mode', '仅音频')
     extract_mode = EXTRACT_MODES.get(extract_mode_key, 'audio_only')
+
+    report = TaskReport()
 
     # ---- 音频抽取逻辑 ----
     if extract_mode in ("audio_only", "both"):
@@ -279,7 +293,13 @@ def execute_extract_av(args):
             audio_encoder=AUDIO_ENCODERS.get(args.extract_encoder, "aac"),
             audio_bitrate=args.extract_bitrate,
         )
-        run_ffmpeg_command(cmd)
+        return_code = run_ffmpeg_command(cmd)
+        if return_code == 0:
+            report.add_success(audio_output)
+        else:
+            report.add_failure(
+                f"音频抽取失败 (FFmpeg 退出码 {return_code})",
+                exit_code=return_code)
 
     # ---- 视频抽取逻辑 ----
     if extract_mode in ("video_only", "both"):
@@ -298,4 +318,12 @@ def execute_extract_av(args):
             input_path=args.extract_input,
             output_path=video_output,
         )
-        run_ffmpeg_command(cmd)
+        return_code = run_ffmpeg_command(cmd)
+        if return_code == 0:
+            report.add_success(video_output)
+        else:
+            report.add_failure(
+                f"视频抽取失败 (FFmpeg 退出码 {return_code})",
+                exit_code=return_code)
+
+    return report.finalize()
