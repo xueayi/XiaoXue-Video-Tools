@@ -211,6 +211,24 @@ def resolve_container(extension: Optional[str]) -> Optional[ContainerCapability]
     return CONTAINERS.get(normalize_extension(extension))
 
 
+#: 压制输出中允许「保留内封字幕流」的容器。
+#: MP4/MOV 虽然支持 mov_text，但兼容性差且源字幕多为 ASS/PGS，产品上只开放
+#: MKV（推荐）与 MOV；TS/M4A/WebM 等不开放。
+EMBEDDED_SUBTITLE_FORMATS: Tuple[str, ...] = ("mkv", "mov")
+
+
+def supports_embedded_subtitles(extension: Optional[str]) -> bool:
+    """该输出扩展名是否支持保留内封字幕流（软字幕）。"""
+    normalized = normalize_extension(extension)
+    return normalized.lstrip(".") in EMBEDDED_SUBTITLE_FORMATS
+
+
+def embedded_subtitle_note() -> str:
+    """界面提示：说明哪些输出格式支持保留内封字幕流。"""
+    labels = " / ".join(ext.upper() for ext in EMBEDDED_SUBTITLE_FORMATS)
+    return f"仅 {labels} 输出格式支持保留内封字幕流；其它格式该选项不可用。"
+
+
 def _normalize_codec(kind: str, codec: str) -> str:
     """把 ffprobe codec_name 归一为矩阵规范名。
 

@@ -465,6 +465,8 @@ def test_summary_subtitle_burn_and_keep(tab, tmp_path):
     tab.preset_combo.setCurrentText("自定义 (Custom)")
     tab.subtitle_edit.setText(str(subtitle))
     tab.compat_mode_cb.setChecked(True)
+    # 内封字幕流仅 MKV / MOV 可用, 先切到 MKV 再选择保留编号
+    tab.output_format_combo.setCurrentText("MKV (多轨封装)")
     tab.subtitle_tracks_combo.setCurrentText("自定义选择 (填写编号)")
     tab.subtitle_tracks_custom_edit.setText("0,1")
 
@@ -475,6 +477,14 @@ def test_summary_subtitle_burn_and_keep(tab, tmp_path):
     assert "烧录" in text and "sub.srt" in text
     assert "AviSynth+VSFilter" in text
     assert "0,1" in text
+
+    # MP4 输出: 保留字幕流不可选, 参数强制为「不保留字幕」
+    tab.output_format_combo.setCurrentText("MP4 (默认)")
+    assert not tab.subtitle_tracks_combo.isEnabled()
+    assert tab.subtitle_tracks_combo.currentText() == "不保留字幕"
+    mp4_expected = _resolved(tab)
+    assert mp4_expected.subtitle_tracks == "none"  # 标签「不保留字幕」解析后的值
+    assert "0,1" not in card.row_text("subtitle")
 
     # 取消烧录与兼容模式后实时刷新
     tab.subtitle_edit.setText("")

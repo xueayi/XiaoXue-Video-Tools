@@ -31,6 +31,11 @@ from ...capabilities.encoder import (
     default_speed_preset,
     encoder_capability,
 )
+from ...capabilities.container import (
+    EMBEDDED_SUBTITLE_FORMATS,
+    embedded_subtitle_note,
+    supports_embedded_subtitles,
+)
 from ...presets import (
     ENCODERS, QUALITY_PRESETS, CPU_PRESETS, NVENC_PRESETS,
     AUDIO_ENCODERS, AUDIO_BITRATES, RATE_CONTROL_MODES,
@@ -163,17 +168,14 @@ class EncodeTab(BaseTab):
         # 内封字幕流（软字幕）
         self._add_section_label(common, "内封字幕流（软字幕）")
         self.subtitle_tracks_combo = self.add_combo(
-            common, "保留字幕",
+            common, "保留字幕流",
             list(SUBTITLE_TRACK_OPTIONS.keys()), "不保留字幕",
-            "保留源视频容器里已有的字幕轨（播放器可开关/切换）；与上方的字幕烧录互不影响",
+            "保留源视频容器里已有的字幕轨（播放器可开关/切换）",
         )
+        self._subtitle_default_tooltip = self.subtitle_tracks_combo.toolTip()
         self.add_hint(
             common,
-            "两个概念别混：\n"
-            "· 「字幕文件」= 烧录（硬字幕）：把外挂 .srt/.ass 画进画面，播放器无法关闭；\n"
-            "· 「保留字幕」= 内封字幕流（软字幕）：保留源视频里已有的字幕轨，播放器可切换；\n"
-            "两者互不冲突，可同时使用；「兼容模式」只影响烧录的渲染方式（仅 Windows）。\n"
-            "注意：MP4 不支持 ASS 字幕，需要时请把「保留字幕」设为「不保留字幕」或输出 MKV。",
+            embedded_subtitle_note(),
             "info",
         )
 
@@ -307,6 +309,11 @@ class EncodeTab(BaseTab):
         self.subtitle_tracks_combo.currentTextChanged.connect(self._on_subtitle_tracks_changed)
         self.post_transfer_mode_combo.currentTextChanged.connect(self._on_transfer_changed)
         self.input_edit.textChanged.connect(self._on_input_changed)
+        # 内封字幕流可用性依赖输出扩展名（自定义/与输入相同也要跟着刷新）
+        self.output_format_custom_edit.textChanged.connect(
+            lambda _text: self._sync_subtitle_stream_availability())
+        self.input_edit.textChanged.connect(
+            lambda _text: self._sync_subtitle_stream_availability())
         self.crf_spin.valueChanged.connect(self._update_quality_mirror)
 
         # 执行摘要实时刷新：复用全部联动信号 + 输出路径等文本输入
@@ -650,12 +657,55 @@ class EncodeTab(BaseTab):
 
     def _on_output_format_changed(self, text):
         self.output_format_custom_edit.setEnabled("自定义" in text)
+        self._sync_subtitle_stream_availability()
+
+    def current_output_extension(self) -> str:
+        """当前输出格式对应的扩展名（含自定义 / 与输入相同）。"""
+        text = self.output_format_combo.currentText()
+        extension = ENCODE_OUTPUT_FORMATS.get(text, "")
+        if extension is None:  # 自定义
+            extension = self.output_format_custom_edit.text().strip()
+        if not extension and text == "与输入相同":
+            extension = os.path.splitext(self.input_edit.text())[1]
+        return extension or ""
+
+    def _sync_subtitle_stream_availability(self):
+        """只有 MKV / MOV 输出才允许保留内封字幕流；其它格式禁用并清空。"""
+        supported = supports_embedded_subtitles(self.current_output_extension())
+
+        self.subtitle_tracks_combo.setEnabled(supported)
+        if supported:
+            self.subtitle_tracks_combo.setToolTip(self._subtitle_default_tooltip)
+        else:
+            self.subtitle_tracks_combo.setToolTip(
+                "当前输出格式不支持内封字幕流，如需保留请将输出格式改为 "
+                + " / ".join(ext.upper() for ext in EMBEDDED_SUBTITLE_FORMATS))
+            if self.subtitle_tracks_combo.currentText() != "不保留字幕":
+                self.subtitle_tracks_combo.setCurrentText("不保留字幕")
+
+        self.subtitle_tracks_custom_edit.setEnabled(
+            supported and "自定义" in self.subtitle_tracks_combo.currentText())
+
+        # 自动检测的轨道面板：字幕勾选与容器同步禁用/清空
+        for checkbox, _index in self._sub_checks:
+            if supported:
+                checkbox.setEnabled(True)
+            else:
+                checkbox.setChecked(False)
+                checkbox.setEnabled(False)
+        track_container = getattr(self, "_track_sub_container", None)
+        if track_container is not None:
+            track_container.setEnabled(supported)
+
+        self._refresh_summary()
 
     def _on_audio_tracks_changed(self, text):
         self.audio_tracks_custom_edit.setEnabled("自定义" in text)
 
     def _on_subtitle_tracks_changed(self, text):
-        self.subtitle_tracks_custom_edit.setEnabled("自定义" in text)
+        supported = self.subtitle_tracks_combo.isEnabled()
+        self.subtitle_tracks_custom_edit.setEnabled(
+            supported and "自定义" in text)
 
     def _on_transfer_changed(self, mode):
         self.post_transfer_dir_edit.setEnabled("不分发" not in mode)
@@ -806,6 +856,7 @@ class EncodeTab(BaseTab):
         self._track_status.setText("选择输入视频后自动检测音频/字幕轨道")
         set_label_kind(self._track_status, "muted")
         self._update_static_track_visibility(True)
+        self._sync_subtitle_stream_availability()
 
     def _update_static_track_visibility(self, show: bool):
         """显示/隐藏静态音轨和字幕选择控件。"""
@@ -879,6 +930,7 @@ class EncodeTab(BaseTab):
 
         self._probe_btn.setVisible(True)
         self._update_static_track_visibility(False)
+        self._sync_subtitle_stream_availability()
 
     @staticmethod
     def _build_stream_label(stream, stream_type):
@@ -954,6 +1006,10 @@ class EncodeTab(BaseTab):
         else:
             sub_key = self.subtitle_tracks_combo.currentText()
             sub_custom = self.subtitle_tracks_custom_edit.text()
+
+        # 输出容器不支持内封字幕流时, 强制不保留 (与界面禁用保持一致)
+        if not supports_embedded_subtitles(self.current_output_extension()):
+            sub_key, sub_custom = "不保留字幕", ""
 
         return ArgsNamespace(
             command=self.command_name,

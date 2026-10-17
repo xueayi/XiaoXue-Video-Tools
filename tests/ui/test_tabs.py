@@ -100,8 +100,16 @@ def test_encode_output_format_linkage(encode):
 def test_encode_track_combos_linkage(encode):
     encode.audio_tracks_combo.setCurrentText("自定义选择 (填写编号)")
     assert encode.audio_tracks_custom_edit.isEnabled()
+    # 内封字幕流仅 MKV / MOV 可用
+    encode.output_format_combo.setCurrentText("MKV (多轨封装)")
     encode.subtitle_tracks_combo.setCurrentText("自定义选择 (填写编号)")
     assert encode.subtitle_tracks_custom_edit.isEnabled()
+
+    # MP4 输出时该项不可选, 且自动回到「不保留字幕」
+    encode.output_format_combo.setCurrentText("MP4 (默认)")
+    assert not encode.subtitle_tracks_combo.isEnabled()
+    assert encode.subtitle_tracks_combo.currentText() == "不保留字幕"
+    assert not encode.subtitle_tracks_custom_edit.isEnabled()
 
 
 def test_encode_transfer_linkage(encode):
