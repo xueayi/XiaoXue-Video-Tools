@@ -30,20 +30,18 @@ def _pump_until(qapp, cond, timeout_ms=5000):
 # ----------------------------------------------------------------
 
 def test_window_builds_all_pages(win):
-    assert win._stack.count() == 10
-    assert len(win._tabs) == 10
+    # 5 个分组平铺 12 页: 首页 + 9 个功能页 + 设置 + 使用说明
+    assert win._stack.count() == 12
+    assert len(win._tabs) == 12
+    # 只有 9 个功能页 + 使用说明注册了 executor (首页/设置不可执行)
     assert len(win._handlers) == 10
-    assert win._sidebar.count() == 10
+    assert win._sidebar.count() == 12
     assert win.windowTitle() == "小雪工具箱"
     assert win.minimumSize().width() == 960
 
 
 def test_flat_grouped_navigation(win):
-    """导航保持 main 的分组平铺结构: 4 个分组 + 10 个功能页。
-
-    两个已下线入口移除后「特色与辅助」分组变空被删除；
-    不引入首页/设置等新入口（后续分支负责）。
-    """
+    """导航为 5 个分组平铺 12 页 (无二级 Tab 容器)。"""
     rows = win._sidebar._page_of_row
     section_titles = [
         win._sidebar._list.item(row).text()
@@ -53,15 +51,19 @@ def test_flat_grouped_navigation(win):
         win._sidebar._list.item(row).text()
         for row, page in enumerate(rows) if page is not None
     ]
-    assert section_titles == ["视频处理", "格式与媒体", "质量与批量", "帮助"]
+    assert section_titles == [
+        "常用", "视频处理", "格式与媒体", "质量与批量", "系统",
+    ]
     assert item_titles == [
+        "首页",
         "视频压制", "音频替换", "音视频抽取",
         "封装转换", "媒体元数据检测", "图片转换",
         "素材质量检测", "文件夹创建", "批量重命名",
-        "使用说明",
+        "设置", "使用说明",
     ]
     assert win._sidebar._list.count() == len(section_titles) + len(item_titles)
-    assert "首页" not in item_titles and "设置" not in item_titles
+    assert win._sidebar.count() == len(item_titles)
+    assert "首页" in item_titles and "设置" in item_titles
 
 
 def test_navigation_switches_stack(win, qapp):
@@ -93,7 +95,8 @@ def test_status_bar_ready(win):
 
 def test_execute_success_flow(win, qapp, monkeypatch):
     win._handlers["视频压制"] = lambda args: print("fake encode")
-    win._sidebar.setCurrentRow(0)
+    # 首页执行按钮禁用, 切到「视频压制」(索引 1) 才能执行
+    win._sidebar.setCurrentRow(1)
     win._on_execute()
     _pump_until(qapp, lambda: "完成" in win.statusBar().currentMessage())
     assert win._execute_btn.isEnabled()
@@ -104,13 +107,14 @@ def test_execute_failure_flow(win, qapp, monkeypatch):
     def boom(args):
         raise ValueError("运行失败")
     win._handlers["视频压制"] = boom
-    win._sidebar.setCurrentRow(0)
+    win._sidebar.setCurrentRow(1)
     win._on_execute()
     _pump_until(qapp, lambda: "失败" in win.statusBar().currentMessage())
     assert "执行失败" in "\n".join(win._log_panel._chunks)
 
 
 def test_execute_invalid_command_logs_error(win):
+    win._sidebar.setCurrentRow(1)  # 首页执行按钮禁用, 需先进入功能页
     win._handlers.clear()
     win._on_execute()
     assert any("未知命令" in c for c in win._log_panel._chunks)
@@ -123,13 +127,15 @@ def test_execute_empty_stack_noop(win, qapp):
 
 
 def test_build_args_error_logged(win, monkeypatch):
-    monkeypatch.setattr(win._tabs[0], "build_args",
+    win._sidebar.setCurrentRow(1)
+    monkeypatch.setattr(win._tabs[1], "build_args",
                         lambda: (_ for _ in ()).throw(RuntimeError("坏参数")))
     win._on_execute()
     assert any("坏参数" in c for c in win._log_panel._chunks)
 
 
 def test_stop_without_runner_noop(win):
+    win._sidebar.setCurrentRow(1)
     win._on_stop()
     assert win._execute_btn.isEnabled()
 
@@ -148,6 +154,7 @@ def test_stop_running_task(win, qapp):
 
     fake = FakeRunner()
     win._runner = fake
+    win._sidebar.setCurrentRow(1)
     win._stop_btn.setEnabled(True)
     win._on_stop()
     assert fake.terminated

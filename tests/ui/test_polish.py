@@ -229,6 +229,8 @@ def test_stop_when_runner_not_running(win):
         def isRunning(self):
             return False
     win._runner = NotRunning()
+    # 首页/设置页执行按钮禁用, 先切到功能页再断言仍可用
+    win._sidebar.setCurrentRow(1)
     win._on_stop()
     assert win._execute_btn.isEnabled()
 
