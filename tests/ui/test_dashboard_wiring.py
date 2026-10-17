@@ -13,8 +13,7 @@ from src.ui.collapsible_log import CollapsibleLog
 from src.ui.error_card import ErrorCategory, ErrorInfo
 from src.ui.home_page import HomePage
 from src.ui.main_window import MainWindow
-from src.ui.mock_data import MOCK_TASKS
-from src.ui.task_card import CURRENT_TASK_ID, TaskArea, TaskCard
+from src.ui.task_card import CURRENT_TASK_ID, TaskArea
 from src.ui.task_state import TaskStatus
 from src.task.result import TaskResult
 
@@ -450,57 +449,140 @@ def test_bottom_area_reserves_height_for_visible_content(win):
 
 
 # ----------------------------------------------------------------
-# 首页 mock 最近任务
+# 首页真实记录 (替代 mock 示例)
 # ----------------------------------------------------------------
 
-def test_home_recent_tasks_use_mock_data(win):
+def test_home_starts_without_mock_examples(win):
     home = win._tabs[0]
     assert isinstance(home, HomePage)
-    area = home._recent_tasks_area
-    assert isinstance(area, TaskArea)
-    assert area.task_ids == [task.task_id for task in MOCK_TASKS]
-    assert len(area.task_ids) == 5
-    assert len(area.findChildren(TaskCard)) == 5
-
-    statuses = {card.state.status for card in area._cards.values()}
-    assert statuses == {
-        TaskStatus.RUNNING,
-        TaskStatus.SUCCESS,
-        TaskStatus.PARTIAL,
-        TaskStatus.FAILED,
-        TaskStatus.CANCELLED,
-    }
-    # 保留「示例数据」说明标签
-    assert home._recent_tasks_placeholder.text()
-    assert "示例数据" in home._recent_tasks_placeholder.text()
+    assert home.task_records == []
+    assert home.recent_outputs == []
+    assert home._recent_tasks_area.task_ids == []
+    assert home._recent_tasks_placeholder.text() == "暂无任务记录"
+    assert home._recent_outputs_placeholder.text() == "暂无输出文件"
+    assert home._clear_records_btn.isEnabled() is False
 
 
-def test_home_mock_cancel_is_local_only(win):
+def test_on_task_result_appends_home_record_and_outputs(win):
     home = win._tabs[0]
-    area = home._recent_tasks_area
-    card = area._cards["mock-running-001"]
-    assert card.state.status is TaskStatus.RUNNING
+    win._sidebar.setCurrentRow(1)
+    win._task_caption = "视频压制"
+    win._on_task_result(TaskResult.ok("完成", outputs=("C:/out/a.mp4",)))
 
-    card._cancel_btn.click()
-
-    # 只在本地把该卡置为已取消, 其余卡不变
-    assert area._cards["mock-running-001"].state.status is TaskStatus.CANCELLED
-    assert area._cards["mock-success-001"].state.status is TaskStatus.SUCCESS
-    assert "已取消" in area._cards["mock-running-001"]._status_label.text()
-
-    # 不接后端: 没有 TaskRunner, 底部执行区不受影响
-    assert win._runner is None
-    assert win._dashboard.isHidden() is True
-    assert win._execute_btn.isEnabled() is False  # 首页不参与执行
-    assert not any("正在停止" in chunk for chunk in win._log_panel._chunks)
+    assert len(home.task_records) == 1
+    record = home.task_records[0]
+    assert record.title == "视频压制"
+    assert record.status is TaskStatus.SUCCESS
+    assert record.message == "完成"
+    assert home.recent_outputs == ["C:/out/a.mp4"]
+    assert home._clear_records_btn.isEnabled() is True
+    # 任务卡渲染在首页任务区
+    assert home._recent_tasks_area.task_ids == [record.task_id]
 
 
-def test_home_mock_cards_are_not_bound_to_execution(win):
-    """首页示例卡片的信号只落在首页本地, 不连到主窗口停止路径。"""
+def test_on_task_result_failed_records_without_outputs(win):
     home = win._tabs[0]
-    received = []
-    home._recent_tasks_area.cancel_requested.connect(received.append)
+    win._sidebar.setCurrentRow(1)
+    win._task_caption = "封装转换"
+    win._on_task_result(TaskResult.failed("FFmpeg 退出码 1"))
 
-    home._recent_tasks_area._cards["mock-running-001"]._cancel_btn.click()
-    assert received == ["mock-running-001"]
-    assert win._error_card.isHidden() is True
+    assert home.task_records[0].status is TaskStatus.FAILED
+    assert home.task_records[0].title == "封装转换"
+    assert home.task_records[0].message == "FFmpeg 退出码 1"
+    assert home.recent_outputs == []
+    assert home._clear_records_btn.isEnabled() is True
+
+
+def test_on_task_result_partial_and_cancelled_recorded(win):
+    home = win._tabs[0]
+    win._sidebar.setCurrentRow(1)
+    win._task_caption = "图片转换"
+    win._on_task_result(TaskResult.partial("成功 2 个，失败 1 个"))
+    win._task_caption = "视频压制"
+    win._on_task_result(TaskResult.cancelled("用户取消"))
+
+    assert [record.status for record in home.task_records] == [
+        TaskStatus.CANCELLED, TaskStatus.PARTIAL]
+
+
+def test_home_clear_button_clears_tasks_and_outputs(win):
+    home = win._tabs[0]
+    home.add_task_record("视频压制", TaskStatus.SUCCESS, "完成")
+    home.add_recent_outputs(["C:/out/a.mp4", "C:/out/b.mp4"])
+    assert home._clear_records_btn.isEnabled() is True
+
+    home._clear_records_btn.click()
+
+    assert home.task_records == []
+    assert home.recent_outputs == []
+    assert home._recent_tasks_area.isHidden() is True
+    assert home._recent_tasks_placeholder.isHidden() is False
+    assert home._recent_outputs_placeholder.isHidden() is False
+    assert home._clear_records_btn.isEnabled() is False
+
+
+def test_home_recent_outputs_deduped_and_capped(win):
+    home = win._tabs[0]
+    home.add_recent_outputs(["C:/out/a.mp4", "C:/out/b.mp4"])
+    home.add_recent_outputs(["C:/out/b.mp4", "C:/out/c.mp4"])
+    assert home.recent_outputs == [
+        "C:/out/c.mp4", "C:/out/b.mp4", "C:/out/a.mp4"]
+
+    for index in range(12):
+        home.add_recent_outputs([f"C:/out/extra-{index}.mp4"])
+    assert len(home.recent_outputs) == 10
+
+
+def test_home_outputs_alone_enable_clear_button(win):
+    home = win._tabs[0]
+    home.add_recent_outputs(["C:/out/only.mp4"])
+    assert home.task_records == []
+    assert home.recent_outputs == ["C:/out/only.mp4"]
+    assert home._clear_records_btn.isEnabled() is True
+    home._clear_records_btn.click()
+    assert home._clear_records_btn.isEnabled() is False
+
+
+def test_home_records_newest_first_and_card_count(win):
+    home = win._tabs[0]
+    home.add_task_record("视频压制", TaskStatus.SUCCESS, "第一条")
+    home.add_task_record("封装转换", TaskStatus.FAILED, "第二条")
+    assert [record.title for record in home.task_records] == [
+        "封装转换", "视频压制"]
+    assert len(home._recent_tasks_area.task_ids) == 2
+
+
+def test_on_task_result_uses_runner_command_when_caption_empty(win):
+    class _FakeRunner:
+        command_name = "图片转换"
+
+        def isRunning(self):
+            return False
+
+    home = win._tabs[0]
+    win._runner = _FakeRunner()
+    win._task_caption = ""
+    win._on_task_result(TaskResult.ok())
+    win._runner = None
+
+    assert home.task_records[0].title == "图片转换"
+
+
+def test_on_task_result_records_once_per_result(win):
+    home = win._tabs[0]
+    win._sidebar.setCurrentRow(1)
+    win._task_caption = "视频压制"
+    win._on_task_result(TaskResult.ok(outputs=("C:/out/one.mp4",)))
+    assert len(home.task_records) == 1
+    assert home.recent_outputs == ["C:/out/one.mp4"]
+
+
+def test_home_task_area_cards_reflect_records(win):
+    from src.ui.task_card import TaskCard
+
+    home = win._tabs[0]
+    home.add_task_record("视频压制", TaskStatus.SUCCESS)
+    home.add_task_record("封装转换", TaskStatus.FAILED)
+    assert len(home._recent_tasks_area.findChildren(TaskCard)) == 2
+    home.clear_records()
+    assert home._recent_tasks_area.findChildren(TaskCard) == []

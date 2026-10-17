@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """功能页面 Tab 模块。"""
 
-from .help_tab import HelpTab
 from .folder_creator_tab import FolderCreatorTab
 from .remux_tab import RemuxTab
 from .image_convert_tab import ImageConvertTab
@@ -13,7 +12,6 @@ from .media_probe_tab import MediaProbeTab
 from .encode_tab import EncodeTab
 
 __all__ = [
-    "HelpTab",
     "FolderCreatorTab",
     "RemuxTab",
     "ImageConvertTab",

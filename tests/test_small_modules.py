@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""业务模块批 1: _version / help_texts / log_utils / utils / gui_config /
+"""业务模块批 1: _version / log_utils / utils / gui_config /
 post_transfer / encode_params 边界。"""
 
 import logging
@@ -8,7 +8,6 @@ import sys
 import pytest
 
 import src._version as version_mod
-import src.help_texts as help_mod
 import src.log_utils as log_utils
 import src.utils as utils
 
@@ -34,16 +33,6 @@ def test_git_version_exception(monkeypatch):
         raise FileNotFoundError("no git")
     monkeypatch.setattr(version_mod.subprocess, "check_output", boom)
     assert version_mod._git_version() == ""
-
-
-# ----------------------------------------------------------------
-# help_texts
-# ----------------------------------------------------------------
-
-def test_get_help_text_known_and_unknown():
-    topic = next(iter(help_mod.HELP_TEXTS))
-    assert help_mod.get_help_text(topic)
-    assert help_mod.get_help_text("不存在的功能") == "暂无此功能的说明。"
 
 
 # ----------------------------------------------------------------

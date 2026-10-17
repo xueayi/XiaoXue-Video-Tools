@@ -202,8 +202,11 @@ def test_add_multi_file_chooser_browse(tab, monkeypatch):
 
 
 def test_add_basic_controls(tab):
+    from src.ui.widgets import WheelGuardComboBox
+
     io = tab.add_group("g")
     combo_default = tab.add_combo(io, "c1", ["a", "b"], "b")
+    assert isinstance(combo_default, WheelGuardComboBox)
     assert combo_default.currentText() == "b"
     combo_nodef = tab.add_combo(io, "c2", ["a", "b"], "zz")
     assert combo_nodef.currentText() == "a"
@@ -227,6 +230,26 @@ def test_add_hint_types(tab):
     assert warn.objectName() == "hint_warning"
     assert tip.objectName() == "hint_tip"
     assert odd.objectName() == "hint_info"
+
+
+def test_add_hint_uses_full_width_single_row(tab):
+    """注释框改为单控件行 (不再有空的标签列), 避免上下留白过大。"""
+    from PyQt6.QtWidgets import QFormLayout
+
+    io = tab.add_group("g")
+    hint = tab.add_hint(io, "单行提示", "info")
+    row = io.rowCount() - 1
+    assert io.labelForField(hint) is None
+    assert io.itemAt(row, QFormLayout.ItemRole.FieldRole).widget() is hint
+    assert io.itemAt(row, QFormLayout.ItemRole.LabelRole) is None
+
+
+def test_add_hint_adds_exactly_one_form_row(tab):
+    io = tab.add_group("g")
+    before = io.rowCount()
+    tab.add_hint(io, "提示一", "info")
+    tab.add_hint(io, "提示二", "warning")
+    assert io.rowCount() == before + 2
 
 
 def test_add_link(tab):

@@ -43,14 +43,14 @@ from ..task.status import TaskStatus as ResultStatus
 from .tabs import (
     EncodeTab, ReplaceAudioTab, RemuxTab, QcTab,
     MediaProbeTab, ExtractAvTab, ImageConvertTab,
-    FolderCreatorTab, BatchRenameTab, HelpTab,
+    FolderCreatorTab, BatchRenameTab,
 )
 
 from ..executors import (
     execute_encode, execute_replace_audio, execute_extract_av,
     execute_remux, execute_image_convert, execute_folder_creator,
     execute_batch_rename, execute_qc,
-    execute_help, execute_media_probe,
+    execute_media_probe,
 )
 from .._version import __version__ as _VERSION
 
@@ -105,7 +105,6 @@ _EXECUTORS = {
     "素材质量检测": execute_qc,
     "文件夹创建": execute_folder_creator,
     "批量重命名": execute_batch_rename,
-    "使用说明": execute_help,
 }
 
 
@@ -178,7 +177,6 @@ def _tab_defs():
         ]),
         ("系统", [
             ("设置", "ri.settings-3-line", SettingsPage),
-            ("使用说明", "ri.question-line", HelpTab),
         ]),
     ]
 
@@ -360,10 +358,12 @@ class MainWindow(QMainWindow):
 
         self._execute_btn = QPushButton("开始执行")
         self._execute_btn.setObjectName("execute_btn")
+        self._execute_btn.setIconSize(QSize(16, 16))
         self._execute_btn.clicked.connect(self._on_execute)
 
         self._stop_btn = QPushButton("停止")
         self._stop_btn.setObjectName("stop_btn")
+        self._stop_btn.setIconSize(QSize(16, 16))
         self._stop_btn.setEnabled(False)
         self._stop_btn.clicked.connect(self._on_stop)
 
@@ -571,10 +571,12 @@ class MainWindow(QMainWindow):
         if running:
             self._execute_btn.setIcon(
                 icons.icon("ri.loader-4-line", "accent_text_disabled"))
-            self._stop_btn.setIcon(icons.icon("ri.stop-fill", "#ffffff"))
         else:
             self._execute_btn.setIcon(icons.icon("ri.play-fill", "on_accent"))
-            self._stop_btn.setIcon(icons.icon("ri.stop-fill", "#ffffff"))
+        # 停止按钮: 圆形描边图标 (不再用实心方块), 颜色随主题/状态:
+        # 运行中为白色 (危险色底), 禁用时用 muted 文本色。
+        stop_color = "#ffffff" if running else theme.color("text_disabled")
+        self._stop_btn.setIcon(icons.icon("ri.stop-circle-line", stop_color))
 
     # ================================================================
     # 页面路由
@@ -739,6 +741,9 @@ class MainWindow(QMainWindow):
         )
         view_status = _RESULT_TO_VIEW_STATUS[result.status]
 
+        # 首页「最近任务 / 最近输出」记录真实结果 (不再使用 mock 示例)
+        self._record_home_result(caption, view_status, result)
+
         for warning in result.warnings:
             self._log_panel.append_log(f"\n⚠ {warning}\n")
 
@@ -776,6 +781,24 @@ class MainWindow(QMainWindow):
         self._set_running(False)
         self.statusBar().showMessage(f"{status_text}  |  v{_VERSION}")
         self._refresh_bottom_minimum()
+
+    def _record_home_result(self, caption, view_status, result):
+        """把真实任务结果转发给首页的「最近任务 / 最近输出」。
+
+        首页最多各保留 10 条; outputs 为空时只记录任务, 不新增输出行。
+        """
+        home = self._home_page
+        if home is None:
+            return
+        outputs = tuple(getattr(result, "outputs", ()) or ())
+        home.add_task_record(
+            command=caption,
+            status=view_status,
+            message=getattr(result, "message", "") or "",
+            outputs=outputs,
+        )
+        if outputs:
+            home.add_recent_outputs(outputs)
 
     # ----------------------------------------------------------------
     # 错误卡片 (M2.5: TaskResult.stderr_tail + exit_code -> UserFacingError)

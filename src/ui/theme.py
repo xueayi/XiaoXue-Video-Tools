@@ -409,22 +409,16 @@ QLineEdit::placeholder {
     color: $input_placeholder;
 }
 
-/* 下拉框箭头 —— 纯 CSS 三角 */
+/* 下拉框箭头 —— 由 WheelGuardComboBox 自绘 (QSS 关闭原生箭头) */
 QComboBox::drop-down {
     border: none;
     width: 28px;
     padding-right: 8px;
 }
 QComboBox::down-arrow {
+    image: none;
     width: 0;
     height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid $text_secondary;
-}
-QComboBox::down-arrow:hover,
-QComboBox::down-arrow:on {
-    border-top-color: $accent;
 }
 QComboBox QAbstractItemView {
     border: 1px solid $menu_border;
@@ -557,6 +551,11 @@ QPushButton#clear_btn:hover {
     background-color: $hover_overlay;
     color: $text_primary;
 }
+QPushButton#clear_btn:disabled {
+    background-color: transparent;
+    border-color: $input_disabled_border;
+    color: $text_disabled;
+}
 
 /* 图标小按钮 (日志工具条) */
 QPushButton#icon_btn {
@@ -609,7 +608,7 @@ QLineEdit#log_filter {
 }
 
 /* ================================================================
-   滚动条  —— 极细风格，hover 展开
+   滚动条  —— 细长风格 (10px), hover 提亮
    ================================================================ */
 QScrollArea {
     border: none;
@@ -622,30 +621,29 @@ QStackedWidget {
     background-color: $window_bg;
 }
 QScrollBar:vertical {
-    width: 6px;
+    width: 10px;
     background: transparent;
-    margin: 2px;
+    margin: 1px;
 }
 QScrollBar::handle:vertical {
     background: $scrollbar;
-    border-radius: 3px;
+    border-radius: 4px;
     min-height: 40px;
 }
 QScrollBar::handle:vertical:hover {
     background: $scrollbar_hover;
-    width: 8px;
 }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
     height: 0;
 }
 QScrollBar:horizontal {
-    height: 6px;
+    height: 10px;
     background: transparent;
-    margin: 2px;
+    margin: 1px;
 }
 QScrollBar::handle:horizontal {
     background: $scrollbar;
-    border-radius: 3px;
+    border-radius: 4px;
     min-width: 40px;
 }
 QScrollBar::handle:horizontal:hover {
@@ -657,12 +655,12 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 
 /* 深色终端内的滚动条 */
 QTextEdit#log_panel QScrollBar:vertical {
-    width: 6px;
+    width: 10px;
     background: transparent;
 }
 QTextEdit#log_panel QScrollBar::handle:vertical {
     background: $log_scrollbar;
-    border-radius: 3px;
+    border-radius: 4px;
 }
 QTextEdit#log_panel QScrollBar::handle:vertical:hover {
     background: $log_scrollbar_hover;
@@ -785,8 +783,8 @@ QLabel#hint_info {
     color: $text_tertiary;
     font-size: 12px;
     line-height: 150%;
-    padding: 1px 0;
-    margin: 2px 0;
+    padding: 0 2px;
+    margin: 0;
     background: transparent;
     border: none;
 }
@@ -794,19 +792,19 @@ QLabel#hint_warning {
     background-color: $hint_warn_bg;
     border: 1px solid $hint_warn_border;
     border-radius: 6px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     color: $hint_warn_text;
     font-size: 12px;
-    margin: 4px 0;
+    margin: 2px 0;
 }
 QLabel#hint_tip {
     background-color: $hint_tip_bg;
     border: 1px solid $hint_tip_border;
     border-radius: 6px;
-    padding: 8px 12px;
+    padding: 6px 10px;
     color: $hint_tip_text;
     font-size: 12px;
-    margin: 4px 0;
+    margin: 2px 0;
 }
 QLabel#muted_label {
     color: $text_tertiary;

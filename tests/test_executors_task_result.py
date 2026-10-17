@@ -21,7 +21,6 @@ from PIL import Image
 
 import src.executors.batch_executor as batch_ex
 import src.executors.file_executor as file_ex
-import src.executors.misc_executor as misc_ex
 import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.executors.video_executor as ve
@@ -536,14 +535,3 @@ def test_probe_partial_files_success_with_warnings(monkeypatch, tmp_path):
     result = probe_ex.execute_media_probe(args)
     assert result.status is TaskStatus.SUCCESS
     assert any("探测失败" in warning for warning in result.warnings)
-
-
-# ----------------------------------------------------------------
-# misc_executor
-# ----------------------------------------------------------------
-
-def test_help_returns_success(capsys):
-    result = misc_ex.execute_help(NS(help_topic="视频压制"))
-    assert result.status is TaskStatus.SUCCESS
-    assert "视频压制" in result.message
-    assert "使用说明" in capsys.readouterr().out
