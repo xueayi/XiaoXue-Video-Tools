@@ -179,15 +179,21 @@ def test_execute_remux_run(capsys, monkeypatch, tmp_path):
 def test_execute_remux_overwrite_deletes_original(capsys, monkeypatch, tmp_path):
     src = tmp_path / "a.mkv"
     src.write_bytes(b"x")
-    monkeypatch.setattr(file_ex, "run_ffmpeg_command", lambda cmd, **k: 0)
+
+    def fake_run(cmd, **k):
+        # 模拟 ffmpeg 成功并真实产出输出文件
+        Path(cmd[-1]).write_bytes(b"remuxed")
+        return 0
+    monkeypatch.setattr(file_ex, "run_ffmpeg_command", fake_run)
     args = NS(remux_input=[str(src)], remux_preset="自定义",
               remux_format_custom="mkv", remux_output="",
               remux_overwrite=True, remux_audio_tracks="全部保留",
               remux_audio_tracks_custom="", remux_subtitle_tracks="全部保留",
               remux_subtitle_tracks_custom="")
     file_ex.execute_remux(args)
-    # mkv -> mkv 同名不同后缀 (a.mkv -> a_remux.mkv), 覆盖模式删除原文件
+    # mkv -> mkv 同名不同后缀 (a.mkv -> a_remux.mkv)，输出存在才删除原文件
     assert not src.exists()
+    assert (tmp_path / "a_remux.mkv").exists()
     assert "覆盖模式" in capsys.readouterr().out
 
 

@@ -147,7 +147,13 @@ def test_remux_digit_only_tracks(capsys, monkeypatch, tmp_path):
 def test_remux_overwrite_delete_failure(capsys, monkeypatch, tmp_path):
     src = tmp_path / "a.mkv"
     src.write_bytes(b"x")
-    monkeypatch.setattr(file_ex, "run_ffmpeg_command", lambda cmd, **k: 0)
+
+    def fake_run(cmd, **k):
+        # 模拟 ffmpeg 成功并真实产出输出文件（否则按新语义不删源）
+        from pathlib import Path
+        Path(cmd[-1]).write_bytes(b"remuxed")
+        return 0
+    monkeypatch.setattr(file_ex, "run_ffmpeg_command", fake_run)
 
     real_remove = file_ex.os.remove
 
@@ -159,7 +165,9 @@ def test_remux_overwrite_delete_failure(capsys, monkeypatch, tmp_path):
     args = _remux_args(tmp_path, src, remux_format_custom="mp4",
                        remux_overwrite=True)
     file_ex.execute_remux(args)
-    assert "删除失败" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "删除失败" in out
+    assert src.exists()  # 删除失败时源文件保留
 
 
 def test_image_convert_str_input(capsys, monkeypatch, tmp_path):
