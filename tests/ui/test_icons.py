@@ -9,7 +9,8 @@ def test_icon_by_token(qapp):
 
 
 def test_icon_by_raw_hex(qapp):
-    assert not icons.icon("ri.stop-fill", "#ffffff").isNull()
+    # 停止按钮改用圆形描边图标 (原实心 stop-fill 在禁用态显示成黑方块)
+    assert not icons.icon("ri.stop-circle-line", "#ffffff").isNull()
 
 
 def test_accent_and_secondary(qapp):

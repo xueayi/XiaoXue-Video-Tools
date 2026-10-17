@@ -9,7 +9,6 @@ import pytest
 import src.executors.batch_executor as batch_ex
 import src.executors.common as common
 import src.executors.file_executor as file_ex
-import src.executors.misc_executor as misc_ex
 import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.executors.video_executor as ve
@@ -422,15 +421,3 @@ def test_execute_qc_auto_report_path(capsys, monkeypatch, tmp_path):
               custom_codecs="", custom_images="")
     qc_ex.execute_qc(args)
     assert "自动生成报告路径" in capsys.readouterr().out
-
-
-# ----------------------------------------------------------------
-# misc_executor
-# ----------------------------------------------------------------
-
-def test_execute_help(capsys):
-    args = NS(help_topic="视频压制")
-    result = misc_ex.execute_help(args)
-    assert result.status is TaskStatus.SUCCESS
-    assert "使用说明" in result.message
-    assert "使用说明" in capsys.readouterr().out

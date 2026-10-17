@@ -12,7 +12,7 @@
 import os
 
 import pytest
-from PyQt6.QtWidgets import QToolButton
+from PyQt6.QtWidgets import QLabel, QToolButton
 
 from src.encode_params import resolve_encoder_params
 from src.media_probe import DetailedMediaInfo, StreamInfo
@@ -24,6 +24,7 @@ from src.ui.execution_summary import PLACEHOLDER
 from src.ui.input_media_card import INFO_FIELDS
 from src.ui.output_plan_card import PLAN_TARGETS, encoder_badge
 from src.ui.tabs import EncodeTab
+from src.ui.widgets import WheelGuardComboBox
 from src.utils import generate_output_path
 
 
@@ -93,16 +94,38 @@ def test_layout_order_matches_ia(tab):
     assert widgets[0] is tab.input_media_card
     index = {widget: position for position, widget in enumerate(widgets)}
 
-    # A 输入媒体 < B 输出方案 < C 常用设置 < D 高级折叠头 < H 执行摘要(页尾)
-    assert index[tab.input_media_card] < index[tab.output_plan_card]
-    assert index[tab.output_plan_card] < index[tab.common_group]
-    assert index[tab.common_group] < index[tab.advanced_header]
+    # A 输入媒体 < B 常用设置 < C 输出方案 < D 轨道检测 < E 压制后分发
+    # < F 高级折叠头 < H 执行摘要(页尾)
+    assert index[tab.input_media_card] < index[tab.common_group]
+    assert index[tab.common_group] < index[tab.output_plan_card]
+    assert index[tab.output_plan_card] < index[tab._track_group]
+    assert index[tab._track_group] < index[tab.transfer_group]
+    assert index[tab.transfer_group] < index[tab.advanced_header]
     assert index[tab.advanced_header] < index[tab.summary_card]
     assert widgets[-1] is tab.summary_card
+    # 预设下拉仍复用输出方案卡内的唯一实例
+    assert tab.preset_combo is tab.output_plan_card.preset_combo
 
-    # E 压制后分发：位于常用设置之后、高级设置之前
-    assert index[tab.common_group] < index[tab.transfer_group]
-    assert index[tab.transfer_group] < index[tab.advanced_header]
+
+def test_transfer_group_hint_removed(tab):
+    """「压制与分发」分组里的注释框已按要求整块删除。"""
+    texts = [label.text() for label in tab.transfer_group.findChildren(QLabel)]
+    assert not any("WebDAV" in text for text in texts)
+    assert not any("NAS/云端" in text for text in texts)
+
+
+def test_input_media_then_common_settings(tab):
+    """常用设置紧跟在输入媒体卡之后 (A 输入媒体 → B 常用设置)。"""
+    widgets = _top_level_widgets(tab)
+    assert widgets[0] is tab.input_media_card
+    assert widgets[1] is tab.common_group
+
+
+def test_common_settings_immediately_before_output_plan(tab):
+    """输出方案卡紧跟在常用设置之后 (B 常用设置 → C 输出方案)。"""
+    widgets = _top_level_widgets(tab)
+    common_index = widgets.index(tab.common_group)
+    assert widgets[common_index + 1] is tab.output_plan_card
 
 
 def test_advanced_group_collapsed_by_default(tab):
@@ -145,6 +168,8 @@ def test_plan_cards_map_to_existing_presets(tab):
 def test_more_presets_keeps_all_seven(tab):
     combo = tab.preset_combo
     assert combo is tab.output_plan_card.preset_combo
+    # 统一使用抗误滚轮、自绘三角箭头的下拉框
+    assert isinstance(combo, WheelGuardComboBox)
     assert combo.count() == len(QUALITY_PRESETS) == 7
     assert [combo.itemText(i) for i in range(combo.count())] == list(
         QUALITY_PRESETS.keys()

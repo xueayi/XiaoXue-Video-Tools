@@ -7,9 +7,7 @@ from src.media_probe import DetailedMediaInfo, StreamInfo
 from src.ui.tabs import (
     EncodeTab, ReplaceAudioTab, RemuxTab, QcTab, MediaProbeTab,
     ExtractAvTab, ImageConvertTab, FolderCreatorTab, BatchRenameTab,
-    HelpTab,
 )
-from src.ui.tabs.help_tab import _plain_to_html
 
 
 def _info(path="C:/a.mp4", video_codec="h264", audio_codec="aac",
@@ -43,7 +41,6 @@ TAB_CASES = [
     (ImageConvertTab, "图片转换"),
     (FolderCreatorTab, "文件夹创建"),
     (BatchRenameTab, "批量重命名"),
-    (HelpTab, "使用说明"),
 ]
 
 
@@ -314,7 +311,7 @@ def test_remux_lang_display():
 
 
 # ----------------------------------------------------------------
-# QcTab / HelpTab
+# QcTab
 # ----------------------------------------------------------------
 
 def test_qc_res_linkage(qapp):
@@ -327,32 +324,3 @@ def test_qc_res_linkage(qapp):
     assert tab.min_res_custom_edit.isEnabled()
     tab.min_res_combo.setCurrentText("1080P (1920x1080)")
     assert not tab.min_res_custom_edit.isEnabled()
-
-
-def test_help_tab_topic_switch(qapp):
-    tab = HelpTab()
-    tab.topic_combo.setCurrentText("封装转换")
-    assert "封装转换" in tab._help_display.toPlainText() or \
-        tab._help_display.toPlainText()
-    tab.on_theme_changed()
-
-
-@pytest.mark.parametrize("line, marker", [
-    ("在线文档: https://example.com", "example.com"),
-    ("【标题】内容", "<h2>"),
-    ("━━ 基本使用 ━━", "section-title"),
-    ("• 列表项", "<li>"),
-    ("✅ 很好", "tip"),
-    ("⚠️ 注意", "warn"),
-    ("❌ 错误", "warn"),
-    ("❓ 疑问", "<b>"),
-    ("→ 缩进行", "margin-left:16px"),
-    ("普通段落", "<p>"),
-])
-def test_help_plain_to_html(line, marker):
-    assert marker in _plain_to_html(line)
-
-
-def test_help_escapes_html():
-    assert "&lt;b&gt;" in _plain_to_html("<b>")
-    assert "<br/>" in _plain_to_html("a\n\nb")

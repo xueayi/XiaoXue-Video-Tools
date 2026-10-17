@@ -10,7 +10,6 @@ from PIL import Image
 
 import src.batch_renamer as br
 import src.executors.file_executor as file_ex
-import src.executors.misc_executor as misc_ex
 import src.executors.probe_executor as probe_ex
 import src.executors.qc_executor as qc_ex
 import src.folder_creator as fc

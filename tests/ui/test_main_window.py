@@ -31,18 +31,18 @@ def _pump_until(qapp, cond, timeout_ms=5000):
 # ----------------------------------------------------------------
 
 def test_window_builds_all_pages(win):
-    # 5 个分组平铺 12 页: 首页 + 9 个功能页 + 设置 + 使用说明
-    assert win._stack.count() == 12
-    assert len(win._tabs) == 12
-    # 只有 9 个功能页 + 使用说明注册了 executor (首页/设置不可执行)
-    assert len(win._handlers) == 10
-    assert win._sidebar.count() == 12
+    # 5 个分组平铺 11 页: 首页 + 9 个功能页 + 设置
+    assert win._stack.count() == 11
+    assert len(win._tabs) == 11
+    # 9 个功能页注册了 executor (首页/设置不可执行, 使用说明已移除)
+    assert len(win._handlers) == 9
+    assert win._sidebar.count() == 11
     assert win.windowTitle() == "小雪工具箱"
     assert win.minimumSize().width() == 960
 
 
 def test_flat_grouped_navigation(win):
-    """导航为 5 个分组平铺 12 页 (无二级 Tab 容器)。"""
+    """导航为 5 个分组平铺 11 页 (无二级 Tab 容器, 无使用说明)。"""
     rows = win._sidebar._page_of_row
     section_titles = [
         win._sidebar._list.item(row).text()
@@ -60,11 +60,12 @@ def test_flat_grouped_navigation(win):
         "视频压制", "音频替换", "音视频抽取",
         "封装转换", "媒体元数据检测", "图片转换",
         "素材质量检测", "文件夹创建", "批量重命名",
-        "设置", "使用说明",
+        "设置",
     ]
     assert win._sidebar._list.count() == len(section_titles) + len(item_titles)
     assert win._sidebar.count() == len(item_titles)
     assert "首页" in item_titles and "设置" in item_titles
+    assert "使用说明" not in item_titles
 
 
 def test_navigation_switches_stack(win, qapp):
@@ -174,6 +175,52 @@ def test_running_button_icons_branch(win, qapp):
     win._set_running(False)
     win._runner = None
     win._update_run_button_icons()
+
+
+def test_stop_button_uses_circle_outline_icon(win, monkeypatch):
+    """停止按钮图标改为圆形描边 (不再用实心 stop-fill 黑方块)。"""
+    captured_names = []
+    real_icon = mw.icons.icon
+
+    def spy(name, token="icon_color"):
+        captured_names.append(name)
+        return real_icon(name, token)
+
+    monkeypatch.setattr(mw.icons, "icon", spy)
+    win._update_run_button_icons()
+
+    assert "ri.stop-circle-line" in captured_names
+    assert "ri.stop-fill" not in captured_names
+    from PyQt6.QtCore import QSize
+    assert win._stop_btn.iconSize() == QSize(16, 16)
+
+
+def test_stop_icon_color_follows_state(win, monkeypatch):
+    """停止图标: 运行中白色 (危险色底), 禁用时用 muted 文本色。"""
+    captured = []
+    real_icon = mw.icons.icon
+
+    def spy(name, token="icon_color"):
+        captured.append((name, token))
+        return real_icon(name, token)
+
+    monkeypatch.setattr(mw.icons, "icon", spy)
+    win._update_run_button_icons()
+    idle_tokens = [token for name, token in captured
+                   if name == "ri.stop-circle-line"]
+    assert idle_tokens and idle_tokens[0] == theme.color("text_disabled")
+
+    class _RunningRunner:
+        def isRunning(self):
+            return True
+
+    captured.clear()
+    win._runner = _RunningRunner()
+    win._update_run_button_icons()
+    win._runner = None
+    running_tokens = [token for name, token in captured
+                      if name == "ri.stop-circle-line"]
+    assert running_tokens and running_tokens[0] == "#ffffff"
 
 
 def test_on_duration_ready_updates_parser(win):

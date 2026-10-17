@@ -144,3 +144,55 @@ def test_toggle_theme():
     assert theme.toggle_theme() == "dark"
     assert theme.get_theme() == "dark"
     assert theme.toggle_theme() == "light"
+
+
+def _css_block(css: str, selector: str) -> str:
+    """返回 stylesheet 中某个选择器的第一条规则块 (含选择器行)。"""
+    start = css.index(selector)
+    end = css.index("}", start)
+    return css[start:end + 1]
+
+
+def test_scrollbar_width_is_10px():
+    """滚动条从 6px 加宽到 10px (横/纵向), handle 圆角与最小尺寸同步。"""
+    css = theme.get_stylesheet("light")
+    vertical = _css_block(css, "QScrollBar:vertical {")
+    assert "width: 10px;" in vertical
+    assert "min-height: 40px;" in _css_block(css, "QScrollBar::handle:vertical {")
+    horizontal = _css_block(css, "QScrollBar:horizontal {")
+    assert "height: 10px;" in horizontal
+    assert "min-width: 40px;" in _css_block(
+        css, "QScrollBar::handle:horizontal {")
+    assert "border-radius: 4px;" in _css_block(
+        css, "QScrollBar::handle:vertical {")
+
+
+def test_scrollbar_hover_does_not_resize_handle():
+    """hover 只提亮颜色, 不再用无效的 handle width 变化。"""
+    css = theme.get_stylesheet("light")
+    hover = _css_block(css, "QScrollBar::handle:vertical:hover {")
+    assert "width:" not in hover
+    assert "background:" in hover
+
+
+def test_native_combo_arrow_disabled():
+    """原生下拉箭头关闭 (由 WheelGuardComboBox 自绘三角)。"""
+    css = theme.get_stylesheet("light")
+    arrow = _css_block(css, "QComboBox::down-arrow {")
+    assert "image: none;" in arrow
+    assert "border-left" not in arrow
+    assert "border-top" not in arrow
+
+
+def test_hint_spacing_tightened():
+    """注释框 margin/padding 收紧 (单控件行后不再有大段留白)。"""
+    css = theme.get_stylesheet("light")
+    info = _css_block(css, "QLabel#hint_info {")
+    assert "margin: 0;" in info
+    assert "padding: 0 2px;" in info
+    warn = _css_block(css, "QLabel#hint_warning {")
+    assert "padding: 6px 10px;" in warn
+    assert "margin: 2px 0;" in warn
+    tip = _css_block(css, "QLabel#hint_tip {")
+    assert "padding: 6px 10px;" in tip
+    assert "margin: 2px 0;" in tip
