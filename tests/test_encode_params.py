@@ -832,3 +832,89 @@ class TestNvencPresetOverride:
         assert params.encoder == "h264_nvenc"
         assert params.speed_preset == "p4"  # 默认 p4
         assert params.is_custom is True
+
+# ----------------------------------------------------------------
+# M3.2: 硬件 2-Pass 守卫 / QSV/AMF 速度档默认值
+# ----------------------------------------------------------------
+
+class TestHardwareTwoPassGuard:
+    """2-Pass 仅 CPU 支持; 硬件选择 2-Pass 时按普通模式 + 回退提示执行。"""
+
+    @staticmethod
+    def _params(encoder):
+        return EncodeParams(
+            input_path="a.mp4",
+            output_path="b.mp4",
+            encoder=encoder,
+            rc_mode="2pass",
+            bitrate="8M",
+            is_custom=True,
+        )
+
+    def test_get_encode_mode_two_pass_only_cpu(self):
+        for encoder in ("libx264", "libx265"):
+            assert self._params(encoder).get_encode_mode() is EncodeMode.TWO_PASS
+
+    @pytest.mark.parametrize(
+        "encoder", ["h264_nvenc", "hevc_nvenc", "h264_qsv", "h264_amf"])
+    def test_get_encode_mode_hardware_2pass_is_normal(self, encoder):
+        assert self._params(encoder).get_encode_mode() is EncodeMode.NORMAL
+
+    def test_print_encode_info_hardware_2pass_hint(self, capsys):
+        print_encode_info(self._params("h264_nvenc"), QUALITY_PRESETS)
+        out = capsys.readouterr().out
+        assert "硬件编码器不支持 2-Pass" in out
+        assert "multipass" in out
+        assert "将执行真正的两遍编码" not in out
+
+    def test_print_encode_info_cpu_2pass_real(self, capsys):
+        print_encode_info(self._params("libx264"), QUALITY_PRESETS)
+        out = capsys.readouterr().out
+        assert "将执行真正的两遍编码" in out
+        assert "硬件编码器不支持" not in out
+
+
+class TestHardwareSpeedPresetDefaults:
+    """M3.2: QSV 默认 medium / AMF 默认 balanced / 非法档位回退。"""
+
+    @staticmethod
+    def _resolve(**overrides):
+        from tests.conftest import MockArgs
+
+        args = MockArgs(input="", preset="自定义 (Custom)", **overrides)
+        return resolve_encoder_params(
+            args=args,
+            quality_presets=QUALITY_PRESETS,
+            encoders=ENCODERS,
+            audio_encoders=AUDIO_ENCODERS,
+            rate_control_modes=RATE_CONTROL_MODES,
+            generate_output_path_func=generate_output_path,
+        )
+
+    def test_amf_invalid_speed_falls_back_balanced(self):
+        params = self._resolve(encoder="H.264 (AMD AMF)", speed_preset="medium")
+        assert params.encoder == "h264_amf"
+        assert params.speed_preset == "balanced"
+
+    def test_amf_valid_speed_kept(self):
+        params = self._resolve(encoder="H.264 (AMD AMF)", speed_preset="speed")
+        assert params.speed_preset == "speed"
+
+    def test_qsv_invalid_speed_falls_back_medium(self):
+        params = self._resolve(encoder="H.264 (Intel QSV)", speed_preset="p4")
+        assert params.encoder == "h264_qsv"
+        assert params.speed_preset == "medium"
+
+    def test_qsv_cpu_style_speed_kept(self):
+        params = self._resolve(encoder="H.264 (Intel QSV)", speed_preset="slow")
+        assert params.speed_preset == "slow"
+
+    def test_cpu_speed_preset_unchanged(self):
+        params = self._resolve(
+            encoder="H.264 (CPU - libx264)", speed_preset="veryslow")
+        assert params.speed_preset == "veryslow"
+
+    def test_nvenc_still_defaults_p4(self):
+        params = self._resolve(
+            encoder="H.264 (NVIDIA NVENC)", nvenc_preset="使用预设默认")
+        assert params.speed_preset == "p4"

@@ -335,3 +335,69 @@ def test_print_encode_info_contains_audio(capsys):
     print_encode_info(aac_params, QUALITY_PRESETS)
     out = capsys.readouterr().out
     assert "音频: aac / 256k" in out
+
+# ---------------------------------------------------------------------------
+# 6. M3.2: 硬件 RC 真实映射 (不再伪装 2-Pass)
+# ---------------------------------------------------------------------------
+
+def test_hardware_2pass_selection_uses_real_vbr_multipass(tmp_path, monkeypatch):
+    """硬件 + 2-Pass: 走普通分支, 命令回退 VBR + multipass, 不出现 -2pass。"""
+    args = make_args(
+        tmp_path,
+        preset="自定义 (Custom)",
+        encoder="H.264 (NVIDIA NVENC)",
+        rate_control="2-Pass VBR (两遍编码)",
+        video_bitrate="10M",
+    )
+    captured = _capture_normal_command(monkeypatch, args)
+
+    cmd = core.build_encode_command(**captured)
+    assert "-2pass" not in cmd
+    assert "vbr_hq" not in cmd
+    assert _flag_value(cmd, "-rc") == "vbr"
+    assert _flag_value(cmd, "-multipass") == "fullres"
+    assert _flag_value(cmd, "-c:v") == "h264_nvenc"
+
+
+def test_hardware_2pass_qsv_amf_fall_back_without_fake_2pass(tmp_path, monkeypatch):
+    for encoder in ("H.264 (Intel QSV)", "H.264 (AMD AMF)"):
+        args = make_args(
+            tmp_path,
+            preset="自定义 (Custom)",
+            encoder=encoder,
+            rate_control="2-Pass VBR (两遍编码)",
+            video_bitrate="10M",
+        )
+        captured = _capture_normal_command(monkeypatch, args)
+        cmd = core.build_encode_command(**captured)
+        assert "-2pass" not in cmd, encoder
+        assert "vbr_hq" not in cmd, encoder
+
+
+def test_nvenc_preset_command_keeps_preset_quality_snapshot(tmp_path, monkeypatch):
+    """预设模式仍是 -cq + 预设 extra_args (能力映射只作用于自定义模式)。"""
+    args = make_args(tmp_path, preset="【速度优先】NVIDIA 显卡加速")
+    captured = _capture_normal_command(monkeypatch, args)
+    cmd = core.build_encode_command(**captured)
+
+    assert "-2pass" not in cmd
+    assert _flag_value(cmd, "-cq") == "23"
+    assert _flag_value(cmd, "-preset") == "p4"
+    _assert_audio(cmd, "copy")
+
+
+def test_custom_nvenc_crf_maps_to_rc_vbr_cq():
+    cmd = core.build_encode_command(
+        "i.mp4", "o.mp4", encoder="h264_nvenc", crf=20, rc_mode="crf")
+    assert _flag_value(cmd, "-rc") == "vbr"
+    assert _flag_value(cmd, "-cq") == "20"
+    assert _flag_value(cmd, "-b:v") == "0"
+    assert "-2pass" not in cmd
+
+
+def test_custom_amf_speed_uses_quality_flag():
+    cmd = core.build_encode_command(
+        "i.mp4", "o.mp4", encoder="h264_amf", crf=20, rc_mode="crf",
+        speed_preset="balanced")
+    assert _flag_value(cmd, "-quality") == "balanced"
+    assert "-preset" not in cmd

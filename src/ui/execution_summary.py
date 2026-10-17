@@ -43,6 +43,9 @@ def format_video_summary(params) -> str:
     mode = params.get_encode_mode()
     if mode == EncodeMode.TWO_PASS:
         parts.append("2-Pass VBR")
+    elif params.rc_mode == "2pass":
+        # M3.2: 硬件编码器不支持真两遍, 避免摘要误导性地宣称 "2-Pass"
+        parts.append("码率控制 VBR（硬件不支持两遍编码，已回退）")
     elif params.rc_mode and params.rc_mode != "crf":
         parts.append(f"码率控制 {params.rc_mode}")
     if params.speed_preset:

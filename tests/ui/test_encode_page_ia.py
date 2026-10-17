@@ -377,10 +377,10 @@ def test_summary_matches_resolve_encoder_params(tab, tmp_path, preset_name):
 def test_summary_matches_resolve_custom_params(tab, tmp_path):
     _set_missing_input(tab, tmp_path)
     tab.preset_combo.setCurrentText("自定义 (Custom)")
-    tab.encoder_combo.setCurrentText("H.264 (NVIDIA NVENC)")
+    # M3.2: 真 2-Pass 仅 CPU 编码器 (硬件 2pass 会回退 VBR/multipass)
+    tab.encoder_combo.setCurrentText("H.264 (CPU - libx264)")
     tab.rate_control_combo.setCurrentText("2-Pass VBR (两遍编码)")
     tab.video_bitrate_combo.setCurrentText("8M")
-    tab.nvenc_preset_combo.setCurrentText("p6")
     tab.resolution_edit.setText("1280x720")
     tab.fps_spin.setValue(30)
     tab.audio_encoder_combo.setCurrentText("AAC (推荐)")
@@ -389,19 +389,48 @@ def test_summary_matches_resolve_custom_params(tab, tmp_path):
     expected = _resolved(tab)
     card = tab.summary_card
     assert card.last_params == expected
-    assert expected.encoder == "h264_nvenc"
+    assert expected.encoder == "libx264"
     assert expected.bitrate == "8M"
-    assert expected.speed_preset == "p6"
+    assert expected.speed_preset == "medium"
     assert expected.resolution == "1280x720"
     assert expected.fps == 30
     assert expected.get_encode_mode().value == "2pass"
 
     video = card.row_text("video")
-    for token in ("h264_nvenc", "码率 8M", "2-Pass VBR", "速度 p6",
+    for token in ("libx264", "码率 8M", "2-Pass VBR", "速度 medium",
                   "分辨率 1280x720", "帧率 30"):
         assert token in video
     audio = card.row_text("audio")
     assert "aac" in audio and "256k" in audio
+
+
+def test_summary_hardware_2pass_never_claims_two_pass(qapp, tmp_path):
+    """M3.2: 硬件 + 2-Pass 摘要不再出现 "2-Pass" 字样 (跟随 get_encode_mode)。"""
+    from src.ui.args_builder import ArgsNamespace
+    from src.ui.execution_summary import ExecutionSummaryCard
+
+    card = ExecutionSummaryCard()
+    args = ArgsNamespace(
+        command="视频压制",
+        input=str(tmp_path / "clip.mp4"), output="", subtitle="",
+        compat_mode=False, preset="自定义 (Custom)",
+        encoder="H.264 (NVIDIA NVENC)", speed_preset="medium",
+        nvenc_preset="使用预设默认", rate_control="2-Pass VBR (两遍编码)",
+        crf=20, video_bitrate="8M", output_format="MP4 (默认)",
+        output_format_custom="", resolution="", fps=0,
+        audio_encoder="复制 (不重新编码)", audio_bitrate="192k",
+        audio_tracks="仅保留第 1 条 (#0)", audio_tracks_custom="",
+        subtitle_tracks="不保留字幕", subtitle_tracks_custom="",
+        post_transfer_mode="不分发", post_transfer_dir="",
+        extra_args="", debug_mode=False,
+    )
+    params = card.update_from_args(args)
+
+    assert params is not None
+    assert params.encoder == "h264_nvenc"
+    assert params.get_encode_mode().value != "2pass"
+    assert "2-Pass" not in card.row_text("video")
+    assert "码率 8M" in card.row_text("video")
 
 
 def test_summary_subtitle_burn_and_keep(tab, tmp_path):

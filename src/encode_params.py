@@ -12,6 +12,14 @@ from enum import Enum
 
 from colorama import Fore, Style
 
+from .capabilities.encoder import (
+    default_speed_preset,
+    encoder_capability,
+)
+
+#: 真正支持 2-Pass 的编码器 (M3.2: 硬件编码器不支持真两遍, 选择 2-Pass 时回退)
+TWO_PASS_ENCODERS = ("libx264", "libx265")
+
 
 class EncodeMode(Enum):
     """编码模式枚举"""
@@ -67,13 +75,18 @@ class EncodeParams:
     def get_encode_mode(self) -> EncodeMode:
         """
         根据参数确定编码模式。
-        
+
+        M3.2 起 TWO_PASS 仅对 CPU 编码器 (libx264/libx265) 成立:
+        硬件编码器没有真正的两遍编码, 选择 2-Pass 时按普通模式执行
+        (core 会用能力模型回退到 VBR/多遍参数, 见 plan_rate_control)。
+
         Returns:
             编码模式枚举值
         """
         if self.compat_mode and self.subtitle_path:
             return EncodeMode.COMPAT
-        elif self.is_custom and self.rc_mode == "2pass" and self.bitrate:
+        elif (self.is_custom and self.rc_mode == "2pass" and self.bitrate
+              and self.encoder in TWO_PASS_ENCODERS):
             return EncodeMode.TWO_PASS
         else:
             return EncodeMode.NORMAL
@@ -167,7 +180,9 @@ def resolve_encoder_params(
         audio_encoder = audio_encoders.get(args.audio_encoder, "copy")
         audio_bitrate = args.audio_bitrate
         
-        # 自定义模式下根据编码器类型选择速度预设
+        # 自定义模式下按编码器能力选择速度档:
+        # NVENC=p1..p7 / QSV=CPU 档 / AMF=speed|balanced|quality / CPU=CPU 档
+        capability = encoder_capability(encoder)
         if "nvenc" in encoder:
             # NVENC 编码器：使用 N卡速度档位
             nvenc_preset = getattr(args, 'nvenc_preset', '使用预设默认')
@@ -175,6 +190,13 @@ def resolve_encoder_params(
                 speed_preset = nvenc_preset
             else:
                 speed_preset = "p4"  # NVENC 默认档位
+        elif capability is not None and capability.is_hardware:
+            # QSV / AMF: 档位取值与 CPU 不同, 非法值回退各自默认档
+            chosen = getattr(args, 'speed_preset', None)
+            if chosen in capability.speed_values:
+                speed_preset = chosen
+            else:
+                speed_preset = default_speed_preset(capability)
         else:
             # CPU 编码器：使用编码速度预设
             speed_preset = getattr(args, 'speed_preset', None)
@@ -271,3 +293,14 @@ def print_encode_info(params: EncodeParams, quality_presets: Dict[str, Any]) -> 
         print(f"{Fore.CYAN}[兼容模式] 已启用 AviSynth + VSFilter 字幕渲染{Style.RESET_ALL}", flush=True)
     elif mode == EncodeMode.TWO_PASS:
         print(f"{Fore.CYAN}[2-Pass 模式] 将执行真正的两遍编码{Style.RESET_ALL}", flush=True)
+    elif (params.is_custom and params.rc_mode == "2pass"
+          and params.encoder not in TWO_PASS_ENCODERS):
+        # M3.2: 硬件编码器没有真两遍, core 会用能力模型回退到 VBR/多遍参数
+        capability = encoder_capability(params.encoder)
+        multipass = " + multipass" if (
+            capability is not None and capability.multipass_args) else ""
+        print(
+            f"{Fore.YELLOW}[提示] 硬件编码器不支持 2-Pass，"
+            f"已按 VBR{multipass} 执行{Style.RESET_ALL}",
+            flush=True,
+        )
