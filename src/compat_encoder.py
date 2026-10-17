@@ -12,13 +12,15 @@ Windows 系统字体、字重等兼容性问题。
 4. 清理临时文件 (.avs, .lwi)
 """
 import os
-import subprocess
 import tempfile
 import shutil
 from typing import Optional, List, Tuple
 
 from colorama import Fore, Style
 
+from .core import run_ffmpeg_streaming
+from .process import ExecutableMissingError
+from .task.context import TaskCancelled
 from .utils import get_base_dir, get_internal_dir, get_ffmpeg_path
 from .presets import ENCODERS
 
@@ -309,37 +311,30 @@ def run_compat_encode(
         bin_dir = get_bin_dir()
         env = os.environ.copy()
         env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "")
-        
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            encoding='utf-8',
-            errors='replace',
-            bufsize=1,
-            env=env,  # 使用修改后的环境变量
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-        )
-        
-        # 实时读取输出
-        while True:
-            line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
+
+        def _on_line(line: str) -> None:
             if line:
-                print(line, end='', flush=True)
-        
-        process.wait()
-        
-        if process.returncode == 0:
+                print(line, end="", flush=True)
+
+        # 经 TaskContext 的 ProcessRunner 执行: 兼容模式同样可被 UI 取消
+        completed = run_ffmpeg_streaming(cmd, on_line=_on_line, env=env)
+        return_code = (
+            completed.exit_code if completed.exit_code is not None else -1)
+
+        if return_code == 0:
             print(f"\n{Fore.GREEN}[成功] 兼容模式压制完成!{Style.RESET_ALL}", flush=True)
         else:
-            print(f"\n{Fore.RED}[失败] 兼容模式压制失败 (code={process.returncode}){Style.RESET_ALL}", flush=True)
+            print(f"\n{Fore.RED}[失败] 兼容模式压制失败 (code={return_code}){Style.RESET_ALL}", flush=True)
             _print_compat_error_tips()
         
-        return process.returncode
+        return return_code
         
+    except TaskCancelled:
+        # 取消必须向上传播, 由 TaskRunner 映射为 CANCELLED (finally 仍会清理临时文件)
+        raise
+    except ExecutableMissingError as e:
+        print(f"\n{Fore.RED}[错误] 找不到 FFmpeg: {e}{Style.RESET_ALL}", flush=True)
+        return -1
     except Exception as e:
         print(f"\n{Fore.RED}[错误] 兼容模式执行失败: {e}{Style.RESET_ALL}", flush=True)
         logger.exception("Compat encode failed")

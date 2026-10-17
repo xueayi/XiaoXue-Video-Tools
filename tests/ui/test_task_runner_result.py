@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
-"""TaskRunner 结果桥接测试 (M2.1)。
+"""TaskRunner 结果桥接与取消测试 (M2.1/M2.3)。
 
-全部直接在主线程调用 ``runner.run()``，不启动真实 QThread、不依赖事件循环：
-signal 为同线程直连，收集列表同步即可断言。
+结果归一化测试直接在主线程调用 ``runner.run()``（不启动真实 QThread）；
+取消测试使用真实 QThread + cancel_and_wait。
 """
+
+import threading
+import time
 
 from src.task.context import TaskCancelled, TaskContext, current_task
 from src.task.result import TaskResult
@@ -187,3 +190,66 @@ def test_normalize_direct_cases():
     assert TaskRunner._normalize(None).status is TaskStatus.FAILED
     assert TaskRunner._normalize("x").status is TaskStatus.FAILED
     assert TaskRunner._normalize("x").status is TaskStatus.FAILED
+
+
+# ----------------------------------------------------------------
+# M2.3 取消链路
+# ----------------------------------------------------------------
+
+def test_request_cancel_triggers_registered_runner_cancel():
+    class FakeHandle:
+        def __init__(self):
+            self.cancel_calls = 0
+
+        def cancel(self):
+            self.cancel_calls += 1
+
+    context = TaskContext()
+    handle = FakeHandle()
+    context.register(handle)
+    runner = TaskRunner(lambda args: None, None, "c", context=context)
+
+    runner.request_cancel()
+
+    assert context.cancelled is True
+    assert handle.cancel_calls == 1
+
+
+def test_cancel_and_wait_joins_thread(qapp):
+    entered = threading.Event()
+
+    def handler(args):
+        entered.set()
+        time.sleep(0.05)
+        return 0
+
+    runner = TaskRunner(handler, None, "c")
+    runner.start()
+    assert entered.wait(2.0)
+
+    ok = runner.cancel_and_wait(5000)
+    assert ok is True
+    assert runner.isRunning() is False
+    assert runner.context.cancelled is True
+
+
+def test_default_context_uses_qprocess_runner_in_gui(qapp):
+    from src.process.qprocess_runner import QProcessRunner
+
+    runner = TaskRunner(lambda args: None, None, "c")
+    created = runner.context.create_runner()
+    assert isinstance(created, QProcessRunner)
+
+
+def test_runner_uses_subprocess_backend_without_qapplication():
+    """无 QApplication 时 (纯后端测试) 默认工厂退回 subprocess 后端。"""
+    from src.process.subprocess_runner import SubprocessRunner
+    from src.ui.task_runner import _default_runner_factory
+
+    created = _default_runner_factory()
+    # 测试进程存在 QApplication 时该断言不成立, 因此仅在无 app 时校验
+    from PyQt6.QtWidgets import QApplication
+    if QApplication.instance() is None:
+        assert isinstance(created, SubprocessRunner)
+    else:
+        assert created is not None

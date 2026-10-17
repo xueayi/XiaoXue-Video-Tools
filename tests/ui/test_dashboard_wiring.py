@@ -137,28 +137,26 @@ def test_success_hides_error_card(win):
     assert win._error_card.isHidden() is True
 
 
-def test_stop_hides_error_card(win):
+def test_stop_requests_cancel_and_hides_error_card(win):
     class FakeRunner:
         def __init__(self):
-            self.terminated = False
+            self.cancelled = False
 
         def isRunning(self):
             return True
 
-        def terminate(self):
-            self.terminated = True
-
-        def wait(self, ms):
-            return True
+        def request_cancel(self):
+            self.cancelled = True
 
     win._error_card.show(ErrorInfo(title="旧错误", causes=["原因"]))
     fake = FakeRunner()
     win._runner = fake
     win._on_stop()
 
-    assert fake.terminated is True
+    assert fake.cancelled is True
     assert win._error_card.isHidden() is True
-    assert win._dashboard.isHidden() is True
+    assert win._stop_btn.isEnabled() is False
+    assert any("正在停止" in chunk for chunk in win._log_panel._chunks)
     win._runner = None
 
 
@@ -183,22 +181,19 @@ def test_error_action_requested_logs_hint(win):
 
 
 # ----------------------------------------------------------------
-# 取消链路 (复用既有停止路径, 不新增 terminate 调用点)
+# 取消链路 (M2.3: 协作式取消, 不再 terminate QThread)
 # ----------------------------------------------------------------
 
 def test_task_area_cancel_requested_reaches_stop(win):
     class FakeRunner:
         def __init__(self):
-            self.terminated = False
+            self.cancelled = False
 
         def isRunning(self):
             return True
 
-        def terminate(self):
-            self.terminated = True
-
-        def wait(self, ms):
-            return True
+        def request_cancel(self):
+            self.cancelled = True
 
     fake = FakeRunner()
     win._runner = fake
@@ -209,18 +204,22 @@ def test_task_area_cancel_requested_reaches_stop(win):
     assert card._cancel_btn.isEnabled() is True
     card._cancel_btn.click()
 
-    assert fake.terminated is True
-    assert any("已停止" in chunk for chunk in win._log_panel._chunks)
+    assert fake.cancelled is True
+    assert any("正在停止" in chunk for chunk in win._log_panel._chunks)
     assert win._stop_btn.isEnabled() is False
+    assert win._execute_btn.isEnabled() is False  # 等 result_signal 到达后再恢复
     win._runner = None
 
 
-def test_no_new_terminate_call_sites():
-    """守护: PR-06 未新增 QThread.terminate() 调用点 (仅既有 2 处)。"""
+def test_no_thread_terminate_call_sites():
+    """守护: 停止/关闭不再使用 QThread.terminate() (M2.3 可靠取消)。"""
     source_path = (
         Path(__file__).resolve().parents[2] / "src" / "ui" / "main_window.py")
     source = source_path.read_text(encoding="utf-8")
-    assert source.count(".terminate()") == 2
+    assert source.count(".terminate()") == 0
+    assert "QThread.terminate" not in source
+    assert "self._runner.terminate" not in source
+    assert source.count("request_cancel") >= 2
 
 
 # ----------------------------------------------------------------
@@ -417,7 +416,7 @@ def test_home_mock_cancel_is_local_only(win):
     assert win._runner is None
     assert win._dashboard.isHidden() is True
     assert win._execute_btn.isEnabled() is False  # 首页不参与执行
-    assert not any("已停止" in chunk for chunk in win._log_panel._chunks)
+    assert not any("正在停止" in chunk for chunk in win._log_panel._chunks)
 
 
 def test_home_mock_cards_are_not_bound_to_execution(win):

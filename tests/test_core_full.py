@@ -10,6 +10,7 @@ from src.core import (
     build_extract_video_command, build_remux_command,
     build_replace_audio_command, run_2pass_encode, run_ffmpeg_command,
 )
+from src.process import CompletedProcess, ExecutableMissingError
 
 
 # ----------------------------------------------------------------
@@ -222,71 +223,85 @@ def test_run_2pass_success_cleans_log(monkeypatch, tmp_path, monkeypatch_tmp=Non
 
 
 # ----------------------------------------------------------------
-# run_ffmpeg_command
+# run_ffmpeg_command (经 ProcessRunner; mock run_ffmpeg_streaming)
 # ----------------------------------------------------------------
 
-class FakeProcess:
-    def __init__(self, lines, returncode=0):
-        self._lines = list(lines)
-        self.returncode = returncode
-        self.stdout = self  # 代码访问 process.stdout.readline
-
-    def readline(self):
-        if self._lines:
-            return self._lines.pop(0)
-        return ""
-
-    def poll(self):
-        return 0 if not self._lines else None
-
-    def wait(self):
-        return self.returncode
-
-
-@pytest.fixture
-def popen_mock(monkeypatch):
-    holder = {}
-
-    def install(lines, returncode=0):
-        holder["proc"] = FakeProcess(lines, returncode)
-        monkeypatch.setattr(core.subprocess, "Popen",
-                            lambda *a, **k: holder["proc"])
-        return holder["proc"]
-
-    return install
+def _fake_streaming(lines=(), exit_code=0, cancelled=False):
+    def fake(cmd, on_line=None, env=None):
+        for line in lines:
+            if on_line is not None:
+                on_line(line)
+        return CompletedProcess(exit_code=exit_code, cancelled=cancelled)
+    return fake
 
 
 def test_run_ffmpeg_dry_run():
     assert run_ffmpeg_command(["ffmpeg", "-y"], dry_run=True) == 0
 
 
-def test_run_ffmpeg_success(popen_mock):
-    lines = ["line1\n", "frame= 1\n", ""]
-    proc = popen_mock(lines, 0)
+def test_run_ffmpeg_success(monkeypatch):
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", _fake_streaming(
+        ["line1\n", "frame= 1\n"], exit_code=0))
     got = []
     rc = run_ffmpeg_command(["ffmpeg"], progress_callback=got.append)
     assert rc == 0
     assert got == ["line1\n", "frame= 1\n"]
 
 
-def test_run_ffmpeg_nonzero_with_hw_error(popen_mock):
-    popen_mock(["No NVENC capable devices found\n"], 1)
-    rc = run_ffmpeg_command(["ffmpeg"])
-    assert rc == 1
+def test_run_ffmpeg_nonzero_with_hw_error(monkeypatch):
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", _fake_streaming(
+        ["No NVENC capable devices found\n"], exit_code=1))
+    assert run_ffmpeg_command(["ffmpeg"]) == 1
 
 
 def test_run_ffmpeg_filenotfound(monkeypatch):
-    def boom(*a, **k):
-        raise FileNotFoundError("no ffmpeg")
-    monkeypatch.setattr(core.subprocess, "Popen", boom)
+    def boom(cmd, on_line=None, env=None):
+        raise ExecutableMissingError("找不到可执行文件: ffmpeg")
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", boom)
     assert run_ffmpeg_command(["ffmpeg"]) == -1
 
 
 def test_run_ffmpeg_generic_error(monkeypatch):
-    def boom(*a, **k):
+    def boom(cmd, on_line=None, env=None):
         raise RuntimeError("io error")
-    monkeypatch.setattr(core.subprocess, "Popen", boom)
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", boom)
     assert run_ffmpeg_command(["ffmpeg"]) == -1
+
+
+def test_run_ffmpeg_cancelled_raises(monkeypatch):
+    from src.task.context import TaskCancelled
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", _fake_streaming(
+        exit_code=0, cancelled=True))
+    with pytest.raises(TaskCancelled):
+        run_ffmpeg_command(["ffmpeg"])
+
+
+def test_run_ffmpeg_none_exit_code_returns_minus_one(monkeypatch):
+    monkeypatch.setattr(core, "run_ffmpeg_streaming", _fake_streaming(
+        exit_code=None))
+    assert run_ffmpeg_command(["ffmpeg"]) == -1
+
+
+def test_run_2pass_cancelled_between_passes(monkeypatch):
+    from src.task.context import (
+        TaskCancelled, TaskContext, reset_current_task, set_current_task,
+    )
+    calls = []
+
+    def fake_run(cmd, dry_run=False, **kw):
+        calls.append(cmd)
+        return 0
+    monkeypatch.setattr(core, "run_ffmpeg_command", fake_run)
+
+    context = TaskContext()
+    context.cancel()
+    token = set_current_task(context)
+    try:
+        with pytest.raises(TaskCancelled):
+            run_2pass_encode(["a"], ["b"])
+    finally:
+        reset_current_task(token)
+    assert len(calls) == 1  # Pass 1 后已取消, 不再启动 Pass 2
 
 
 # ----------------------------------------------------------------

@@ -2,7 +2,6 @@
 """
 FFmpeg 核心调用模块：构建命令行并执行。
 """
-import subprocess
 import os
 import tempfile
 from typing import Optional, List, Tuple
@@ -11,6 +10,13 @@ from colorama import Fore, Style
 
 from .utils import get_ffmpeg_path, escape_path_for_ffmpeg
 from .presets import QUALITY_PRESETS, ENCODERS
+from .process import (
+    CompletedProcess,
+    ExecutableMissingError,
+    resolve_runner,
+    run as run_process,
+)
+from .task.context import TaskCancelled, current_task
 
 # 初始化 Logger
 import logging
@@ -408,17 +414,57 @@ def build_extract_video_command(
     return cmd
 
 
+def run_ffmpeg_streaming(cmd: List[str], *, on_line=None, env=None) -> CompletedProcess:
+    """
+    经当前 TaskContext 的 ProcessRunner 执行外部命令（流式回调 + 可取消）。
+
+    - 有活动 TaskContext 时使用其注入的 runner（GUI=QProcess / 测试=fake），
+      并把 runner 注册到 TaskContext，使 UI 取消能真正终止子进程；
+    - 无 TaskContext（CLI / 单元测试）时退回 SubprocessRunner；
+    - 被取消时抛 TaskCancelled，由 executor / TaskRunner 映射为 CANCELLED。
+
+    Args:
+        cmd: 命令列表。
+        on_line: 可选的逐行输出回调（stdout/stderr 都转发）。
+        env: 可选的环境变量字典。
+
+    Returns:
+        CompletedProcess（exit_code / cancelled / stderr_tail 等）。
+    """
+    context = current_task()
+    if context is not None:
+        context.raise_if_cancelled()
+    runner = resolve_runner(context)
+    if on_line is not None:
+        runner.on_stdout = on_line
+        runner.on_stderr = on_line
+    if context is not None:
+        context.register(runner)
+    try:
+        completed = run_process(
+            cmd, runner=runner, stdin_pipe=True, env=env)
+    finally:
+        if context is not None:
+            context.unregister(runner)
+    if completed.cancelled:
+        raise TaskCancelled("任务已取消")
+    return completed
+
+
 def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = False) -> int:
     """
     执行 FFmpeg 命令，实时打印输出。
 
+    内部经 :class:`~src.process.ProcessRunner` 执行（支持 UI 取消），
+    对外保持「返回进程退出码」的既有契约。
+
     Args:
         cmd: 命令列表。
         progress_callback: 可选的进度回调函数。
-        dry_run: 若为 True，仅打印命令不执行。
+        dry_run: 若为 True，仅打印命令，不执行。
 
     Returns:
-        进程返回码。
+        进程返回码（启动失败/可执行文件缺失返回 -1）。
     """
     cmd_str = " ".join(cmd)
     
@@ -436,48 +482,40 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = F
     # 收集输出用于错误分析
     output_lines = []
 
+    def _on_line(line: str) -> None:
+        if not line:
+            return
+        data = line if line.endswith("\n") else line + "\n"
+        print(data, end="", flush=True)
+        output_lines.append(data)
+        if progress_callback:
+            progress_callback(data)
+
     try:
-        # 使用 Popen 以实时读取输出
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True,
-            encoding='utf-8',
-            errors='replace',
-            bufsize=1,  # 行缓冲
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
-        )
-
-        # 实时读取输出
-        while True:
-            line = process.stdout.readline()
-            if not line and process.poll() is not None:
-                break
-            if line:
-                print(line, end='', flush=True)
-                output_lines.append(line)
-                if progress_callback:
-                    progress_callback(line)
-
-        process.wait()
-
-        if process.returncode == 0:
-            print(f"\n{Fore.GREEN}[成功] 任务完成!{Style.RESET_ALL}", flush=True)
-        else:
-            print(f"\n{Fore.RED}[失败] FFmpeg 返回错误 (code={process.returncode}){Style.RESET_ALL}", flush=True)
-            # 检测硬件编码器错误并给出友好提示
-            _check_hardware_encoder_error(output_lines)
-
-        return process.returncode
-
-    except FileNotFoundError as e:
+        completed = run_ffmpeg_streaming(cmd, on_line=_on_line)
+    except TaskCancelled:
+        raise  # 取消必须向上传播, 由 TaskRunner 映射为 CANCELLED
+    except ExecutableMissingError as e:
         print(f"\n{Fore.RED}[错误] 找不到 FFmpeg: {e}{Style.RESET_ALL}", flush=True)
         print(f"请确保 bin 目录下有 ffmpeg.exe", flush=True)
         return -1
     except Exception as e:
         print(f"\n{Fore.RED}[错误] 执行失败: {e}{Style.RESET_ALL}", flush=True)
         return -1
+
+    if completed.cancelled:
+        # 防御: 正常路径由 run_ffmpeg_streaming 抛 TaskCancelled, 这里再兜底一次
+        raise TaskCancelled("任务已取消")
+
+    return_code = completed.exit_code if completed.exit_code is not None else -1
+    if return_code == 0:
+        print(f"\n{Fore.GREEN}[成功] 任务完成!{Style.RESET_ALL}", flush=True)
+    else:
+        print(f"\n{Fore.RED}[失败] FFmpeg 返回错误 (code={return_code}){Style.RESET_ALL}", flush=True)
+        # 检测硬件编码器错误并给出友好提示
+        _check_hardware_encoder_error(output_lines)
+
+    return return_code
 
 
 def _check_hardware_encoder_error(output_lines: List[str]) -> None:
@@ -751,6 +789,11 @@ def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool =
     if result1 != 0:
         print(f"\n{Fore.RED}[错误] Pass 1 失败，终止编码{Style.RESET_ALL}")
         return result1
+
+    # Pass 1 完成后检查取消: 用户可能已点击停止, 不应再启动 Pass 2
+    context = current_task()
+    if context is not None:
+        context.raise_if_cancelled()
 
     print(f"\n{Fore.CYAN}{'='*50}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}[Pass 2/2] 正式编码...{Style.RESET_ALL}")

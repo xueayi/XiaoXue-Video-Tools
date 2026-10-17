@@ -142,25 +142,27 @@ def test_stop_without_runner_noop(win):
 
 
 def test_stop_running_task(win, qapp):
-    # 用假 runner 覆盖停止分支, 避免 terminate 真线程在 Windows 上死锁
+    # 假 runner: 断言走协作式取消 (request_cancel), 不再 terminate QThread
     class FakeRunner:
+        def __init__(self):
+            self.cancelled = False
+
         def isRunning(self):
             return True
 
-        def terminate(self):
-            self.terminated = True
-
-        def wait(self, ms):
-            return True
+        def request_cancel(self):
+            self.cancelled = True
 
     fake = FakeRunner()
     win._runner = fake
     win._sidebar.setCurrentRow(1)
-    win._stop_btn.setEnabled(True)
+    win._set_running(True)
     win._on_stop()
-    assert fake.terminated
-    assert win._execute_btn.isEnabled()
-    assert any("已停止" in c for c in win._log_panel._chunks)
+    assert fake.cancelled is True
+    # 运行态等 result_signal 到达后恢复, 停止按钮先禁用防二连点
+    assert win._stop_btn.isEnabled() is False
+    assert win._execute_btn.isEnabled() is False
+    assert any("正在停止" in c for c in win._log_panel._chunks)
 
 
 def test_running_button_icons_branch(win, qapp):
@@ -260,26 +262,30 @@ def test_geometry_restored_on_reopen(qapp, monkeypatch):
     w2.close()
 
 
-def test_close_terminates_running_runner(qapp):
+def test_close_cancels_running_runner(qapp):
+    """关闭窗口: 先 request_cancel, 再有限等待 (不再 terminate QThread)。"""
     class FakeRunner:
         def __init__(self):
             self.calls = []
 
         def isRunning(self):
-            return not self.calls
+            return True
 
-        def terminate(self):
-            self.calls.append("terminate")
+        def request_cancel(self):
+            self.calls.append("cancel")
 
         def wait(self, ms):
-            self.calls.append("wait")
-            return True
+            self.calls.append(("wait", ms))
+            return False
 
     w = MainWindow()
     fake = FakeRunner()
     w._runner = fake
     w.close()
-    assert "terminate" in fake.calls
+    assert fake.calls[0] == "cancel"
+    assert any(
+        isinstance(call, tuple) and call[0] == "wait" and call[1] == 5000
+        for call in fake.calls)
 
 
 # ----------------------------------------------------------------

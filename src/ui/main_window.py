@@ -564,14 +564,18 @@ class MainWindow(QMainWindow):
             pass
 
     def _on_stop(self):
+        """协作式取消：请求 TaskRunner 取消（内部触发 runner.cancel()）。
+
+        不再调用 QThread 的强制终止接口；子进程终止由 runner.wait() 在后台线程
+        推进，UI 状态等 result_signal(CANCELLED) 到达后再恢复。
+        """
         if self._runner and self._runner.isRunning():
-            self._runner.terminate()
-            self._runner.wait(3000)
-            self._log_panel.append_log("\n⏹ 任务已停止\n")
-            self._dashboard.reset()
+            self._stop_btn.setEnabled(False)  # 防二连点
+            self._runner.request_cancel()
             self._error_card.hide()
+            self._log_panel.append_log("\n⏹ 正在停止任务…\n")
+            self.statusBar().showMessage(f"正在停止...  |  v{_VERSION}")
             self._refresh_bottom_minimum()
-            self._set_running(False)
 
     def _on_task_finished(self, success, command_name):
         """deprecated: 旧 bool 结果槽 (保留一版兼容)。
@@ -715,12 +719,24 @@ class MainWindow(QMainWindow):
                       center.y() - self.height() // 2)
 
     def closeEvent(self, event):
+        """关闭窗口：先请求取消，有限等待工作线程退出后再接受关闭。
+
+        不再调用 QThread 的强制终止接口（会绕过 finally/清理且不保证杀掉 FFmpeg）；
+        取消后由 runner 在工作线程内完成 graceful -> terminate -> kill 时序。
+        """
         from ..gui_config import get_qsettings
         settings = get_qsettings()
         settings.setValue("ui/geometry", self.saveGeometry())
-        if self._runner and self._runner.isRunning():
-            self._runner.terminate()
-            self._runner.wait(2000)
+        runner = self._runner
+        if runner is not None and runner.isRunning():
+            cancel_and_wait = getattr(runner, "cancel_and_wait", None)
+            if callable(cancel_and_wait):
+                cancel_and_wait(5000)
+            else:
+                runner.request_cancel()
+                wait = getattr(runner, "wait", None)
+                if callable(wait):
+                    wait(5000)
         super().closeEvent(event)
 
     # ================================================================

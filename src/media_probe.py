@@ -14,7 +14,11 @@ from typing import List, Optional, Dict, Any
 
 from colorama import Fore, Style
 
+from .task.context import TaskCancelled, current_task
 from .utils import get_ffprobe_path
+
+#: ffprobe 探测超时（秒）—— 避免损坏/网络路径文件无限阻塞
+PROBE_TIMEOUT_SEC = 30
 
 # 常见语言代码到中文名称的映射
 LANGUAGE_NAMES = {
@@ -105,6 +109,10 @@ def probe_detailed(file_path: str) -> Optional[DetailedMediaInfo]:
         file_path
     ]
 
+    context = current_task()
+    if context is not None:
+        context.raise_if_cancelled()
+
     try:
         result = subprocess.run(
             cmd,
@@ -112,8 +120,12 @@ def probe_detailed(file_path: str) -> Optional[DetailedMediaInfo]:
             text=True,
             encoding='utf-8',
             errors='replace',
+            timeout=PROBE_TIMEOUT_SEC,
             creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
         )
+
+        if context is not None:
+            context.raise_if_cancelled()
 
         if result.returncode != 0:
             info = DetailedMediaInfo(path=file_path)
@@ -123,6 +135,12 @@ def probe_detailed(file_path: str) -> Optional[DetailedMediaInfo]:
         data = json.loads(result.stdout)
         return _parse_detailed_output(file_path, data)
 
+    except TaskCancelled:
+        raise
+    except subprocess.TimeoutExpired:
+        info = DetailedMediaInfo(path=file_path)
+        info.errors.append(f"ffprobe 探测超时（>{PROBE_TIMEOUT_SEC}s）")
+        return info
     except Exception as e:
         info = DetailedMediaInfo(path=file_path)
         info.errors.append(f"探测失败: {str(e)}")
