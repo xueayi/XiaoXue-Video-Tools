@@ -20,7 +20,7 @@ from string import Template
 from PyQt6.QtGui import QColor, QGuiApplication, QIcon, QPalette
 from PyQt6.QtCore import QSettings
 
-from ..utils import get_base_dir
+from ..utils import get_base_dir, get_internal_dir
 
 # ================================================================
 # 设计令牌
@@ -1114,13 +1114,23 @@ def get_stylesheet(theme: str = None) -> str:
 
 
 def logo_path(theme: str = None):
-    """与主题匹配的品牌 Logo 绝对路径；找不到返回 None。"""
+    """与主题匹配的品牌 Logo 绝对路径；找不到返回 None。
+
+    资源目录优先: PyInstaller onedir 下 datas 会被打进 ``_internal/image``
+    (``sys._MEIPASS`` 或 exe 同级 ``_internal``), 只查 exe 目录会导致
+    发布版 Logo 丢失; exe 同级目录仅作为便携/兼容回退。开发模式下
+    ``get_internal_dir()`` 即项目根目录。
+    """
     name = _LOGO_FILES[theme or get_theme()]
-    base = get_base_dir()
-    for sub in ("image", os.path.join("src", "image"), "."):
-        path = os.path.join(base, sub, name)
-        if os.path.exists(path):
-            return path
+    for root in (get_internal_dir(), get_base_dir()):
+        for sub in ("image", os.path.join("src", "image")):
+            path = os.path.join(root, sub, name)
+            if os.path.exists(path):
+                return path
+    # 旧版便携布局: exe 同级散装 logo
+    fallback = os.path.join(get_base_dir(), name)
+    if os.path.exists(fallback):
+        return fallback
     return None
 
 
