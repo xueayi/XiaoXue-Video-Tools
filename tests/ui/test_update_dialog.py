@@ -33,6 +33,25 @@ def sync_worker_start(monkeypatch):
     monkeypatch.setattr(UpdateWorker, "start", lambda self: self.run())
 
 
+@pytest.fixture(autouse=True)
+def isolated_update_cache(tmp_path, monkeypatch):
+    """把更新暂存目录隔离到临时 cache_dir 并返回它。
+
+    M4.2 起 ``updater.STAGING_DIR`` 是 ``PlatformPaths.cache_dir/update`` 的
+    绝对路径, 而 Worker 用 ``os.path.join(install_dir, STAGING_DIR, ...)``
+    拼接: 不隔离的话被 mock 的下载会把 update.zip 写进仓库的 ``_cache``。
+    """
+    from types import SimpleNamespace
+
+    import src.update.windows as windows
+
+    cache_dir = tmp_path / "cache"
+    monkeypatch.setattr(
+        windows, "platform_paths",
+        lambda: SimpleNamespace(cache_dir=cache_dir))
+    return cache_dir / windows.STAGING_DIR_NAME
+
+
 @pytest.fixture
 def dlg(qapp, monkeypatch, tmp_path):
     """检查结果=发现新版本的对话框 (跳过构造时的网络检查)。"""
