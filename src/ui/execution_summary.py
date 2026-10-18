@@ -87,6 +87,8 @@ def format_subtitle_summary(params) -> str:
         parts.append(f"内嵌 {name}（烧录进画面）")
         if params.compat_mode:
             parts.append("兼容渲染 (AviSynth+VSFilter)")
+        if params.subtitle_fonts.enabled:
+            parts.append("字体兼容增强（允许替换）" if params.subtitle_fonts.allow_fallback else "字体兼容增强（严格检查）")
     else:
         parts.append("不处理外挂字幕")
     if params.subtitle_tracks == "custom":

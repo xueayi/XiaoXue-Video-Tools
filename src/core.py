@@ -3,6 +3,7 @@
 FFmpeg 核心调用模块：构建命令行并执行。
 """
 import os
+from .subtitle_render import PreparedSubtitle, build_subtitle_filter
 import tempfile
 from typing import Optional, List, Tuple
 
@@ -95,6 +96,7 @@ def build_encode_command(
     clip_plan: Optional[ClipPlan] = None,
     clip_audio_indices: tuple[int, ...] = (),
     clip_video_only: bool = False,
+    subtitle_render: PreparedSubtitle | None = None,
 ) -> List[str]:
     """
     构建视频编码 FFmpeg 命令。
@@ -171,8 +173,11 @@ def build_encode_command(
     # 视频滤镜链
     vf_filters = []
     if burn_subtitle:
-        escaped_sub = escape_path_for_ffmpeg(subtitle_path)
-        vf_filters.append(f"subtitles='{escaped_sub}'")
+        if subtitle_render is not None:
+            vf_filters.append(build_subtitle_filter(subtitle_render))
+        else:
+            escaped_sub = escape_path_for_ffmpeg(subtitle_path)
+            vf_filters.append(f"subtitles='{escaped_sub}'")
     if resolution and isinstance(resolution, str) and "x" in resolution:
         w, h = resolution.split("x")
         vf_filters.append(f"scale={w}:{h}")
@@ -475,7 +480,7 @@ def run_ffmpeg_streaming(
     return completed
 
 
-def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = False) -> int:
+def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = False, *, on_log=None) -> int:
     """
     执行 FFmpeg 命令，实时打印日志（stderr），进度走独立通道。
 
@@ -517,6 +522,8 @@ def run_ffmpeg_command(cmd: List[str], progress_callback=None, dry_run: bool = F
         data = line if line.endswith("\n") else line + "\n"
         print(data, end="", flush=True)
         output_lines.append(data)
+        if on_log is not None:
+            on_log(line)
 
     try:
         completed = run_ffmpeg_streaming(
@@ -663,6 +670,7 @@ def build_2pass_commands(
     subtitle_tracks_custom: str = "",
     clip_plan: Optional[ClipPlan] = None,
     clip_audio_indices: tuple[int, ...] = (),
+    subtitle_render: PreparedSubtitle | None = None,
 ) -> Tuple[List[str], List[str]]:
     """
     构建真正的两遍编码 FFmpeg 命令。
@@ -689,7 +697,8 @@ def build_2pass_commands(
                       encoder=encoder, bitrate=bitrate, speed_preset=speed_preset,
                       resolution=resolution, fps=fps, audio_encoder=audio_encoder,
                       audio_bitrate=audio_bitrate, subtitle_path=subtitle_path,
-                      extra_args=extra_args, clip_plan=clip_plan)
+                      extra_args=extra_args, clip_plan=clip_plan,
+                      subtitle_mode=subtitle_mode, subtitle_render=subtitle_render)
         first = build_encode_command(**common, clip_audio_indices=clip_audio_indices,
                                      audio_tracks="none", clip_video_only=True)
         second = build_encode_command(**common, clip_audio_indices=clip_audio_indices)
@@ -728,8 +737,11 @@ def build_2pass_commands(
     # 视频滤镜链
     vf_filters = []
     if burn_subtitle:
-        escaped_sub = escape_path_for_ffmpeg(subtitle_path)
-        vf_filters.append(f"subtitles='{escaped_sub}'")
+        if subtitle_render is not None:
+            vf_filters.append(build_subtitle_filter(subtitle_render))
+        else:
+            escaped_sub = escape_path_for_ffmpeg(subtitle_path)
+            vf_filters.append(f"subtitles='{escaped_sub}'")
     if resolution and isinstance(resolution, str) and "x" in resolution:
         w, h = resolution.split("x")
         vf_filters.append(f"scale={w}:{h}")
@@ -820,7 +832,7 @@ def build_2pass_commands(
     return pass1_cmd, inject_progress(pass2_cmd)
 
 
-def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool = False) -> int:
+def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool = False, *, on_log=None) -> int:
     """两遍共用独立的可写统计文件；成功、失败和取消均自动清理。"""
     if dry_run:
         print(f"[小雪工具箱] 执行命令 (2-Pass):", flush=True)
@@ -830,12 +842,13 @@ def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool =
         return 0
 
     from .platform.paths import platform_paths
+    log_kwargs = {"on_log": on_log} if on_log is not None else {}
     with tempfile.TemporaryDirectory(prefix="encode-", dir=platform_paths().temp_dir) as directory:
         prefix = os.path.join(directory, "ffmpeg2pass")
         commands = [cmd[:-1] + ["-passlogfile", prefix] + cmd[-1:]
                     for cmd in (pass1_cmd, pass2_cmd)]
         print("[Pass 1/2] 分析视频...", flush=True)
-        result = run_ffmpeg_command(commands[0], dry_run=False)
+        result = run_ffmpeg_command(commands[0], dry_run=False, **log_kwargs)
         if result != 0:
             print("[错误] Pass 1 失败，终止编码", flush=True)
             return result
@@ -843,4 +856,4 @@ def run_2pass_encode(pass1_cmd: List[str], pass2_cmd: List[str], dry_run: bool =
         if context is not None:
             context.raise_if_cancelled()
         print("[Pass 2/2] 正式编码...", flush=True)
-        return run_ffmpeg_command(commands[1], dry_run=False)
+        return run_ffmpeg_command(commands[1], dry_run=False, **log_kwargs)

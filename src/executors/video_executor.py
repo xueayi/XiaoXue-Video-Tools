@@ -16,6 +16,8 @@ from ..core import (
     run_2pass_encode,
 )
 from ..compat_encoder import run_compat_encode
+from ..subtitle_fonts import FontCheckError
+from ..subtitle_render import prepare_subtitle, FontSelectionCollector
 from ..capabilities.container import check_encode_output
 from ..presets import (
     ALL_QUALITY_PRESETS as QUALITY_PRESETS,
@@ -106,6 +108,19 @@ def execute_encode(args) -> TaskResult:
             },
         )
 
+    if params.subtitle_fonts.enabled and not params.dry_run:
+        try:
+            with prepare_subtitle(params.subtitle_path, params.subtitle_fonts) as prepared:
+                return _execute_prepared_encode(params, args, clip_kwargs, prepared)
+        except FontCheckError as exc:
+            return TaskResult.failed(str(exc), details={"reason": "subtitle_fonts"})
+    return _execute_prepared_encode(params, args, clip_kwargs)
+
+
+def _execute_prepared_encode(params, args, clip_kwargs, prepared=None):
+    collector = FontSelectionCollector(prepared) if prepared is not None else None
+    render_kwargs = {"subtitle_render": prepared} if prepared is not None else {}
+    log_kwargs = {"on_log": collector.feed} if collector is not None else {}
     # 根据编码模式执行
     mode = params.get_encode_mode()
     
@@ -150,8 +165,9 @@ def execute_encode(args) -> TaskResult:
             subtitle_tracks=params.subtitle_tracks,
             subtitle_tracks_custom=params.subtitle_tracks_custom,
             **clip_kwargs,
+            **render_kwargs,
         )
-        return_code = run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=params.dry_run)
+        return_code = run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=params.dry_run, **log_kwargs)
     
     else:
         # 普通编码模式
@@ -177,8 +193,9 @@ def execute_encode(args) -> TaskResult:
             subtitle_tracks=params.subtitle_tracks,
             subtitle_tracks_custom=params.subtitle_tracks_custom,
             **clip_kwargs,
+            **render_kwargs,
         )
-        return_code = run_ffmpeg_command(cmd, dry_run=params.dry_run)
+        return_code = run_ffmpeg_command(cmd, dry_run=params.dry_run, **log_kwargs)
     
     if return_code == 0 and not params.dry_run and params.clip_plan is not None:
         output_info = probe_detailed(params.output_path)
@@ -187,12 +204,23 @@ def execute_encode(args) -> TaskResult:
                                      outputs=(params.output_path,) if os.path.isfile(params.output_path) else (),
                                      details={"reason": "clip_output_validation"})
 
+    font_report = collector.report() if collector is not None else None
+    font_warnings = tuple(i.message for i in font_report.issues) if font_report else ()
+    if (return_code == 0 and font_report and font_warnings
+            and not params.subtitle_fonts.allow_fallback
+            and any(i.code != "unverified" for i in font_report.issues)):
+        return TaskResult.failed("字幕字体检查失败：" + "；".join(font_warnings),
+                                 outputs=(params.output_path,) if os.path.isfile(params.output_path) else (),
+                                 details={"reason": "subtitle_fonts", "font_report": font_report})
+
     # 压制后分发: dry_run 没有真实产物, 不做分发; 分发失败降级为 warnings
-    warnings: tuple = ()
+    warnings: tuple = font_warnings
     if not params.dry_run:
-        warnings = tuple(_post_transfer(args, params.output_path, return_code) or ())
+        warnings += tuple(_post_transfer(args, params.output_path, return_code) or ())
 
     details = {"mode": mode.value}
+    if font_report is not None:
+        details["font_report"] = font_report
 
     if params.dry_run:
         # 调试模式只打印命令: 状态为 SUCCESS 但不是真实产出, 用 details 标记

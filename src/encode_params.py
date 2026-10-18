@@ -12,6 +12,7 @@ from enum import Enum
 
 from colorama import Fore, Style
 from .clip_plan import ClipPlan, clip_extra_args
+from .subtitle_fonts import SubtitleFontOptions
 
 from .capabilities.encoder import (
     default_speed_preset,
@@ -60,6 +61,7 @@ class EncodeParams:
     #: 外挂字幕处理方式: burn=内嵌烧录 / embed=内封软字幕流 / none=不处理
     subtitle_mode: str = "burn"
     compat_mode: bool = False
+    subtitle_fonts: SubtitleFontOptions = field(default_factory=SubtitleFontOptions)
     
     # 其他参数
     extra_args: Optional[str] = None
@@ -110,6 +112,14 @@ class EncodeParams:
         # 验证字幕文件存在 (如果指定了)
         if self.subtitle_path and not os.path.exists(self.subtitle_path):
             return False, f"字幕文件不存在: {self.subtitle_path}"
+
+        if self.subtitle_fonts.enabled:
+            if not self.subtitle_path or self.subtitle_mode != "burn":
+                return False, "字体增强仅支持外挂 ASS/SSA 硬字幕烧录"
+            if os.path.splitext(self.subtitle_path)[1].lower() not in (".ass", ".ssa"):
+                return False, "字体增强暂支持 ASS/SSA 字幕"
+            if self.compat_mode or self.encoder == "copy":
+                return False, "字体增强不能与 AviSynth 或复制视频流同时使用"
 
         from .capabilities.container import (
             EMBEDDED_SUBTITLE_FORMATS,
@@ -309,6 +319,7 @@ def resolve_encoder_params(
         subtitle_path=args.subtitle if args.subtitle else None,
         subtitle_mode=subtitle_mode,
         compat_mode=getattr(args, 'compat_mode', False),
+        subtitle_fonts=getattr(args, 'subtitle_fonts', None) or SubtitleFontOptions(),
         extra_args=args.extra_args if args.extra_args else None,
         dry_run=getattr(args, 'debug_mode', False),
         is_custom=is_custom,
