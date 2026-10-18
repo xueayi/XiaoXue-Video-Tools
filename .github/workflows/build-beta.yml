@@ -59,7 +59,9 @@ jobs:
       - name: Build
         run: python -m PyInstaller XiaoXueToolbox.spec --noconfirm
       - name: Smoke test frozen preview and startup
-        run: python tools/smoke_windows.py
+        run: |
+          Copy-Item -Path 'dist/小雪工具箱' -Destination 'build/windows-smoke-app' -Recurse
+          python tools/smoke_windows.py --app build/windows-smoke-app
       - name: Package
         shell: pwsh
         run: Compress-Archive -Path 'dist/小雪工具箱/*' -DestinationPath ('XiaoXueToolbox_{0}_Windows_x64.zip' -f $env:RELEASE_VERSION)
