@@ -11,6 +11,7 @@ from .subtitle_document import analyze_subtitle, rewrite_font_names
 from .subtitle_fonts import (FontCheckError, FontIssue, FontReport, SubtitleFontOptions,
                               font_sha256, resolve_fonts, scan_font_sources)
 from .task.context import current_task
+from .utils import get_ffmpeg_path
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,13 @@ class PreparedSubtitle:
     path: str
     fonts_dir: str | None
     report: FontReport
+
+
+@dataclass(frozen=True)
+class SubtitlePreview:
+    path: Path
+    report: FontReport
+    actual_us: int
 
 
 def _cancelled():
@@ -123,3 +131,36 @@ class FontSelectionCollector:
         ready = base.ready and not any(i.code in ('fallback', 'missing_glyph') for i in self.issues)
         verified = ready and not self.issues and bool(base.matches) and all(r in self.observed for r, _ in base.matches)
         return FontReport(base.matches, tuple(self.issues), ready, verified)
+
+
+def render_subtitle_preview(input_path: str, source_us: int, prepared: PreparedSubtitle,
+                            output: Path, resolution: str | None = None) -> SubtitlePreview:
+    """保留原片时间轴解码，先渲染字幕再选帧；不使用重置字幕时钟的 input seek。"""
+    from .core import run_ffmpeg_streaming
+    if source_us < 0:
+        raise FontCheckError('预览时间必须非负')
+    output = Path(output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    filters = [build_subtitle_filter(prepared)]
+    if resolution:
+        if not re.fullmatch(r'[1-9]\d*x[1-9]\d*', resolution):
+            raise FontCheckError('预览分辨率应为 WxH')
+        filters.append('scale=' + resolution.replace('x', ':'))
+    filters.extend([f"select='gte(t,{source_us / 1_000_000:.6f})'", 'showinfo'])
+    collector = FontSelectionCollector(prepared)
+    timestamps = []
+    def log(line):
+        collector.feed(line)
+        match = re.search(r'\bpts_time:([+\-\d.eE]+)', line)
+        if match and not timestamps:
+            timestamps.append(round(float(match[1]) * 1_000_000))
+    command = [get_ffmpeg_path(), '-hide_banner', '-nostats', '-y', '-i', input_path,
+               '-vf', ','.join(filters), '-frames:v', '1', '-update', '1', str(output)]
+    try:
+        result = run_ffmpeg_streaming(command, on_log=log, timeout=60)
+        if not result.ok or not output.is_file() or not timestamps:
+            raise FontCheckError('未生成预览帧，请检查时间点、视频和字体配置')
+    except Exception:
+        output.unlink(missing_ok=True)
+        raise
+    return SubtitlePreview(output, collector.report(), timestamps[0])

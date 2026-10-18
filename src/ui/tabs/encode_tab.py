@@ -51,6 +51,7 @@ from ...presets import (
 )
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
 from ...platform.capabilities import platform_capabilities
+from ..subtitle_font_panel import SubtitleFontPanel
 
 # 默认预设：保持与改造前一致（均衡 H.264 / CRF18）
 DEFAULT_PRESET = "【均衡画质】x264 常用导出 (CRF18)"
@@ -133,6 +134,9 @@ class EncodeTab(BaseTab):
         self.compat_mode_cb = self.add_checkbox(
             subtitles, "兼容模式 (字幕)", False, COMPAT_MODE_TOOLTIP,
         )
+
+        self.font_panel = SubtitleFontPanel(self)
+        subtitles.addRow(self.font_panel)
 
         self._add_section_label(subtitles, "源视频字幕流（软字幕）")
         self.subtitle_tracks_combo = self.add_combo(
@@ -370,6 +374,14 @@ class EncodeTab(BaseTab):
 
         # 执行摘要实时刷新：复用全部联动信号 + 输出路径等文本输入
         self._connect_summary_signals()
+        self.font_panel.changed.connect(self._refresh_summary)
+        self.font_panel.request_current_mark.connect(lambda: self.font_panel.set_source_time(
+            self.clip_editor.preview.mark_us() if self.clip_editor.preview else None))
+        for signal in (self.input_edit.textChanged, self.subtitle_edit.textChanged,
+                       self.subtitle_mode_combo.currentTextChanged, self.encoder_combo.currentTextChanged,
+                       self.resolution_edit.textChanged, self.preset_combo.currentTextChanged):
+            signal.connect(self._sync_font_panel)
+        self._sync_font_panel()
         self.clip_editor.changed.connect(self._refresh_summary)
 
         self._on_preset_changed(self.preset_combo.currentText())
@@ -383,6 +395,8 @@ class EncodeTab(BaseTab):
 
         # M4.4: AviSynth 不可用的平台隐藏「兼容模式 (字幕)」整行
         self._sync_avisynth_availability()
+        if hasattr(self, 'font_panel'):
+            self._sync_font_panel()
 
     # ----------------------------------------------------------------
     # 平台能力门禁 (M4.4)
@@ -692,6 +706,8 @@ class EncodeTab(BaseTab):
         # 0) M4.4: 平台能力 (AviSynth) 决定兼容模式行是否展示
         #    (主窗口在推送前已刷新平台能力快照)
         self._sync_avisynth_availability()
+        if hasattr(self, 'font_panel'):
+            self._sync_font_panel()
 
         # 1) 编码器下拉: 探测为不可用的项置灰 + 悬停提示
         model = self.encoder_combo.model()
@@ -1258,17 +1274,37 @@ class EncodeTab(BaseTab):
             extra_args=self.extra_args_edit.text(),
             debug_mode=self.debug_mode_cb.isChecked(),
         )
+        font_options = self.font_panel.options()
+        if font_options.enabled:
+            result.subtitle_fonts = font_options
         plan = self.clip_editor.plan()
         if plan is not None:
             result.clip_plan = plan
         return result
 
+    def _sync_font_panel(self, *_):
+        state = platform_capabilities()
+        is_macos = bool(getattr(state, 'is_macos', False))
+        caps = self._caps or getattr(state, 'ffmpeg_caps', None)
+        has_filter = caps is not None and 'subtitles' in caps.filters
+        extension = os.path.splitext(self.subtitle_edit.text())[1].lower()
+        burn = SUBTITLE_MODES.get(self.subtitle_mode_combo.currentText()) == 'burn'
+        available = is_macos and has_filter and burn and extension in ('.ass', '.ssa')
+        self.font_panel.setVisible(is_macos)
+        self.font_panel.set_inputs(self.input_edit.text(), self.subtitle_edit.text())
+        self.font_panel.set_available(available, '字体增强需支持 libass 的 FFmpeg，并选择 ASS/SSA 硬字幕烧录')
+        params = getattr(self.summary_card, 'last_params', None)
+        self.font_panel.set_resolution(params.resolution if params else None)
+
     def prepare_execution(self):
         self.clip_editor.validate_inputs()
+        self.font_panel.require_ready()
 
     def set_running(self, running):
         self.clip_editor.set_running(running)
+        self.font_panel.set_running(running)
 
     def release(self):
         self._probe_generation += 1
         self.clip_editor.release()
+        self.font_panel.release()

@@ -18,8 +18,8 @@ ScriptType: v4.00+
 PlayResX: 320
 PlayResY: 180
 [V4+ Styles]
-Format: Name,Fontname,Fontsize,Bold,Italic
-Style: Default,{name},30,0,0
+Format: Name,Fontname,Fontsize,Bold,Italic,PrimaryColour,Alignment
+Style: Default,{name},30,0,0,&H00FFFFFF,2
 [Events]
 Format: Start,End,Style,Text
 Dialogue: 0:00:00.00,0:00:02.00,Default,中文

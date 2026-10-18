@@ -29,6 +29,7 @@ class FontFace:
     italic: bool
     variable: bool
     sha256: str
+    source: str = ''
 
 
 @dataclass(frozen=True)
@@ -111,9 +112,9 @@ def _font_paths(source: Path, cache: Path, cancelled):
                     partial.replace(target)
                 finally:
                     partial.unlink(missing_ok=True)
-                yield target
+                yield target, f'{source} · {member.filename}'
     elif source.suffix.lower() in _SUFFIXES:
-        yield source
+        yield source, str(source)
 
 
 def scan_font_sources(sources: tuple[str, ...], cache_dir: Path,
@@ -124,7 +125,7 @@ def scan_font_sources(sources: tuple[str, ...], cache_dir: Path,
             path = Path(source)
             if not path.exists():
                 raise OSError('路径不存在或共享卷未连接')
-            for item in _font_paths(path, Path(cache_dir), cancelled):
+            for item, origin in _font_paths(path, Path(cache_dir), cancelled):
                 _check(cancelled)
                 try:
                     digest = font_sha256(item, cancelled)
@@ -151,7 +152,7 @@ def scan_font_sources(sources: tuple[str, ...], cache_dir: Path,
                             italic = bool(os2 and os2.fsSelection & 1)
                             result.append(FontFace(item.resolve(), index, tuple(sorted(names)), full, ps,
                                                    os2.usWeightClass if os2 else 400, italic,
-                                                   'fvar' in font, digest))
+                                                   'fvar' in font, digest, origin))
                             seen.add((digest, index))
                 except (TTLibError, UnicodeError, KeyError, struct.error, AssertionError) as exc:
                     logging.getLogger(__name__).warning('无法读取字体 %s：%s', item, exc)

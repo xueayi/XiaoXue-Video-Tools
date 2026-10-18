@@ -58,6 +58,7 @@ def test_import_zip_skips_appledouble_and_never_writes_source(tmp_path):
     original = archive.read_bytes()
     faces = scan_font_sources((str(archive),), tmp_path/'cache', lambda: False)
     assert len(faces) == 1 and faces[0].weight == 500
+    assert '字体.zip' in faces[0].source and 'nested/font.ttf' in faces[0].source
     assert faces[0].path.is_relative_to(tmp_path/'cache')
     assert archive.read_bytes() == original and not (tmp_path.parent/'escape.ttf').exists()
 
