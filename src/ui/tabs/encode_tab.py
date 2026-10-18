@@ -514,12 +514,17 @@ class EncodeTab(BaseTab):
         self._update_quality_mirror()
 
     def _apply_copy_mode(self, copy_mode: bool):
-        """「复制视频流」模式: 禁用字幕烧录/兼容模式并切换说明文案。"""
-        self.subtitle_edit.setEnabled(not copy_mode)
-        self.compat_mode_cb.setEnabled(not copy_mode)
-        if copy_mode and self.subtitle_edit.text().strip():
-            # 画面不重新编码, 已选字幕无法烧录 -> 清空并提示
-            self.subtitle_edit.setText("")
+        """「复制视频流」模式: 不能烧录字幕, 但仍可内封外挂字幕。
+
+        画面不重新编码时 ``subtitles`` 滤镜不可用, 因此已选字幕不能继续内嵌:
+        自动切到「内封」(容器不支持时由参数校验给出明确提示), 字幕文件保留,
+        不再像旧版那样直接清空。
+        """
+        if (copy_mode and self.subtitle_edit.text().strip()
+                and SUBTITLE_MODES.get(self.subtitle_mode_combo.currentText()) == "burn"):
+            self.subtitle_mode_combo.setCurrentText("内封（转为软字幕流）")
+        # 兼容模式的可用性只取决于处理方式, 统一交回 _on_subtitle_mode_changed
+        self._on_subtitle_mode_changed(self.subtitle_mode_combo.currentText())
         self._preset_lock_hint.setText(
             COPY_MODE_HINT if copy_mode else PRESET_LOCK_HINT)
 

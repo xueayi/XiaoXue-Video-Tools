@@ -590,6 +590,25 @@ def test_summary_shows_embed_mode(tab, tmp_path):
     assert tab.summary_card.last_params.subtitle_path  # 路径仍记录, 便于改回
 
 
+def test_copy_mode_keeps_subtitle_file_and_switches_to_embed(tab, tmp_path):
+    """复制视频流不能烧录, 但字幕文件保留并自动改为内封。"""
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+    tab.output_format_combo.setCurrentText("MKV")
+    tab.subtitle_edit.setText(str(subtitle))
+    assert tab.subtitle_mode_combo.currentText() == "内嵌（烧录进画面）"
+
+    tab.preset_combo.setCurrentText("【复制视频流】不重新编码")
+    assert tab.subtitle_edit.isEnabled() is True
+    assert tab.subtitle_edit.text() == str(subtitle)
+    assert tab.subtitle_mode_combo.currentText() == "内封（转为软字幕流）"
+    assert tab.build_args().subtitle_mode == "内封（转为软字幕流）"
+
+    # 切回普通预设不强制改回内嵌
+    tab.preset_combo.setCurrentText("【均衡画质】x264 常用导出 (CRF18)")
+    assert tab.subtitle_mode_combo.currentText() == "内封（转为软字幕流）"
+
+
 def test_summary_tracks_output_format_and_path_live(tab, tmp_path):
     _set_missing_input(tab, tmp_path)
 

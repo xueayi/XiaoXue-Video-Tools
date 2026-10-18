@@ -21,7 +21,7 @@ def tab(qapp):
 
 def _note_label(tab):
     for label in tab.findChildren(QLabel):
-        if label.objectName().startswith("hint_") and "支持保留内封字幕流" in label.text():
+        if label.objectName().startswith("hint_") and "字幕流" in label.text():
             return label
     return None
 

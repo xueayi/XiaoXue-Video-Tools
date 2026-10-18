@@ -224,9 +224,10 @@ def supports_embedded_subtitles(extension: Optional[str]) -> bool:
 
 
 def embedded_subtitle_note() -> str:
-    """界面提示：说明哪些输出格式支持保留内封字幕流。"""
+    """界面提示：说明哪些输出格式支持内封字幕（保留源流与外挂字幕内封）。"""
     labels = " / ".join(ext.upper() for ext in EMBEDDED_SUBTITLE_FORMATS)
-    return f"仅 {labels} 输出格式支持保留内封字幕流；其它格式该选项不可用。"
+    return (f"仅 {labels} 输出格式支持字幕流：保留源字幕流与内封外挂字幕都依赖它；"
+            "其它格式这两项不可用。")
 
 
 def _normalize_codec(kind: str, codec: str) -> str:
