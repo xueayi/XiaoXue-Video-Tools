@@ -23,7 +23,7 @@ jobs:
     env:
       QT_QPA_PLATFORM: offscreen
       XIAOXUE_NO_UPDATE_CHECK: '1'
-      XIAOXUE_BUILD_VERSION: 2.3.0-alpha.1
+      XIAOXUE_BUILD_VERSION: 2.3.0-alpha.2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

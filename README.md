@@ -38,7 +38,7 @@
 
 > 界面基于 Windows 11 Fluent Design 风格，支持亮色/暗色双主题，可在「视图」菜单或侧边栏底部切换。
 
-> 一级导航采用分组平铺布局：常用（首页）、视频处理、格式与媒体、质量与批量、系统（设置）；视频压制页按「输入媒体 → 常用设置 → 输出方案 → 高级设置（默认折叠）→ 执行摘要」组织，任务区以任务卡展示进度，失败时显示错误摘要，详细日志默认折叠。任务可随时取消（停止后不会残留 FFmpeg 进程）；进度来自 FFmpeg 结构化协议，失败按错误类别给出原因与建议操作。
+> 一级导航采用分组平铺布局：常用（首页）、视频处理、格式与媒体、质量与批量、系统（设置）；视频压制页按「输入媒体 → 常用设置 → 输出方案 → 轨道选择 → 压制后分发 → 视频片段截取 → 高级设置（默认折叠）→ 执行摘要」组织。任务区展示进度、取消和错误摘要，详细日志默认折叠。
 
 ### 视频压制
 
@@ -49,6 +49,10 @@
 - **NVENC 档位**: p1(最快) ~ p7(最慢) 可调
 - **Debug 模式**: 仅输出 FFmpeg 命令，不实际执行
 - **能力检测**: 启动后后台探测 FFmpeg 能力，硬件编码器不可用时自动置灰；硬件编码器使用自身码率控制（NVENC multipass / QSV / AMF），不再伪装 2-Pass
+- **片段截取**: 当前视频内选择一段或多段，按列表顺序拼接压制；支持手输时间、复制/排序/删除
+- **原片预览**: 播放/暂停、拖动定位、I/O打点和预览选中范围；不模拟导出字幕、缩放及压缩效果，详见[片段使用说明](CLIP_EDITING.md)
+
+> 片段模式会重新编码音频（复制策略改为AAC），外挂硬字幕随原片片段重排；暂不支持保留内封软字幕流和AviSynth片段组合。普通播放器定位不保证严格逐帧。
 
 ### 预设说明
 
@@ -117,10 +121,13 @@ flowchart TD
 | 版本                                    | 说明     |
 | --------------------------------------- | -------- |
 | `XiaoXueToolbox_vX.X.X_Windows_x64.zip` | 标准版   |
+| `XiaoXueToolbox_vX.X.X_macOS_arm64.zip` | macOS Apple Silicon 预发布版 |
 
 > 说明：`Shield`（露骨图片识别）功能与 `Shield 增强版` 已停止发布与维护，后续版本仅提供标准版。
 
-解压后双击 `小雪工具箱.exe` 运行即可。
+Windows解压后双击 `小雪工具箱.exe`。Mac解压后将 `小雪工具箱.app` 拖入“应用程序”。两种包均内置FFmpeg/ffprobe，无需配置系统PATH。
+
+当前双平台预发布：[v2.3.0-alpha.2](https://github.com/xueayi/XiaoXue-Video-Tools/releases/tag/v2.3.0-alpha.2)。Release正文附安装包SHA256校验和。Mac包尚未进行Developer ID公证；如系统拦截，请按macOS“隐私与安全性”中的提示确认来源后打开。
 
 ### 从源代码运行
 
@@ -135,7 +142,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-> 配置、缓存与日志默认保存在程序目录（便携模式）；当目录不可写时自动回退到用户目录（`%APPDATA%` / `%LOCALAPPDATA%`），不会因此启动失败。
+> Windows默认便携模式，目录不可写时回退到`%APPDATA%` / `%LOCALAPPDATA%`；macOS配置、缓存与日志保存在用户`~/Library`。具体位置可在设置页查看。
 
 ### 运行测试
 
@@ -158,7 +165,7 @@ python -m pytest tests/test_encode_params.py::TestNvencPresetOverride -v
 macOS 原生版沿用现有界面与功能，提供 Apple VideoToolbox H.264/HEVC 和 CPU 编码。
 「硬件极速」卡在探测到 Apple 编码器时选择 Apple 预设；Apple 质量值为 0–100，越高画质越好，不能与 x264 CRF 数值直接比较。首版仅提供恒定质量/VBR；AviSynth 兼容模式隐藏，字幕烧录使用 libass；更新为检查版本并打开下载页面。
 
-当前为本地/CI Alpha，尚未提供正式 Release 的 Mac 下载。目标最低系统为 **macOS 13 + Apple Silicon**，目前真机验证在 macOS 27；最低系统仍需实机验收。
+Mac下载已纳入双平台[预发布](https://github.com/xueayi/XiaoXue-Video-Tools/releases/tag/v2.3.0-alpha.2)。目标最低系统为 **macOS 13 + Apple Silicon**，本地真机验证在 macOS 27；最低系统仍需实机验收，不提供Intel包。
 
 ### 本地构建
 
@@ -168,13 +175,13 @@ macOS 原生版沿用现有界面与功能，提供 Apple VideoToolbox H.264/HEV
 uv python install 3.12.12 --install-dir build/python --no-bin
 uv venv --python build/python/cpython-3.12.12-macos-aarch64-none/bin/python3.12 build/macos-venv
 uv pip install --python build/macos-venv/bin/python -r requirements-build-macos.txt -r requirements-dev.txt
-XIAOXUE_BUILD_PYTHON=build/macos-venv/bin/python tools/build_macos.sh
+XIAOXUE_BUILD_PYTHON=build/macos-venv/bin/python XIAOXUE_BUILD_VERSION=2.3.0-alpha.2 tools/build_macos.sh
 build/macos-venv/bin/python tools/smoke_macos.py
 ```
 
-产物为 `dist/小雪工具箱.app` 和 `dist/packages/XiaoXueToolbox_v2.3.0-alpha.1_macOS_arm64.zip`，可解压后拖入「应用程序」。应用内置固定 SHA256 校验的 arm64 FFmpeg/ffprobe（包括 libass），无需安装 Homebrew 或配置 PATH。配置、缓存和日志保存在用户 `~/Library` 中。
+产物为 `dist/小雪工具箱.app` 和 `dist/packages/XiaoXueToolbox_v2.3.0-alpha.2_macOS_arm64.zip`，可解压后拖入「应用程序」。应用内置固定 SHA256 校验的 arm64 FFmpeg/ffprobe（包括 libass），无需安装 Homebrew 或配置 PATH。配置、缓存和日志保存在用户 `~/Library` 中。
 
-构建配置见 `XiaoXueToolbox-macOS.spec`，媒体来源及校验和见 `build-resources/macos-media.json`。`Build macOS Alpha` workflow 在 macOS arm64 构建、跑测试并上传 artifact，不自动创建 Release。需要正式签名时可设置 `XIAOXUE_CODESIGN_IDENTITY`；默认包仅做 ad-hoc 签名，尚未完成 Developer ID 公证。
+构建配置见 `XiaoXueToolbox-macOS.spec`，媒体来源及校验和见 `build-resources/macos-media.json`。`Build macOS Alpha`用于独立构建/PR检查；推送alpha/beta/rc标签会触发`Build Pre-release`，在Windows和Mac上测试、构建并验证冻结包，两者成功后统一创建Pre-release。需要正式签名时可设置 `XIAOXUE_CODESIGN_IDENTITY`；默认包仅做ad-hoc签名，尚未完成Developer ID公证。
 
 ## 许可证
 
