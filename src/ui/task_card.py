@@ -57,6 +57,8 @@ class TaskCard(QFrame):
     cancel_requested = pyqtSignal(str)
     #: 用户点击「详情」(参数: task_id)
     details_requested = pyqtSignal(str)
+    #: 用户点击「打开文件夹」(参数: 产出文件路径)
+    open_folder_requested = pyqtSignal(str)
 
     def __init__(self, state: TaskViewState = None, parent=None):
         super().__init__(parent)
@@ -107,6 +109,9 @@ class TaskCard(QFrame):
         self._cancel_btn.setEnabled(can_cancel)
         self._cancel_btn.setVisible(can_cancel)
 
+        # 有产出文件时才显示「打开文件夹」
+        self._folder_btn.setVisible(bool(state.output_path))
+
     # ----------------------------------------------------------------
     # 构建
     # ----------------------------------------------------------------
@@ -135,6 +140,16 @@ class TaskCard(QFrame):
         self._details_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._details_btn.clicked.connect(self._emit_details)
         header.addWidget(self._details_btn, 0)
+
+        # 打开产出所在文件夹 (最有使用价值的操作; 无产出时隐藏)
+        self._folder_btn = QToolButton()
+        self._folder_btn.setObjectName("task_folder_btn")
+        self._folder_btn.setText("打开文件夹")
+        self._folder_btn.setToolTip("在文件管理器中打开产出文件所在目录")
+        self._folder_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._folder_btn.clicked.connect(self._emit_open_folder)
+        self._folder_btn.setVisible(False)
+        header.addWidget(self._folder_btn, 0)
 
         self._cancel_btn = QPushButton("取消")
         self._cancel_btn.setObjectName("task_cancel_btn")
@@ -234,6 +249,10 @@ class TaskCard(QFrame):
         if self._state is not None:
             self.details_requested.emit(self._state.task_id)
 
+    def _emit_open_folder(self):
+        if self._state is not None and self._state.output_path:
+            self.open_folder_requested.emit(self._state.output_path)
+
 
 class TaskArea(QWidget):
     """任务区域：管理一组 TaskCard，并兼容旧进度仪表盘 API。"""
@@ -242,6 +261,8 @@ class TaskArea(QWidget):
     cancel_requested = pyqtSignal(str)
     #: 任意卡片触发的详情请求 (参数: task_id)
     details_requested = pyqtSignal(str)
+    #: 任意卡片触发的「打开文件夹」请求 (参数: 产出文件路径)
+    open_folder_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -299,6 +320,20 @@ class TaskArea(QWidget):
     def task_ids(self):
         """当前卡片 id 列表 (按加入顺序)。"""
         return list(self._cards.keys())
+
+    def state_for(self, task_id: str):
+        """按 id 取当前视图状态 (不存在返回 None)。"""
+        return self._states.get(task_id)
+
+    def set_output_path(self, path: str):
+        """给当前任务卡补充产出路径 (用于「打开文件夹」与详情)。"""
+        state = self._states.get(CURRENT_TASK_ID)
+        if state is None:
+            return
+        state.output_path = str(path or "")
+        card = self._cards.get(CURRENT_TASK_ID)
+        if card is not None:
+            card.set_state(state)
 
     # ----------------------------------------------------------------
     # 旧 ProgressDashboard 适配 (PR-06 平滑替换用)
@@ -385,6 +420,7 @@ class TaskArea(QWidget):
         card = TaskCard(state)
         card.cancel_requested.connect(self.cancel_requested.emit)
         card.details_requested.connect(self.details_requested.emit)
+        card.open_folder_requested.connect(self.open_folder_requested.emit)
         self._root.addWidget(card)
         self._cards[state.task_id] = card
         self._states[state.task_id] = state

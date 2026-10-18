@@ -17,8 +17,8 @@ import os
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QGroupBox, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton,
-    QWidget, QToolButton,
+    QGroupBox, QSizePolicy, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
+    QPushButton, QWidget, QToolButton,
 )
 
 from ..base_tab import BaseTab, set_label_kind, ACTION_BTN_WIDTH
@@ -26,6 +26,7 @@ from ..args_builder import ArgsNamespace
 from ..execution_summary import ExecutionSummaryCard
 from ..input_media_card import InputMediaCard
 from ..output_plan_card import OutputPlanCard
+from ..track_row import TrackRow
 from ..clip_editor import ClipEditor
 from ..media_probe_worker import start_media_probe
 from ...capabilities.encoder import (
@@ -68,7 +69,13 @@ COMPAT_MODE_TOOLTIP = (
 # 预设模式下会被预设覆盖、因而禁用的控件提示
 PRESET_LOCK_HINT = (
     "预设模式：分辨率 / 帧率 / 音频编码参数由所选预设决定，手动设置不会生效。\n"
-    "如需自由调整，请在「输出方案」中选择「自定义 (Custom)」。"
+    "如需自由调整，请在「视频输出策略」中选择「自定义 (Custom)」。"
+)
+
+#: 「复制视频流」预设的说明
+COPY_MODE_HINT = (
+    "复制视频流：画面不重新编码（画质无损、速度最快），因此不能烧录字幕、"
+    "也不能调整画质/分辨率；可更换封装、音轨与内封字幕流。"
 )
 
 
@@ -93,13 +100,15 @@ class EncodeTab(BaseTab):
         )
 
         # ================================================================
-        # B. 常用设置
+        # B. 视频输出策略（方案卡 + 视频编码基础参数）
         # ================================================================
-        common = self.add_group(
-            "常用设置",
-            "日常导出最常用的参数；其余参数收在页面下方「高级设置」中。",
-        )
-        self.common_group = common.parentWidget()
+        self.output_plan_card = OutputPlanCard(current=DEFAULT_PRESET)
+        self._main_layout.addWidget(self.output_plan_card)
+        # 复用卡内的预设下拉作为唯一 preset_combo
+        self.preset_combo = self.output_plan_card.preset_combo
+        # 方案卡下方追加视频基础参数 (输出格式 / 分辨率 / 输出路径 ...)
+        common = self.output_plan_card.param_form()
+        self.video_group = self.output_plan_card
 
         # 画质：只读镜像 crf_spin，真实控件在高级设置
         quality_row = QHBoxLayout()
@@ -115,7 +124,7 @@ class EncodeTab(BaseTab):
 
         self.output_format_combo = self.add_combo(
             common, "输出格式",
-            list(ENCODE_OUTPUT_FORMATS.keys()), "MP4 (默认)",
+            list(ENCODE_OUTPUT_FORMATS.keys()), "MP4",
             "选择输出容器格式",
         )
         self.output_format_custom_edit = self.add_text_input(
@@ -137,71 +146,94 @@ class EncodeTab(BaseTab):
             common, PRESET_LOCK_HINT, "info"
         )
 
-        # 音频策略
-        self._add_section_label(common, "音频策略")
+        # ================================================================
+        # C. 音频输出策略
+        # ================================================================
+        audio = self.add_group(
+            "音频输出策略",
+            "音频编码、码率，以及要保留的音轨。",
+        )
+        self.audio_group = audio.parentWidget()
         self.audio_encoder_combo = self.add_combo(
-            common, "音频编码器",
+            audio, "音频编码器",
             list(AUDIO_ENCODERS.keys()), "复制 (不重新编码)",
         )
         self.audio_bitrate_combo = self.add_combo(
-            common, "音频码率", AUDIO_BITRATES, "192k",
+            audio, "音频码率", AUDIO_BITRATES, "192k",
         )
-        # 音轨选择：静态下拉 (无探测数据时使用)
+        # 音轨选择：静态下拉 + 探测到的逐轨勾选 (始终可见)
         self.audio_tracks_combo = self.add_combo(
-            common, "保留音轨",
+            audio, "保留音轨",
             list(AUDIO_TRACK_OPTIONS.keys()), "仅保留第 1 条 (#0)",
-            "快捷选择保留的音轨。注意：MP4 不支持多音轨。",
+            "快捷选择保留的音轨；检测到具体轨道后可在下方逐轨勾选",
         )
+        self._audio_track_box = QWidget()
+        self._audio_track_box.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._audio_track_host = QVBoxLayout(self._audio_track_box)
+        self._audio_track_host.setContentsMargins(0, 0, 0, 0)
+        self._audio_track_host.setSpacing(6)
+        audio.addRow(self._audio_track_box)
         self.add_hint(
-            common,
+            audio,
             "注意: MP4 格式不支持多音轨，需保留多轨请输出 MKV 格式",
             "warning",
         )
 
-        # 字幕烧录（硬字幕）
-        self._add_section_label(common, "字幕烧录（硬字幕）")
+        # ================================================================
+        # D. 字幕策略
+        # ================================================================
+        subtitles = self.add_group(
+            "字幕策略",
+            "外挂字幕烧录（硬字幕）与内封字幕流（软字幕）互相独立，可同时使用。",
+        )
+        self.subtitle_group = subtitles.parentWidget()
+        # 兼容模式行所在分组 (AviSynth 门禁按平台能力收起该行)
+        self.common_group = self.subtitle_group
+
+        self._add_section_label(subtitles, "字幕烧录（硬字幕）")
         self.subtitle_edit = self.add_file_chooser(
-            common, "字幕文件 (可选)",
+            subtitles, "字幕文件 (可选)",
             "字幕文件 (*.srt *.ass *.ssa);;所有文件 (*.*)",
             "选择要烧录的字幕文件 (留空则不烧录)；烧录后字幕会直接画进画面",
         )
         self.compat_mode_cb = self.add_checkbox(
-            common, "兼容模式 (字幕)", False, COMPAT_MODE_TOOLTIP,
+            subtitles, "兼容模式 (字幕)", False, COMPAT_MODE_TOOLTIP,
         )
 
-        # 内封字幕流（软字幕）
-        self._add_section_label(common, "内封字幕流（软字幕）")
+        self._add_section_label(subtitles, "内封字幕流（软字幕）")
         self.subtitle_tracks_combo = self.add_combo(
-            common, "保留字幕流",
+            subtitles, "保留字幕流",
             list(SUBTITLE_TRACK_OPTIONS.keys()), "不保留字幕",
             "保留源视频容器里已有的字幕轨（播放器可开关/切换）",
         )
         self._subtitle_default_tooltip = self.subtitle_tracks_combo.toolTip()
+        self._sub_track_box = QWidget()
+        self._sub_track_box.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._sub_track_host = QVBoxLayout(self._sub_track_box)
+        self._sub_track_host.setContentsMargins(0, 0, 0, 0)
+        self._sub_track_host.setSpacing(6)
+        subtitles.addRow(self._sub_track_box)
         self.add_hint(
-            common,
+            subtitles,
             embedded_subtitle_note(),
             "info",
         )
 
         # ================================================================
-        # C. 输出方案卡（5 张目标卡 + 更多预设）
-        # ================================================================
-        self.output_plan_card = OutputPlanCard(current=DEFAULT_PRESET)
-        self._main_layout.addWidget(self.output_plan_card)
-        # 复用卡内的预设下拉作为唯一 preset_combo（全部 7 项保持可选）
-        self.preset_combo = self.output_plan_card.preset_combo
-
-        # ================================================================
-        # D. 轨道自动检测（既有能力，保留独立分组）
+        # E. 轨道检测（音轨挂到音频策略，字幕轨挂到字幕策略）
         # ================================================================
         self._audio_checks: list = []
         self._sub_checks: list = []
         self._last_probe_info = None
         self._probe_generation = 0
+        #: 防止「下拉 <-> 逐轨勾选」互相同步时递归
+        self._syncing_tracks = False
         self._build_track_panel()
 
         # ================================================================
-        # E. 压制后分发（文档未提但保留，位置固定在输出方案之后）
+        # F. 压制后分发（文档未提但保留，位置固定在输出方案之后）
         # ================================================================
         transfer = self.add_group(
             "压制后分发",
@@ -407,6 +439,10 @@ class EncodeTab(BaseTab):
 
     def _update_quality_mirror(self, *_args):
         """画质只读镜像：始终反映 crf_spin 当前值。"""
+        preset = ALL_QUALITY_PRESETS.get(self.preset_combo.currentText())
+        if preset and preset.get("encoder") == "copy":
+            self.quality_mirror_label.setText("视频流直接复制（不重新编码）")
+            return
         value = self.crf_spin.value()
         if self._is_custom_mode():
             mode = self.rate_control_combo.currentText().split(" (")[0]
@@ -435,8 +471,11 @@ class EncodeTab(BaseTab):
             if is_custom:
                 self._on_rate_control_changed(self.rate_control_combo.currentText())
                 self._on_encoder_changed(self.encoder_combo.currentText())
+            self._apply_copy_mode(False)
             self._update_quality_mirror()
             return
+
+        self._apply_copy_mode(preset.get("encoder") == "copy")
 
         definition = encoder_definition(preset["encoder"])
         if definition is not None:
@@ -463,6 +502,16 @@ class EncodeTab(BaseTab):
             self.audio_bitrate_combo.setCurrentText(preset["audio_bitrate"])
 
         self._update_quality_mirror()
+
+    def _apply_copy_mode(self, copy_mode: bool):
+        """「复制视频流」模式: 禁用字幕烧录/兼容模式并切换说明文案。"""
+        self.subtitle_edit.setEnabled(not copy_mode)
+        self.compat_mode_cb.setEnabled(not copy_mode)
+        if copy_mode and self.subtitle_edit.text().strip():
+            # 画面不重新编码, 已选字幕无法烧录 -> 清空并提示
+            self.subtitle_edit.setText("")
+        self._preset_lock_hint.setText(
+            COPY_MODE_HINT if copy_mode else PRESET_LOCK_HINT)
 
     def _apply_preset_lock(self, is_custom: bool):
         """预设模式下禁用会被预设覆盖的控件，并显示说明，避免输入被静默忽略。"""
@@ -568,12 +617,12 @@ class EncodeTab(BaseTab):
             f"编码速度 (默认 {default_speed_preset(capability)})")
 
     def _preset_enabled(self, preset_name) -> bool:
-        """预设依赖的编码器是否可用 (未知/CPU 视为可用)。"""
+        """预设依赖的编码器是否可用 (未知/CPU/复制视为可用)。"""
         preset = ALL_QUALITY_PRESETS.get(preset_name)
         if not preset:
             return True
         encoder = preset.get("encoder")
-        if not encoder:
+        if not encoder or encoder == "copy":
             return True
         capability = encoder_capability(encoder, self._caps)
         return capability is not None and capability.available is not False
@@ -739,11 +788,14 @@ class EncodeTab(BaseTab):
 
     def _on_audio_tracks_changed(self, text):
         self.audio_tracks_custom_edit.setEnabled("自定义" in text)
+        self._apply_track_combo_to_checks("audio", text)
 
     def _on_subtitle_tracks_changed(self, text):
         supported = self.subtitle_tracks_combo.isEnabled()
         self.subtitle_tracks_custom_edit.setEnabled(
             supported and "自定义" in text)
+        if supported:
+            self._apply_track_combo_to_checks("subtitle", text)
 
     def _on_transfer_changed(self, mode):
         self.post_transfer_dir_edit.setEnabled("不分发" not in mode)
@@ -798,36 +850,25 @@ class EncodeTab(BaseTab):
     # ================================================================
 
     def _build_track_panel(self):
-        self._track_group = QGroupBox("轨道选择 (自动检测)")
-        outer = QVBoxLayout()
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(6)
-        self._track_group.setLayout(outer)
-
+        """把轨道检测控件挂到音频/字幕策略分组 (静态下拉始终保留)。"""
+        # 音频策略: 检测状态 + 逐轨勾选 + 重新检测
         self._track_status = QLabel("选择输入视频后自动检测音频/字幕轨道")
         self._track_status.setWordWrap(True)
         set_label_kind(self._track_status, "muted")
-        outer.addWidget(self._track_status)
+        self._audio_track_host.addWidget(self._track_status)
 
         self._track_audio_container = QWidget()
         self._track_audio_layout = QVBoxLayout(self._track_audio_container)
         self._track_audio_layout.setContentsMargins(0, 0, 0, 0)
-        self._track_audio_layout.setSpacing(3)
+        self._track_audio_layout.setSpacing(6)
         self._track_audio_container.setVisible(False)
-        outer.addWidget(self._track_audio_container)
-
-        self._track_sub_container = QWidget()
-        self._track_sub_layout = QVBoxLayout(self._track_sub_container)
-        self._track_sub_layout.setContentsMargins(0, 0, 0, 0)
-        self._track_sub_layout.setSpacing(3)
-        self._track_sub_container.setVisible(False)
-        outer.addWidget(self._track_sub_container)
+        self._audio_track_host.addWidget(self._track_audio_container)
 
         self._track_no_hint = QLabel()
         self._track_no_hint.setWordWrap(True)
         self._track_no_hint.setObjectName("muted_label")
         self._track_no_hint.setVisible(False)
-        outer.addWidget(self._track_no_hint)
+        self._audio_track_host.addWidget(self._track_no_hint)
 
         btn_row = QHBoxLayout()
         self._probe_btn = QPushButton("重新检测")
@@ -836,9 +877,15 @@ class EncodeTab(BaseTab):
         self._probe_btn.clicked.connect(self._do_probe)
         btn_row.addWidget(self._probe_btn)
         btn_row.addStretch()
-        outer.addLayout(btn_row)
+        self._audio_track_host.addLayout(btn_row)
 
-        self._main_layout.addWidget(self._track_group)
+        # 字幕策略: 逐轨勾选
+        self._track_sub_container = QWidget()
+        self._track_sub_layout = QVBoxLayout(self._track_sub_container)
+        self._track_sub_layout.setContentsMargins(0, 0, 0, 0)
+        self._track_sub_layout.setSpacing(6)
+        self._track_sub_container.setVisible(False)
+        self._sub_track_host.addWidget(self._track_sub_container)
 
     def _on_input_changed(self):
         self.clip_editor.set_input(self.input_edit.text())
@@ -911,11 +958,20 @@ class EncodeTab(BaseTab):
         self._sync_subtitle_stream_availability()
 
     def _update_static_track_visibility(self, show: bool):
-        """显示/隐藏静态音轨和字幕选择控件。"""
-        self.audio_tracks_combo.setVisible(show)
-        self.audio_tracks_custom_edit.setVisible(show)
-        self.subtitle_tracks_combo.setVisible(show)
-        self.subtitle_tracks_custom_edit.setVisible(show)
+        """静态轨道下拉始终可见（检测到具体轨道时在下方追加逐轨勾选）。
+
+        修复：选择输入视频后「保留字幕流 / 保留音轨」不再消失，始终可选。
+        """
+        for widget in (
+            self.audio_tracks_combo, self.audio_tracks_custom_edit,
+            self.subtitle_tracks_combo, self.subtitle_tracks_custom_edit,
+        ):
+            widget.setVisible(True)
+        self.audio_tracks_custom_edit.setEnabled(
+            "自定义" in self.audio_tracks_combo.currentText())
+        self.subtitle_tracks_custom_edit.setEnabled(
+            self.subtitle_tracks_combo.isEnabled()
+            and "自定义" in self.subtitle_tracks_combo.currentText())
 
     def _populate_tracks(self, info):
         self._clear_layout(self._track_audio_layout)
@@ -940,32 +996,34 @@ class EncodeTab(BaseTab):
 
         if info.audio_streams:
             has_tracks = True
-            header = QLabel("音频轨道:")
+            header = QLabel("音频轨道")
             header.setObjectName("accent_label")
             self._track_audio_layout.addWidget(header)
             for stream in info.audio_streams:
-                label = self._build_stream_label(stream, "audio")
-                cb = QCheckBox(label)
-                cb.setChecked(True)
-                cb.toggled.connect(self._refresh_summary)
-                self._track_audio_layout.addWidget(cb)
-                self._audio_checks.append((cb, stream.index))
+                row = TrackRow(
+                    *self._stream_row_text(stream, "audio"), checked=False)
+                row.toggled.connect(self._refresh_summary)
+                row.toggled.connect(
+                    lambda _checked: self._on_track_checks_changed("audio"))
+                self._track_audio_layout.addWidget(row)
+                self._audio_checks.append((row, stream.index))
             self._track_audio_container.setVisible(True)
         else:
             self._track_audio_container.setVisible(False)
 
         if info.subtitle_streams:
             has_tracks = True
-            header = QLabel("字幕轨道:")
+            header = QLabel("字幕轨道")
             header.setObjectName("accent_label")
             self._track_sub_layout.addWidget(header)
             for stream in info.subtitle_streams:
-                label = self._build_stream_label(stream, "subtitle")
-                cb = QCheckBox(label)
-                cb.setChecked(False)
-                cb.toggled.connect(self._refresh_summary)
-                self._track_sub_layout.addWidget(cb)
-                self._sub_checks.append((cb, stream.index))
+                row = TrackRow(
+                    *self._stream_row_text(stream, "subtitle"), checked=False)
+                row.toggled.connect(self._refresh_summary)
+                row.toggled.connect(
+                    lambda _checked: self._on_track_checks_changed("subtitle"))
+                self._track_sub_layout.addWidget(row)
+                self._sub_checks.append((row, stream.index))
             self._track_sub_container.setVisible(True)
         else:
             self._track_sub_container.setVisible(False)
@@ -975,14 +1033,76 @@ class EncodeTab(BaseTab):
             self._track_no_hint.setVisible(True)
         else:
             self._track_no_hint.setText(
-                "勾选需要保留的轨道 (音频默认全选，字幕默认不选)"
+                "勾选需要保留的轨道；也可用上方下拉快速选择。"
             )
             set_label_kind(self._track_no_hint, "muted")
             self._track_no_hint.setVisible(True)
 
         self._probe_btn.setVisible(True)
-        self._update_static_track_visibility(False)
+        self._update_static_track_visibility(True)
+        # 逐轨勾选跟随上方下拉的当前选择 (默认: 音轨第 1 条 / 字幕不保留)
+        self._apply_track_combo_to_checks(
+            "audio", self.audio_tracks_combo.currentText())
+        self._apply_track_combo_to_checks(
+            "subtitle", self.subtitle_tracks_combo.currentText())
         self._sync_subtitle_stream_availability()
+
+    def _stream_row_text(self, stream, stream_type):
+        """把轨道拆成 (主标题, 次要信息) 供卡片式轨道行显示。"""
+        codec = stream.codec_name or "未知编码"
+        title = f"#{stream.index}  {codec}"
+        full = self._build_stream_label(stream, stream_type)
+        detail = full.split("  ·  ", 1)[1] if "  ·  " in full else ""
+        return title, detail
+
+    def _on_track_checks_changed(self, kind: str):
+        """逐轨勾选变化 -> 反写上方快捷下拉 (避免两套状态不一致)。"""
+        if self._syncing_tracks:
+            return
+        checks = self._audio_checks if kind == "audio" else self._sub_checks
+        if not checks:
+            return
+        combo = (self.audio_tracks_combo if kind == "audio"
+                 else self.subtitle_tracks_combo)
+        custom_edit = (self.audio_tracks_custom_edit if kind == "audio"
+                       else self.subtitle_tracks_custom_edit)
+        checked = [idx for row, idx in checks if row.isChecked()]
+        none_key = "不保留音轨" if kind == "audio" else "不保留字幕"
+        self._syncing_tracks = True
+        try:
+            if len(checked) == len(checks):
+                combo.setCurrentText("全部保留")
+            elif checked:
+                combo.setCurrentText("自定义选择 (填写编号)")
+                custom_edit.setText(",".join(str(idx) for idx in checked))
+            else:
+                combo.setCurrentText(none_key)
+        finally:
+            self._syncing_tracks = False
+        self._refresh_summary()
+
+    def _apply_track_combo_to_checks(self, kind: str, text: str):
+        """快捷下拉 -> 逐轨勾选 (自定义模式保持手动选择)。"""
+        if self._syncing_tracks:
+            return
+        checks = self._audio_checks if kind == "audio" else self._sub_checks
+        if not checks:
+            return
+        none_key = "不保留音轨" if kind == "audio" else "不保留字幕"
+        self._syncing_tracks = True
+        try:
+            if text == "全部保留":
+                for row, _index in checks:
+                    row.setChecked(True)
+            elif text == none_key:
+                for row, _index in checks:
+                    row.setChecked(False)
+            elif text.startswith("仅保留第 1 条"):
+                for row, index in checks:
+                    row.setChecked(index == 0)
+            # 「自定义选择」: 以逐轨勾选/编号框为准, 不覆盖
+        finally:
+            self._syncing_tracks = False
 
     @staticmethod
     def _build_stream_label(stream, stream_type):

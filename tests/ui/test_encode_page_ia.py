@@ -94,16 +94,17 @@ def test_layout_order_matches_ia(tab):
     assert widgets[0] is tab.input_media_card
     index = {widget: position for position, widget in enumerate(widgets)}
 
-    # A 输入媒体 < B 常用设置 < C 输出方案 < D 轨道检测 < E 压制后分发
-    # < F 高级折叠头 < H 执行摘要(页尾)
-    assert index[tab.input_media_card] < index[tab.common_group]
-    assert index[tab.common_group] < index[tab.output_plan_card]
-    assert index[tab.output_plan_card] < index[tab._track_group]
-    assert index[tab._track_group] < index[tab.transfer_group]
-    assert index[tab.transfer_group] < index[tab.advanced_header]
+    # A 输入媒体 < B 视频输出策略 < C 音频输出策略 < D 字幕策略
+    # < E 压制后分发 < F 片段截取 < G 高级折叠头 < H 执行摘要(页尾)
+    assert index[tab.input_media_card] < index[tab.output_plan_card]
+    assert index[tab.output_plan_card] < index[tab.audio_group]
+    assert index[tab.audio_group] < index[tab.subtitle_group]
+    assert index[tab.subtitle_group] < index[tab.transfer_group]
+    assert index[tab.transfer_group] < index[tab.clip_editor]
+    assert index[tab.clip_editor] < index[tab.advanced_header]
     assert index[tab.advanced_header] < index[tab.summary_card]
     assert widgets[-1] is tab.summary_card
-    # 预设下拉仍复用输出方案卡内的唯一实例
+    # 预设下拉仍复用视频输出策略卡内的唯一实例
     assert tab.preset_combo is tab.output_plan_card.preset_combo
 
 
@@ -114,18 +115,27 @@ def test_transfer_group_hint_removed(tab):
     assert not any("NAS/云端" in text for text in texts)
 
 
-def test_input_media_then_common_settings(tab):
-    """常用设置紧跟在输入媒体卡之后 (A 输入媒体 → B 常用设置)。"""
+def test_input_media_then_video_strategy(tab):
+    """视频输出策略紧跟在输入媒体卡之后 (A 输入媒体 → B 视频输出策略)。"""
     widgets = _top_level_widgets(tab)
     assert widgets[0] is tab.input_media_card
-    assert widgets[1] is tab.common_group
+    assert widgets[1] is tab.output_plan_card
 
 
-def test_common_settings_immediately_before_output_plan(tab):
-    """输出方案卡紧跟在常用设置之后 (B 常用设置 → C 输出方案)。"""
-    widgets = _top_level_widgets(tab)
-    common_index = widgets.index(tab.common_group)
-    assert widgets[common_index + 1] is tab.output_plan_card
+def test_three_strategy_groups_own_their_controls(tab):
+    """视频/音频/字幕三块策略各自包含对应控件。"""
+    assert tab.output_plan_card.title() == "视频输出策略"
+    assert tab.output_plan_card.isAncestorOf(tab.output_format_combo)
+    assert tab.output_plan_card.isAncestorOf(tab.output_edit)
+    assert tab.output_plan_card.isAncestorOf(tab.resolution_edit)
+
+    assert tab.audio_group.isAncestorOf(tab.audio_encoder_combo)
+    assert tab.audio_group.isAncestorOf(tab.audio_bitrate_combo)
+    assert tab.audio_group.isAncestorOf(tab.audio_tracks_combo)
+
+    assert tab.subtitle_group.isAncestorOf(tab.subtitle_edit)
+    assert tab.subtitle_group.isAncestorOf(tab.compat_mode_cb)
+    assert tab.subtitle_group.isAncestorOf(tab.subtitle_tracks_combo)
 
 
 def test_advanced_group_collapsed_by_default(tab):
@@ -165,15 +175,18 @@ def test_plan_cards_map_to_existing_presets(tab):
     ]
 
 
-def test_more_presets_keeps_all_seven(tab):
+def test_more_presets_keeps_all_presets(tab):
     combo = tab.preset_combo
     assert combo is tab.output_plan_card.preset_combo
     # 统一使用抗误滚轮、自绘三角箭头的下拉框
     assert isinstance(combo, WheelGuardComboBox)
-    assert combo.count() == len(QUALITY_PRESETS) == 7
+    # 原有 7 个预设 + 新增「复制视频流」预设
+    assert combo.count() == len(QUALITY_PRESETS) == 8
     assert [combo.itemText(i) for i in range(combo.count())] == list(
         QUALITY_PRESETS.keys()
     )
+    assert "【复制视频流】不重新编码" in [
+        combo.itemText(i) for i in range(combo.count())]
 
 
 def test_plan_card_encoder_badge_derived_from_presets(tab):
@@ -374,7 +387,11 @@ def test_summary_matches_resolve_encoder_params(tab, tmp_path, preset_name):
     assert card.auto_generated is True
 
     text = card.all_text()
-    assert expected.encoder in text
+    if expected.encoder == "copy":
+        # 复制视频流: 摘要用中文说明, 不直接展示内部标识
+        assert "复制视频流" in card.row_text("video")
+    else:
+        assert expected.encoder in text
     assert expected.output_path in text
     assert "自动生成" in card.row_text("output")
     assert expected.output_path == generate_output_path(
@@ -384,7 +401,10 @@ def test_summary_matches_resolve_encoder_params(tab, tmp_path, preset_name):
     )
 
     video = card.row_text("video")
-    assert expected.encoder in video
+    if expected.encoder == "copy":
+        assert "复制视频流" in video
+    else:
+        assert expected.encoder in video
     if expected.crf is not None:
         assert f"CRF {expected.crf}" in video
     if expected.bitrate:
@@ -441,7 +461,7 @@ def test_summary_hardware_2pass_never_claims_two_pass(qapp, tmp_path):
         compat_mode=False, preset="自定义 (Custom)",
         encoder="H.264 (NVIDIA NVENC)", speed_preset="medium",
         nvenc_preset="使用预设默认", rate_control="2-Pass VBR (两遍编码)",
-        crf=20, video_bitrate="8M", output_format="MP4 (默认)",
+        crf=20, video_bitrate="8M", output_format="MP4",
         output_format_custom="", resolution="", fps=0,
         audio_encoder="复制 (不重新编码)", audio_bitrate="192k",
         audio_tracks="仅保留第 1 条 (#0)", audio_tracks_custom="",
@@ -466,7 +486,7 @@ def test_summary_subtitle_burn_and_keep(tab, tmp_path):
     tab.subtitle_edit.setText(str(subtitle))
     tab.compat_mode_cb.setChecked(True)
     # 内封字幕流仅 MKV / MOV 可用, 先切到 MKV 再选择保留编号
-    tab.output_format_combo.setCurrentText("MKV (多轨封装)")
+    tab.output_format_combo.setCurrentText("MKV")
     tab.subtitle_tracks_combo.setCurrentText("自定义选择 (填写编号)")
     tab.subtitle_tracks_custom_edit.setText("0,1")
 
@@ -479,7 +499,7 @@ def test_summary_subtitle_burn_and_keep(tab, tmp_path):
     assert "0,1" in text
 
     # MP4 输出: 保留字幕流不可选, 参数强制为「不保留字幕」
-    tab.output_format_combo.setCurrentText("MP4 (默认)")
+    tab.output_format_combo.setCurrentText("MP4")
     assert not tab.subtitle_tracks_combo.isEnabled()
     assert tab.subtitle_tracks_combo.currentText() == "不保留字幕"
     mp4_expected = _resolved(tab)
@@ -496,7 +516,7 @@ def test_summary_subtitle_burn_and_keep(tab, tmp_path):
 def test_summary_tracks_output_format_and_path_live(tab, tmp_path):
     _set_missing_input(tab, tmp_path)
 
-    tab.output_format_combo.setCurrentText("MKV (多轨封装)")
+    tab.output_format_combo.setCurrentText("MKV")
     expected = _resolved(tab)
     assert expected.output_path.endswith(".mkv")
     assert expected.output_path in tab.summary_card.all_text()

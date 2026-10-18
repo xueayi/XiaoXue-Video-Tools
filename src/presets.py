@@ -81,6 +81,17 @@ QUALITY_PRESETS = {
         "extra_args": "-rc vbr -b:v 0 -maxrate 20M",
         "description": "N 卡高质量导出，使用动态码率 (VBR) 和 p7 预设。"
     },
+    "【复制视频流】不重新编码": {
+        "encoder": "copy",
+        "crf": None,
+        "preset": None,
+        "resolution": None,
+        "fps": None,
+        "audio_encoder": "copy",
+        "audio_bitrate": "192k",
+        "video_copy": True,
+        "description": "视频流直接复制，画质无损、速度最快；仅更换封装/音轨/字幕，不能烧录字幕。"
+    },
     "自定义 (Custom)": {
         "encoder": None,
         "crf": None,
@@ -179,43 +190,43 @@ SUBTITLE_TRACK_OPTIONS = {
 
 # 封装转换预设 (Remux)
 REMUX_PRESETS = {
-    "MP4 (H.264 兼容)": {
+    "MP4": {
         "extension": ".mp4",
         "description": "最广泛兼容的格式，适合大多数播放器和平台",
     },
-    "MKV (多轨封装)": {
+    "MKV": {
         "extension": ".mkv",
         "description": "支持多音轨、多字幕轨道，适合资源存档",
     },
-    "MOV (Apple 生态)": {
+    "MOV": {
         "extension": ".mov",
         "description": "适合 Final Cut Pro、Mac 生态剪辑",
     },
-    "TS (广播流)": {
+    "TS": {
         "extension": ".ts",
         "description": "MPEG 传输流，适合广播级应用",
     },
-    "WEBM (Web 视频)": {
+    "WEBM": {
         "extension": ".webm",
         "description": "适合网页嵌入播放 (需 VP8/VP9/AV1 编码)",
     },
-    "MXF (专业后期)": {
+    "MXF": {
         "extension": ".mxf",
         "description": "专业广播/后期工作流标准封装",
     },
-    "AVI (传统格式)": {
+    "AVI": {
         "extension": ".avi",
         "description": "传统 Windows 视频格式",
     },
-    "M2 (MPEG-2)": {
+    "M2": {
         "extension": ".m2",
         "description": "MPEG-2 视频流",
     },
-    "M2TS (BDAV 蓝光)": {
+    "M2TS": {
         "extension": ".m2ts",
         "description": "蓝光光盘音视频封装格式",
     },
-    "M4V (Apple MP4)": {
+    "M4V": {
         "extension": ".m4v",
         "description": "Apple 开发的类似 MP4 的格式",
     },
@@ -270,9 +281,9 @@ RENAME_SORT_ORDERS = {
 
 # 视频压制输出格式选项
 ENCODE_OUTPUT_FORMATS = {
-    "MP4 (默认)": ".mp4",
-    "MKV (多轨封装)": ".mkv",
-    "MOV (Apple 生态)": ".mov",
+    "MP4": ".mp4",
+    "MKV": ".mkv",
+    "MOV": ".mov",
     "与输入相同": "",
     "自定义": None,
 }

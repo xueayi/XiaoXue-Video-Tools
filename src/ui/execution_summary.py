@@ -21,7 +21,7 @@ from .base_tab import set_label_kind
 
 TITLE = "执行摘要"
 PLACEHOLDER = "选择输入视频后显示执行摘要"
-FOOTER_HINT = "与执行器同源 (resolve_encoder_params) 实时计算；参数调整后立即更新。"
+FOOTER_HINT = "参数调整后立即更新；实际执行结果以运行时日志为准。"
 
 # 摘要行: (键, 中文标签)
 SUMMARY_ROWS = (
@@ -36,6 +36,8 @@ SUMMARY_ROWS = (
 
 def format_video_summary(params) -> str:
     """视频行：编码器 / CRF 或码率 / 速度 / 2-Pass / 分辨率 / 帧率。"""
+    if params.encoder == "copy":
+        return "复制视频流（不重新编码）"
     parts = [params.encoder]
     if params.bitrate:
         parts.append(f"码率 {params.bitrate}")

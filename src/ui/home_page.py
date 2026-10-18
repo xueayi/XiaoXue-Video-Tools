@@ -22,6 +22,8 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout
 
+import json
+
 from .._version import __version__
 from ..capabilities import (
     KEY_ENCODERS,
@@ -31,15 +33,20 @@ from ..capabilities import (
     nvenc_available,
     short_probe_error,
 )
+from ..platform import platform_paths
 from ..platform.capabilities import platform_capabilities
 from ..utils import get_ffmpeg_path
 from . import icons
 from .base_tab import BaseTab
 from .task_card import TaskArea
+from .task_details import TaskDetailsDialog, open_path_in_file_manager
 from .task_state import TaskStatus, TaskViewState
 
 #: 首页「最近任务 / 最近输出」各自最多保留的条数
 MAX_RECENT_RECORDS = 10
+
+#: 最近记录持久化文件名 (存于 PlatformPaths.data_dir)
+RECORDS_FILENAME = "recent_records.json"
 
 #: 平台能力三行文案 (M4.4)
 PENDING_TEXT = "待检测"
@@ -82,6 +89,8 @@ class HomePage(BaseTab):
         self._build_recent_outputs()
         self._build_environment()
         self.add_stretch()
+        self._wire_record_actions()
+        self._load_records()
         self._refresh_records()
 
     # ----------------------------------------------------------------
@@ -224,6 +233,7 @@ class HomePage(BaseTab):
         self._task_records.insert(0, record)
         self._task_records = self._task_records[:MAX_RECENT_RECORDS]
         self._refresh_records()
+        self._save_records()
         return record
 
     def add_recent_outputs(self, paths):
@@ -237,12 +247,100 @@ class HomePage(BaseTab):
                 merged.append(path)
         self._output_paths = merged[:MAX_RECENT_RECORDS]
         self._refresh_records()
+        self._save_records()
 
     def clear_records(self):
         """一键清空「最近任务」与「最近输出」两个列表。"""
         self._task_records = []
         self._output_paths = []
         self._refresh_records()
+        self._save_records()
+
+    def _wire_record_actions(self):
+        """接通任务卡的详情 / 打开文件夹 (修复「详情点击无效」)。"""
+        self._recent_tasks_area.details_requested.connect(
+            self._show_task_details)
+        self._recent_tasks_area.open_folder_requested.connect(
+            self._open_containing_folder)
+
+    def _show_task_details(self, task_id: str):
+        state = self._recent_tasks_area.state_for(task_id)
+        if state is None:
+            for record in self._task_records:
+                if record.task_id == task_id:
+                    state = record
+                    break
+        dialog = TaskDetailsDialog(state, self)
+        dialog.exec()
+
+    def _open_containing_folder(self, path: str):
+        open_path_in_file_manager(path)
+
+    # ----------------------------------------------------------------
+    # 持久化 (重启后保留最近任务/输出)
+    # ----------------------------------------------------------------
+
+    def records_file(self):
+        """最近记录的持久化文件路径 (data_dir 不可用时返回 None)。"""
+        try:
+            return platform_paths().data_dir / RECORDS_FILENAME
+        except Exception:  # pragma: no cover - 路径解析极端失败
+            return None
+
+    def _load_records(self):
+        """启动时恢复最近任务与输出 (损坏/缺失时静默忽略)。"""
+        path = self.records_file()
+        if path is None or not path.is_file():
+            return
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+
+        records = []
+        for item in list(payload.get("tasks") or [])[:MAX_RECENT_RECORDS]:
+            try:
+                status = TaskStatus.coerce(item.get("status"))
+            except (ValueError, AttributeError):
+                continue
+            records.append(TaskViewState(
+                task_id=str(item.get("task_id") or f"recent-task-{len(records) + 1}"),
+                title=str(item.get("title") or "任务"),
+                status=status,
+                message=str(item.get("message") or ""),
+                output_path=str(item.get("output_path") or ""),
+            ))
+        self._task_records = records
+        self._output_paths = [
+            str(item) for item in (payload.get("outputs") or []) if item
+        ][:MAX_RECENT_RECORDS]
+        self._record_seq = max(self._record_seq, len(records))
+
+    def _save_records(self):
+        """把最近任务/输出写入 data_dir (失败静默, 不影响主流程)。"""
+        path = self.records_file()
+        if path is None:
+            return
+        payload = {
+            "tasks": [
+                {
+                    "task_id": record.task_id,
+                    "title": record.title,
+                    "status": record.status.value,
+                    "message": record.message,
+                    "output_path": record.output_path,
+                }
+                for record in self._task_records
+            ],
+            "outputs": list(self._output_paths),
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8")
+        except OSError:
+            pass
 
     def _refresh_records(self):
         """按当前记录刷新任务卡区/输出行/空态与清空按钮可用性。"""
@@ -255,14 +353,35 @@ class HomePage(BaseTab):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
+                continue
+            child = item.layout()
+            if child is not None:
+                while child.count():
+                    sub_item = child.takeAt(0)
+                    sub_widget = sub_item.widget()
+                    if sub_widget is not None:
+                        sub_widget.deleteLater()
+                child.deleteLater()
         for path in self._output_paths:
+            row = QHBoxLayout()
+            row.setSpacing(6)
             label = QLabel(path)
             label.setObjectName("muted_label")
             label.setWordWrap(True)
             label.setToolTip(path)
             label.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse)
-            self._recent_outputs_box.addWidget(label)
+            row.addWidget(label, 1)
+
+            open_btn = QPushButton("打开文件夹")
+            open_btn.setObjectName("output_folder_btn")
+            open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            open_btn.setIcon(icons.secondary("ri.folder-open-line"))
+            open_btn.setToolTip("打开该产出所在目录")
+            open_btn.clicked.connect(
+                lambda _checked=False, p=path: self._open_containing_folder(p))
+            row.addWidget(open_btn, 0)
+            self._recent_outputs_box.addLayout(row)
         self._recent_outputs_placeholder.setVisible(not self._output_paths)
 
         self._clear_records_btn.setEnabled(

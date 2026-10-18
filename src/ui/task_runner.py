@@ -210,15 +210,14 @@ class TaskRunner(QThread):
             return ret
         if isinstance(ret, bool):
             # bool 是 int 子类，先显式处理，避免 True/False 被当成 1/0 语义
-            return TaskResult.ok() if ret else TaskResult.failed("executor 返回失败")
+            return TaskResult.ok() if ret else TaskResult.failed("任务执行失败")
         if isinstance(ret, int):
             if ret == 0:
                 return TaskResult.ok()
-            return TaskResult.failed(f"任务失败 (exit_code={ret})", exit_code=ret)
+            return TaskResult.failed(f"任务失败（退出码 {ret}）", exit_code=ret)
         if ret is None:
-            return TaskResult.failed("executor 未返回 TaskResult")
-        return TaskResult.failed(
-            f"executor 返回未知类型: {type(ret).__name__}")
+            return TaskResult.failed("任务未返回结果（内部错误）")
+        return TaskResult.failed("任务返回了无法识别的结果（内部错误）")
 
     def _build_result(self) -> TaskResult:
         """在任务 ContextVar 内预取时长、执行 handler 并归一结果。"""
@@ -279,7 +278,8 @@ class TaskRunner(QThread):
             self.log_signal.emit(f"错误: {exc}\n")
             self.log_signal.emit(traceback_text)
             result = TaskResult.failed(
-                str(exc), details={"traceback": traceback_text})
+                "任务执行出错，请展开日志查看详情",
+                details={"traceback": traceback_text, "error": str(exc)})
         finally:
             self.context.progress_callback = old_progress_callback
             sys.stdout = old_stdout

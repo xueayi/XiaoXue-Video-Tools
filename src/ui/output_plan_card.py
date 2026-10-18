@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+    QFormLayout, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
     QSizePolicy, QVBoxLayout,
 )
 
@@ -21,7 +21,7 @@ from ..presets import ENCODERS, QUALITY_PRESETS
 from .base_tab import repolish, set_label_kind
 from .widgets import WheelGuardComboBox
 
-TITLE = "输出方案"
+TITLE = "视频输出策略"
 MORE_PRESETS_LABEL = "更多预设"
 CUSTOM_PRESET = "自定义 (Custom)"
 HARDWARE_CAPABILITY_PENDING = "待能力检测"
@@ -126,10 +126,22 @@ class PlanCard(QFrame):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(4)
 
+        header = QHBoxLayout()
+        header.setSpacing(6)
+
         self.title_label = QLabel(target.title)
         self.title_label.setWordWrap(True)
         set_label_kind(self.title_label, "strong")
-        layout.addWidget(self.title_label)
+        header.addWidget(self.title_label, 1)
+
+        # 选中标记: 右上角圆形对勾徽标 (替代整块填充色)
+        self.check_badge = QLabel("✓")
+        self.check_badge.setObjectName("plan_check_badge")
+        self.check_badge.setFixedSize(18, 18)
+        self.check_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.check_badge.setVisible(False)
+        header.addWidget(self.check_badge, 0, Qt.AlignmentFlag.AlignTop)
+        layout.addLayout(header)
 
         self.badge_label = QLabel(
             encoder_badge(target.preset_name, quality_presets=quality_presets)
@@ -192,8 +204,8 @@ class PlanCard(QFrame):
         self._selected = bool(selected)
         self.setProperty("selected", self._selected)
         set_label_kind(self.title_label, "accent" if self._selected else "strong")
-        prefix = "✓ " if self._selected else ""
-        self.title_label.setText(prefix + self.target.title)
+        self.title_label.setText(self.target.title)
+        self.check_badge.setVisible(self._selected)
         repolish(self)
 
     def click(self) -> None:
@@ -215,7 +227,7 @@ class PlanCard(QFrame):
 
 
 class OutputPlanCard(QGroupBox):
-    """输出方案卡：5 张目标卡 + "更多预设" 下拉。"""
+    """视频输出策略：5 张目标卡 + "更多预设" 下拉 + 视频基础参数表单。"""
 
     def __init__(self, presets: dict = None, current: str = None, parent=None):
         super().__init__(TITLE, parent)
@@ -270,6 +282,27 @@ class OutputPlanCard(QGroupBox):
         outer.addWidget(hint)
 
         self._sync_selection(self.preset_combo.currentText())
+
+    # ----------------------------------------------------------------
+    # 基础参数表单 (视频压制页把输出格式/分辨率等加进来)
+    # ----------------------------------------------------------------
+
+    def param_form(self):
+        """返回方案卡下方的基础参数表单 (惰性创建, 由页面填充)。"""
+        form = getattr(self, "_param_form", None)
+        if form is None:
+            form = QFormLayout()
+            form.setLabelAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
+            form.setHorizontalSpacing(14)
+            form.setVerticalSpacing(10)
+            self._param_form = form
+            separator = QLabel("视频编码参数")
+            separator.setObjectName("accent_label")
+            self.layout().addWidget(separator)
+            self.layout().addLayout(form)
+        return form
 
     # ----------------------------------------------------------------
     # 能力联动

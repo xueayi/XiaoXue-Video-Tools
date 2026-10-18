@@ -1051,9 +1051,33 @@ QFrame#plan_card, QPushButton#plan_card {
 QFrame#plan_card:hover, QPushButton#plan_card:hover {
     border-color: $input_border_bottom;
 }
+/* 选中: 常规卡片底色 + 强调色描边 + 右上角对勾徽标 (不再是整块实心色) */
 QFrame#plan_card[selected="true"], QPushButton#plan_card:checked {
     border: 2px solid $accent;
-    background-color: $accent_tint;
+    background-color: $card_bg;
+}
+QLabel#plan_check_badge {
+    background-color: $accent;
+    color: #ffffff;
+    border-radius: 9px;
+    font-size: 12px;
+    font-weight: bold;
+}
+/* 轨道行: 卡片式框线, 勾选后用强调色描边 */
+QFrame#track_row {
+    background-color: $card_bg;
+    border: 1px solid $card_border;
+    border-radius: 8px;
+}
+QFrame#track_row:hover {
+    border-color: $input_border_bottom;
+}
+QFrame#track_row[checked="true"] {
+    border: 1px solid $accent;
+}
+QFrame#track_row QCheckBox {
+    background: transparent;
+    font-weight: 600;
 }
 QWidget#collapsible_log_root {
     background-color: transparent;

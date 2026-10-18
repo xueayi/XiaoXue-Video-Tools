@@ -37,7 +37,7 @@ class MockRemuxArgs:
     """模拟封装转换参数对象"""
     remux_input: List[str] = None
     remux_output: str = ""
-    remux_preset: str = "MP4 (H.264 兼容)"
+    remux_preset: str = "MP4"
     remux_overwrite: bool = False
     
     def __post_init__(self):
@@ -83,7 +83,7 @@ class TestExecuteRemux:
         
         args = MockRemuxArgs()
         args.remux_input = [mock_video_files[0]]
-        args.remux_preset = "MP4 (H.264 兼容)"
+        args.remux_preset = "MP4"
         
         execute_remux(args)
         
@@ -99,7 +99,7 @@ class TestExecuteRemux:
         
         args = MockRemuxArgs()
         args.remux_input = mock_video_files
-        args.remux_preset = "MKV (多轨封装)"
+        args.remux_preset = "MKV"
         
         execute_remux(args)
         
@@ -120,7 +120,7 @@ class TestExecuteRemux:
         args = MockRemuxArgs()
         args.remux_input = [mock_video_files[0]]
         args.remux_output = str(output_dir)
-        args.remux_preset = "MP4 (H.264 兼容)"
+        args.remux_preset = "MP4"
         
         execute_remux(args)
         
@@ -138,7 +138,7 @@ class TestExecuteRemux:
         
         args = MockRemuxArgs()
         args.remux_input = mock_video_files[0]  # 字符串而非列表
-        args.remux_preset = "MP4 (H.264 兼容)"
+        args.remux_preset = "MP4"
         
         execute_remux(args)
         
@@ -152,9 +152,9 @@ class TestExecuteRemux:
         mock_run.return_value = 0
         
         presets_extensions = {
-            "MP4 (H.264 兼容)": ".mp4",
-            "MKV (多轨封装)": ".mkv",
-            "MOV (Apple 生态)": ".mov",
+            "MP4": ".mp4",
+            "MKV": ".mkv",
+            "MOV": ".mov",
         }
         
         for preset, expected_ext in presets_extensions.items():
@@ -208,7 +208,7 @@ class TestExecuteRemux:
 
         args = MockRemuxArgs()
         args.remux_input = [str(src)]
-        args.remux_preset = "MP4 (H.264 兼容)"
+        args.remux_preset = "MP4"
         args.remux_overwrite = True
 
         result = execute_remux(args)
@@ -235,7 +235,7 @@ class TestExecuteRemux:
 
         args = MockRemuxArgs()
         args.remux_input = [str(src)]
-        args.remux_preset = "MP4 (H.264 兼容)"
+        args.remux_preset = "MP4"
 
         result = execute_remux(args)
 

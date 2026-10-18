@@ -93,7 +93,7 @@ def test_encode_encoder_linkage(encode):
 def test_encode_output_format_linkage(encode):
     encode.output_format_combo.setCurrentText("自定义")
     assert encode.output_format_custom_edit.isEnabled()
-    encode.output_format_combo.setCurrentText("MP4 (默认)")
+    encode.output_format_combo.setCurrentText("MP4")
     assert not encode.output_format_custom_edit.isEnabled()
 
 
@@ -101,12 +101,12 @@ def test_encode_track_combos_linkage(encode):
     encode.audio_tracks_combo.setCurrentText("自定义选择 (填写编号)")
     assert encode.audio_tracks_custom_edit.isEnabled()
     # 内封字幕流仅 MKV / MOV 可用
-    encode.output_format_combo.setCurrentText("MKV (多轨封装)")
+    encode.output_format_combo.setCurrentText("MKV")
     encode.subtitle_tracks_combo.setCurrentText("自定义选择 (填写编号)")
     assert encode.subtitle_tracks_custom_edit.isEnabled()
 
     # MP4 输出时该项不可选, 且自动回到「不保留字幕」
-    encode.output_format_combo.setCurrentText("MP4 (默认)")
+    encode.output_format_combo.setCurrentText("MP4")
     assert not encode.subtitle_tracks_combo.isEnabled()
     assert encode.subtitle_tracks_combo.currentText() == "不保留字幕"
     assert not encode.subtitle_tracks_custom_edit.isEnabled()
@@ -143,7 +143,9 @@ def test_encode_probe_success_and_tracks(encode, monkeypatch, tmp_path):
     assert "1920x1080" in encode._track_status.text()
     assert len(encode._audio_checks) == 1
     assert len(encode._sub_checks) == 1
-    assert not encode.audio_tracks_combo.isVisibleTo(encode)
+    # 修复: 选择输入后静态下拉不再消失 (检测到的轨道在其下方追加)
+    assert encode.audio_tracks_combo.isVisibleTo(encode)
+    assert encode.subtitle_tracks_combo.isVisibleTo(encode)
 
 
 def test_encode_probe_no_tracks(encode, monkeypatch, tmp_path):
@@ -202,7 +204,7 @@ def remux(qapp):
 def test_remux_preset_custom(remux):
     remux.remux_preset_combo.setCurrentText("自定义")
     assert remux.remux_format_custom_edit.isEnabled()
-    remux.remux_preset_combo.setCurrentText("MP4 (H.264 兼容)")
+    remux.remux_preset_combo.setCurrentText("MP4")
     assert not remux.remux_format_custom_edit.isEnabled()
     assert remux.remux_format_custom_edit.text() == ""
 
@@ -297,7 +299,7 @@ def test_remux_compat_shows_reasons_and_suggestions(remux):
 
 def test_remux_compat_mkv_accepts_ass_subtitle(remux):
     """MKV 容器支持 ASS 字幕: 提示标签隐藏。"""
-    remux.remux_preset_combo.setCurrentText("MKV (多轨封装)")
+    remux.remux_preset_combo.setCurrentText("MKV")
     remux._last_probe_info = _info(video_codec="h264", sub_codec="ass")
     remux._check_compat()
     assert not remux._compat_warn_label.isVisibleTo(remux)

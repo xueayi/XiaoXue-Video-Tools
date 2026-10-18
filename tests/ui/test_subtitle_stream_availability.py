@@ -63,14 +63,14 @@ def test_label_and_hint_text(tab):
 
 
 def test_mp4_output_disables_combo_by_default(tab):
-    assert tab.output_format_combo.currentText() == "MP4 (默认)"
+    assert tab.output_format_combo.currentText() == "MP4"
     assert not tab.subtitle_tracks_combo.isEnabled()
     assert tab.subtitle_tracks_combo.currentText() == "不保留字幕"
     assert "不支持内封字幕流" in tab.subtitle_tracks_combo.toolTip()
 
 
 def test_mkv_output_enables_combo(tab):
-    tab.output_format_combo.setCurrentText("MKV (多轨封装)")
+    tab.output_format_combo.setCurrentText("MKV")
     assert tab.subtitle_tracks_combo.isEnabled()
     assert tab.subtitle_tracks_combo.currentText() == "不保留字幕"
     assert tab.subtitle_tracks_combo.toolTip() == tab._subtitle_default_tooltip
@@ -80,9 +80,9 @@ def test_mkv_output_enables_combo(tab):
 
 
 def test_switching_back_to_mp4_resets_selection(tab):
-    tab.output_format_combo.setCurrentText("MKV (多轨封装)")
+    tab.output_format_combo.setCurrentText("MKV")
     tab.subtitle_tracks_combo.setCurrentText("全部保留")
-    tab.output_format_combo.setCurrentText("MP4 (默认)")
+    tab.output_format_combo.setCurrentText("MP4")
     assert not tab.subtitle_tracks_combo.isEnabled()
     assert tab.subtitle_tracks_combo.currentText() == "不保留字幕"
     assert tab.build_args().subtitle_tracks == "不保留字幕"
@@ -113,7 +113,7 @@ def test_build_args_forces_none_even_if_set_programmatically(tab):
     # 直接改文本绕过禁用状态, build_args 也不能把字幕带进 MP4
     tab.subtitle_tracks_combo.setCurrentText("全部保留")
     args = tab.build_args()
-    assert args.output_format == "MP4 (默认)"
+    assert args.output_format == "MP4"
     assert args.subtitle_tracks == "不保留字幕"
     assert args.subtitle_tracks_custom == ""
 
@@ -126,5 +126,5 @@ def test_detected_track_panel_subtitle_checks_disabled_for_mp4(tab):
     assert checkbox.isChecked() is False
     assert tab.build_args().subtitle_tracks == "不保留字幕"
 
-    tab.output_format_combo.setCurrentText("MKV (多轨封装)")
+    tab.output_format_combo.setCurrentText("MKV")
     assert checkbox.isEnabled()

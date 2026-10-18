@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from ..base_tab import BaseTab, set_label_kind, ACTION_BTN_WIDTH
+from ..track_row import TrackRow
 from ..args_builder import ArgsNamespace
 from ...presets import REMUX_PRESETS
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
@@ -59,7 +60,7 @@ class RemuxTab(BaseTab):
         )
         self.remux_preset_combo = self.add_combo(
             fmt, "封装预设",
-            list(REMUX_PRESETS.keys()), "MP4 (H.264 兼容)",
+            list(REMUX_PRESETS.keys()), "MP4",
         )
         self.add_hint(
             fmt,
@@ -237,16 +238,15 @@ class RemuxTab(BaseTab):
         # 音频轨道
         if info.audio_streams:
             has_tracks = True
-            header = QLabel("音频轨道:")
+            header = QLabel("音频轨道")
             header.setObjectName("accent_label")
             self._audio_layout.addWidget(header)
 
             for stream in info.audio_streams:
-                label = self._build_stream_label(stream, "audio")
-                cb = QCheckBox(label)
-                cb.setChecked(True)
-                self._audio_layout.addWidget(cb)
-                self._audio_checks.append((cb, stream.index))
+                title, detail = self._stream_row_text(stream, "audio")
+                row = TrackRow(title, detail, checked=True)
+                self._audio_layout.addWidget(row)
+                self._audio_checks.append((row, stream.index))
 
             self._audio_container.setVisible(True)
         else:
@@ -255,16 +255,15 @@ class RemuxTab(BaseTab):
         # 字幕轨道
         if info.subtitle_streams:
             has_tracks = True
-            header = QLabel("字幕轨道:")
+            header = QLabel("字幕轨道")
             header.setObjectName("accent_label")
             self._sub_layout.addWidget(header)
 
             for stream in info.subtitle_streams:
-                label = self._build_stream_label(stream, "subtitle")
-                cb = QCheckBox(label)
-                cb.setChecked(True)
-                self._sub_layout.addWidget(cb)
-                self._sub_checks.append((cb, stream.index))
+                title, detail = self._stream_row_text(stream, "subtitle")
+                row = TrackRow(title, detail, checked=True)
+                self._sub_layout.addWidget(row)
+                self._sub_checks.append((row, stream.index))
 
             self._sub_container.setVisible(True)
         else:
@@ -279,6 +278,15 @@ class RemuxTab(BaseTab):
             self._no_track_hint.setVisible(True)
 
         self._probe_btn.setVisible(True)
+
+    @staticmethod
+    def _stream_row_text(stream, stream_type):
+        """把轨道拆成 (主标题, 次要信息) 供卡片式轨道行显示。"""
+        codec = stream.codec_name or "未知编码"
+        title = f"#{stream.index}  {codec}"
+        full = RemuxTab._build_stream_label(stream, stream_type)
+        detail = full.split("  ·  ", 1)[1] if "  ·  " in full else ""
+        return title, detail
 
     @staticmethod
     def _build_stream_label(stream, stream_type):

@@ -415,6 +415,8 @@ class MainWindow(QMainWindow):
         # 任务卡执行区 (替换旧进度仪表盘; 属性名 _dashboard 保持兼容)
         self._dashboard = TaskArea()
         self._dashboard.cancel_requested.connect(self._on_stop)
+        self._dashboard.details_requested.connect(self._show_task_details)
+        self._dashboard.open_folder_requested.connect(self._open_output_folder)
         bottom_layout.addWidget(self._dashboard)
 
         # 错误卡片 (失败时显示在任务区与日志之间, 默认隐藏)
@@ -786,6 +788,14 @@ class MainWindow(QMainWindow):
             or "任务"
         )
         view_status = _RESULT_TO_VIEW_STATUS[result.status]
+        # 供任务卡「详情」使用 (执行区的卡片不携带完整状态)
+        self._last_task_result = result
+        self._last_task_caption = caption
+
+        # 产出路径挂到当前任务卡: 完成后可「打开文件夹」
+        outputs = tuple(getattr(result, "outputs", ()) or ())
+        if outputs:
+            self._dashboard.set_output_path(str(outputs[0]))
 
         # 首页「最近任务 / 最近输出」记录真实结果 (不再使用 mock 示例)
         self._record_home_result(caption, view_status, result)
@@ -854,6 +864,30 @@ class MainWindow(QMainWindow):
         """最近日志块拼成的文本 (仅 deprecated 旧 bool 通道兜底使用)。"""
         chunks = list(getattr(self._log_panel, "_chunks", []))
         return "".join(chunks[-max_chunks:])
+
+    def _show_task_details(self, task_id):
+        """执行区任务卡「详情」: 用最近一次任务结果组装只读详情。"""
+        from .task_details import TaskDetailsDialog
+        from .task_state import TaskViewState
+
+        result = getattr(self, "_last_task_result", None)
+        if result is None:
+            return
+        outputs = tuple(getattr(result, "outputs", ()) or ())
+        state = TaskViewState(
+            task_id=str(task_id or "current"),
+            title=getattr(self, "_last_task_caption", "") or "任务",
+            status=_RESULT_TO_VIEW_STATUS.get(result.status, ViewTaskStatus.QUEUED),
+            message=result.message or "",
+            output_path=str(outputs[0]) if outputs else "",
+        )
+        TaskDetailsDialog(state, self).exec()
+
+    def _open_output_folder(self, path):
+        """在文件管理器中打开产出文件所在目录。"""
+        from .task_details import open_path_in_file_manager
+
+        open_path_in_file_manager(path)
 
     def _show_error_card(self, result):
         """失败时按 TaskResult 的 stderr 尾部 + exit_code 归类并展示错误卡片。

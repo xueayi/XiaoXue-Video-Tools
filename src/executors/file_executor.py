@@ -86,7 +86,7 @@ def execute_remux(args) -> TaskResult:
     """
     print_task_header("封装转换")
 
-    preset_name = getattr(args, 'remux_preset', 'MP4 (H.264 兼容)')
+    preset_name = getattr(args, 'remux_preset', 'MP4')
     preset = REMUX_PRESETS.get(preset_name, {})
     
     if preset_name == "自定义":

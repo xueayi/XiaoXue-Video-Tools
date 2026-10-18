@@ -108,6 +108,10 @@ class EncodeParams:
         if self.subtitle_path and not os.path.exists(self.subtitle_path):
             return False, f"字幕文件不存在: {self.subtitle_path}"
 
+        # 复制视频流模式: 画面不重新编码, 无法烧录字幕
+        if self.encoder == "copy" and self.subtitle_path:
+            return False, "「复制视频流」模式不会重新编码画面，无法烧录字幕；请改用编码预设或取消字幕文件"
+
         if self.clip_plan is not None:
             try:
                 self.clip_plan.validate()
@@ -121,12 +125,13 @@ class EncodeParams:
             except ValueError as exc:
                 return False, str(exc)
         
-        capability = encoder_capability(self.encoder)
-        if capability is None:
-            return False, f"未知的视频编码器: {self.encoder}"
-        maximum = 100 if capability.quality_flag == "-q:v" else 51
-        if self.crf is not None and not (0 <= self.crf <= maximum):
-            return False, f"CRF 值超出范围 (0-{maximum}): {self.crf}"
+        if self.encoder != "copy":
+            capability = encoder_capability(self.encoder)
+            if capability is None:
+                return False, f"未知的视频编码器: {self.encoder}"
+            maximum = 100 if capability.quality_flag == "-q:v" else 51
+            if self.crf is not None and not (0 <= self.crf <= maximum):
+                return False, f"CRF 值超出范围 (0-{maximum}): {self.crf}"
         
         # 验证分辨率格式
         if self.resolution:
@@ -227,7 +232,7 @@ def resolve_encoder_params(
     
     # 解析输出格式
     from .presets import ENCODE_OUTPUT_FORMATS
-    output_format_key = getattr(args, 'output_format', 'MP4 (默认)')
+    output_format_key = getattr(args, 'output_format', 'MP4')
     output_ext = ENCODE_OUTPUT_FORMATS.get(output_format_key, ".mp4")
     if output_ext is None:
         custom_fmt = getattr(args, 'output_format_custom', '').strip()

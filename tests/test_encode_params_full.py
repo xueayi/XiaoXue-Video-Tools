@@ -24,7 +24,7 @@ class Args:
             crf=18, video_bitrate="", resolution="", fps=0,
             audio_encoder="复制 (不重新编码)", audio_bitrate="192k",
             subtitle="", compat_mode=False, extra_args="",
-            debug_mode=False, output_format="MP4 (默认)",
+            debug_mode=False, output_format="MP4",
             output_format_custom="", audio_tracks="仅保留第 1 条 (#0)",
             audio_tracks_custom="", subtitle_tracks="不保留字幕",
             subtitle_tracks_custom="",

@@ -49,7 +49,7 @@ def make_args(tmp_path, **overrides):
         debug_mode=False,
         rate_control="CRF/CQ (恒定质量)",
         video_bitrate="",
-        output_format="MP4 (默认)",
+        output_format="MP4",
         output_format_custom="",
         audio_tracks="仅保留第 1 条 (#0)",
         audio_tracks_custom="",

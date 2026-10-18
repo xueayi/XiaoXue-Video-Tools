@@ -71,7 +71,7 @@ CONTAINERS: Dict[str, ContainerCapability] = {
     ),
     ".m4v": ContainerCapability(
         extension=".m4v",
-        display="MP4 (M4V)",
+        display="M4V",
         video_codecs=frozenset({"h264", "hevc", "av1", "mpeg4"}),
         audio_codecs=frozenset({"aac", "mp3", "ac3", "eac3", "opus"}),
         subtitle_codecs=frozenset({"mov_text"}),

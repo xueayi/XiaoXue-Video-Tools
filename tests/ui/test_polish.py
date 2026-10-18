@@ -371,7 +371,7 @@ def test_remux_compat_webm_unsupported(remux_tab, monkeypatch, tmp_path):
     monkeypatch.setattr(mod, "probe_detailed",
                         lambda p: _info(video_codec="h264", with_subs=False))
     remux_tab.remux_input_edit.setText(str(real))
-    remux_tab.remux_preset_combo.setCurrentText("WEBM (Web 视频)")
+    remux_tab.remux_preset_combo.setCurrentText("WEBM")
     assert "兼容性警告" in remux_tab._compat_warn_label.text()
 
 

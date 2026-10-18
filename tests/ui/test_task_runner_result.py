@@ -62,7 +62,8 @@ def test_none_is_failed():
     runner.run()
     result = results[0]
     assert result.status is TaskStatus.FAILED
-    assert "未返回 TaskResult" in result.message
+    assert "未返回结果" in result.message
+    assert "TaskResult" not in result.message  # 界面不出现内部类型名
     assert finished == [(False, "任务")]
 
 
@@ -81,7 +82,8 @@ def test_unknown_return_type_is_failed():
     runner.run()
     result = results[0]
     assert result.status is TaskStatus.FAILED
-    assert "未知" in result.message
+    assert "无法识别" in result.message
+    assert "object" not in result.message  # 不暴露 Python 类型名
 
 
 # ----------------------------------------------------------------
@@ -96,7 +98,10 @@ def test_exception_is_failed_with_traceback():
     runner.run()
     result = results[0]
     assert result.status is TaskStatus.FAILED
-    assert "炸了" in result.message
+    # 界面只显示友好文案, 原始异常进日志与 details
+    assert "任务执行出错" in result.message
+    assert "炸了" not in result.message
+    assert "炸了" in result.details["error"]
     assert "RuntimeError" in result.details["traceback"]
     assert finished == [(False, "任务")]
     joined = "".join(logs)
