@@ -2,7 +2,7 @@
 """Tab 页面基类：提供通用控件创建辅助方法。"""
 
 from PyQt6.QtWidgets import (
-    QScrollArea, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
+    QScrollArea, QWidget, QVBoxLayout, QHBoxLayout,
     QGroupBox, QLabel, QLineEdit, QPushButton,
     QCheckBox, QPlainTextEdit, QFileDialog, QToolButton,
 )
@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, QMimeData
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 
 from .args_builder import ArgsNamespace
-from .widgets import WheelGuardComboBox, WheelGuardSpinBox
+from .widgets import WheelGuardComboBox, WheelGuardSpinBox, make_form_layout
 
 # 表单内容列的最大宽度: 避免宽窗口下输入框被无限拉长
 CONTENT_MAX_WIDTH = 860
@@ -25,6 +25,7 @@ _STATUS_KINDS = {
     "muted": ("muted_label", True),
     "error": ("error_label", False),
     "strong": ("strong_label", False),
+    "accent": ("accent_label", False),
 }
 
 
@@ -117,13 +118,7 @@ class BaseTab(QScrollArea):
     def add_group(self, title, description=None):
         """创建一个 QGroupBox 分组并追加到主布局，返回内部 QFormLayout。"""
         group = QGroupBox(title)
-        layout = QFormLayout()
-        layout.setLabelAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-        layout.setHorizontalSpacing(14)
-        layout.setVerticalSpacing(10)
+        layout = make_form_layout()
         group.setLayout(layout)
 
         if description:
@@ -307,13 +302,7 @@ class BaseTab(QScrollArea):
 
         content = QWidget()
         content.setObjectName("fold_content")
-        layout = QFormLayout(content)
-        layout.setLabelAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-        layout.setHorizontalSpacing(14)
-        layout.setVerticalSpacing(10)
+        layout = make_form_layout(content)
         layout.setContentsMargins(16, 0, 0, 4)
 
         if description:

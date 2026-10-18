@@ -10,10 +10,11 @@
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
-    QFormLayout, QGridLayout, QGroupBox, QLabel, QVBoxLayout,
+    QGridLayout, QGroupBox, QLabel, QVBoxLayout,
 )
 
 from .base_tab import repolish, set_label_kind
+from .widgets import make_form_layout
 
 # 卡片展示的 8 个字段: (字段键, 中文标签)。顺序即卡片内展示顺序。
 INFO_FIELDS = (
@@ -97,13 +98,7 @@ class InputMediaCard(QGroupBox):
         outer.setSpacing(10)
 
         # 文件选择行插入点：页面复用 BaseTab.add_file_chooser 填充
-        self.form = QFormLayout()
-        self.form.setLabelAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-        self.form.setHorizontalSpacing(14)
-        self.form.setVerticalSpacing(10)
+        self.form = make_form_layout()
         outer.addLayout(self.form)
 
         # 媒体信息网格 (2 行 x 4 列)

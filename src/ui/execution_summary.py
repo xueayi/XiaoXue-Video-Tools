@@ -12,12 +12,13 @@
 import os
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QFormLayout, QGroupBox, QLabel
+from PyQt6.QtWidgets import QGroupBox, QLabel
 
 from ..encode_params import EncodeMode, resolve_encoder_params
 from ..presets import AUDIO_ENCODERS, ENCODERS, ALL_QUALITY_PRESETS as QUALITY_PRESETS, RATE_CONTROL_MODES
 from ..utils import generate_output_path
 from .base_tab import set_label_kind
+from .widgets import make_form_layout
 
 TITLE = "执行摘要"
 PLACEHOLDER = "选择输入视频后显示执行摘要"
@@ -120,12 +121,7 @@ class ExecutionSummaryCard(QGroupBox):
         self.last_params = None
         self.auto_generated = False
 
-        form = QFormLayout(self)
-        form.setLabelAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-        form.setHorizontalSpacing(14)
+        form = make_form_layout(self)
         form.setVerticalSpacing(8)
 
         self._rows = {}

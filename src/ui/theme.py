@@ -121,6 +121,7 @@ _LIGHT = dict(
     checkbox_border="#6b6b6b",
     checkbox_bg="#fafafa",
     checkbox_checked="#005fb8",
+    checkbox_checked_disabled="#9dbfd8",
     checkbox_hover_border="#005fb8",
     # 代码侧取色 (图标 / 药丸指示器)
     icon_color="#1a1a1a",
@@ -203,6 +204,7 @@ _DARK = dict(
     checkbox_border="#8a8a8a",
     checkbox_bg="#333333",
     checkbox_checked="#4cc2ff",
+    checkbox_checked_disabled="#2d5a72",
     checkbox_hover_border="#4cc2ff",
     icon_color="#e8e8e8",
     icon_color_secondary="#c0c0c0",
@@ -698,6 +700,11 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
     background-color: $checkbox_checked;
     border-color: $checkbox_checked;
+$check_icon_rule
+}
+QCheckBox::indicator:checked:disabled {
+    background-color: $checkbox_checked_disabled;
+    border-color: $checkbox_checked_disabled;
 }
 QCheckBox::indicator:disabled {
     border-color: $input_disabled_border;
@@ -1051,17 +1058,30 @@ QFrame#plan_card, QPushButton#plan_card {
 QFrame#plan_card:hover, QPushButton#plan_card:hover {
     border-color: $input_border_bottom;
 }
-/* 选中: 常规卡片底色 + 强调色描边 + 右上角对勾徽标 (不再是整块实心色) */
+/* 选中: 卡片外观不变, 由右上角复选框的勾号表示 (不再画强调色描边) */
 QFrame#plan_card[selected="true"], QPushButton#plan_card:checked {
-    border: 2px solid $accent;
+    border: 1px solid $card_border;
     background-color: $card_bg;
 }
-QLabel#plan_check_badge {
-    background-color: $accent;
-    color: #ffffff;
-    border-radius: 9px;
-    font-size: 12px;
-    font-weight: bold;
+/* 方案卡的选中复选框: 与卡片同底色, 只保留勾号指示器 */
+QCheckBox#plan_check {
+    background: transparent;
+    spacing: 0px;
+}
+QCheckBox#plan_check::indicator {
+    width: 18px;
+    height: 18px;
+    border: 1px solid $checkbox_border;
+    border-radius: 4px;
+    background-color: $checkbox_bg;
+}
+QCheckBox#plan_check::indicator:hover {
+    border-color: $checkbox_hover_border;
+}
+QCheckBox#plan_check::indicator:checked {
+    background-color: $checkbox_checked;
+    border-color: $checkbox_checked;
+$plan_check_icon_rule
 }
 /* 轨道行: 卡片式框线, 勾选后用强调色描边 */
 QFrame#track_row {
@@ -1131,8 +1151,48 @@ def color(token: str, theme: str = None) -> str:
 
 
 def get_stylesheet(theme: str = None) -> str:
-    """由令牌渲染完整 QSS。"""
-    return TEMPLATE.safe_substitute(palette(theme))
+    """由令牌渲染完整 QSS。
+
+    除色板令牌外还注入勾号图标路径: QSS 的 ``::indicator`` 只能通过
+    ``image: url(...)`` 显示对勾, 纯背景色会得到一个没有勾号的实心方块。
+    """
+    name = theme or get_theme()
+    tokens = dict(palette(name))
+    icon_rule = _check_icon_rule(name)
+    tokens["check_icon_rule"] = icon_rule
+    tokens["plan_check_icon_rule"] = icon_rule
+    return TEMPLATE.safe_substitute(tokens)
+
+
+# 亮色主题用白色勾号 (深蓝底), 暗色主题用深色勾号 (浅蓝底)
+_CHECK_ICON_FILES = {
+    "light": "checkbox-tick.svg",
+    "dark": "checkbox-tick-dark.svg",
+}
+
+
+def check_icon_path(theme: str = None):
+    """勾号图标绝对路径; 找不到返回 None。
+
+    查找顺序与 :func:`logo_path` 一致: 资源目录 (PyInstaller ``_internal``)
+    优先, 再退回安装目录, 保证发布版与开发模式都能取到。
+    """
+    name = _CHECK_ICON_FILES[theme or get_theme()]
+    for root in (get_internal_dir(), get_base_dir()):
+        for sub in ("image", os.path.join("src", "image")):
+            path = os.path.join(root, sub, name)
+            if os.path.exists(path):
+                return path
+    return None
+
+
+def _check_icon_rule(theme: str = None) -> str:
+    """渲染 ``image: url(...)`` 声明; 图标缺失时返回空串 (退化为实心方块)。"""
+    path = check_icon_path(theme)
+    if not path:
+        return ""
+    return '    image: url("%s");' % path.replace("\\", "/")
+
 
 
 def logo_path(theme: str = None):

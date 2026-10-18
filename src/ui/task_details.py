@@ -10,11 +10,12 @@ import os
 from PyQt6.QtCore import QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
-    QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QPushButton,
+    QDialog, QDialogButtonBox, QHBoxLayout, QLabel, QPushButton,
     QVBoxLayout,
 )
 
 from . import icons
+from .widgets import make_form_layout
 from .task_state import TaskStatus, TaskViewState
 
 
@@ -42,7 +43,7 @@ class TaskDetailsDialog(QDialog):
         root.setContentsMargins(18, 16, 18, 14)
         root.setSpacing(10)
 
-        form = QFormLayout()
+        form = make_form_layout()
         form.setHorizontalSpacing(12)
         form.setVerticalSpacing(8)
 

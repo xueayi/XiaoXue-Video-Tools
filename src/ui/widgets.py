@@ -19,11 +19,36 @@ from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
     QDoubleSpinBox,
+    QFormLayout,
     QSpinBox,
     QStyle,
     QStyleOptionComboBox,
     QStylePainter,
 )
+
+
+def make_form_layout(parent=None) -> QFormLayout:
+    """创建全平台排版一致的表单布局。
+
+    背景: ``QFormLayout`` 的字段增长策略默认值随样式而变 —— QMacStyle 是
+    ``FieldsStayAtSizeHint``, 字段按 sizeHint 定宽、剩余空间两侧均分, 于是
+    macOS 上整块表单看起来「被居中了」, 与 Windows 的撑满宽度不一致。
+    这里显式统一为 ``AllNonFixedFieldsGrow`` 并固定标签/行策略。
+
+    Args:
+        parent: 传给 QFormLayout 的父对象 (可为 None, 之后由 addLayout 接管)。
+    """
+    form = QFormLayout(parent)
+    form.setFieldGrowthPolicy(
+        QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+    form.setFormAlignment(
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+    form.setLabelAlignment(
+        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+    form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
+    form.setHorizontalSpacing(14)
+    form.setVerticalSpacing(10)
+    return form
 
 
 class _WheelForwardMixin:

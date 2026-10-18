@@ -12,7 +12,7 @@
 import os
 
 import pytest
-from PyQt6.QtWidgets import QLabel, QToolButton
+from PyQt6.QtWidgets import QCheckBox, QFormLayout, QLabel, QToolButton
 
 from src.encode_params import resolve_encoder_params
 from src.media_probe import DetailedMediaInfo, StreamInfo
@@ -247,6 +247,33 @@ def test_plan_card_click_switches_preset_and_linkage(tab):
     assert tab.encoder_combo.isEnabled() is True
     # 同一时刻只有一张卡处于选中态
     assert len([c for c in tab.output_plan_card.cards if c.is_selected()]) == 1
+
+
+def test_plan_card_selection_is_a_checkbox_with_checkmark(tab):
+    """选中态由右上角复选框的勾号表示, 不再画强调色矩形描边。"""
+    cards = tab.output_plan_card.cards
+    target = cards[1]
+    target.click()
+    for card in cards:
+        assert isinstance(card.check_box, QCheckBox)
+        assert card.check_box.isChecked() is (card is target)
+    # 勾号来自 QSS 的 image 规则: 只给背景色会得到没有勾号的实心方块
+    from src.ui import theme
+    expected_icon = {"light": "checkbox-tick.svg", "dark": "checkbox-tick-dark.svg"}
+    for name, icon in expected_icon.items():
+        qss = theme.get_stylesheet(name)
+        assert "QCheckBox#plan_check::indicator:checked" in qss
+        assert icon in qss
+
+
+def test_plan_param_form_grows_fields(tab):
+    """macOS 的 QMacStyle 默认 FieldsStayAtSizeHint, 表单会整块居中。
+
+    这里锁住统一后的增长策略, 保证三平台表单都撑满可用宽度。
+    """
+    form = tab.output_plan_card.param_form()
+    assert form.fieldGrowthPolicy() == (
+        QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
 
 # ----------------------------------------------------------------

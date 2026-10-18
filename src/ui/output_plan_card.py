@@ -13,13 +13,13 @@ from dataclasses import dataclass
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QFormLayout, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+    QCheckBox, QFrame, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
     QSizePolicy, QVBoxLayout,
 )
 
 from ..presets import ENCODERS, QUALITY_PRESETS
 from .base_tab import repolish, set_label_kind
-from .widgets import WheelGuardComboBox
+from .widgets import WheelGuardComboBox, make_form_layout
 
 TITLE = "视频输出策略"
 MORE_PRESETS_LABEL = "更多预设"
@@ -134,13 +134,17 @@ class PlanCard(QFrame):
         set_label_kind(self.title_label, "strong")
         header.addWidget(self.title_label, 1)
 
-        # 选中标记: 右上角圆形对勾徽标 (替代整块填充色)
-        self.check_badge = QLabel("✓")
-        self.check_badge.setObjectName("plan_check_badge")
-        self.check_badge.setFixedSize(18, 18)
-        self.check_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.check_badge.setVisible(False)
-        header.addWidget(self.check_badge, 0, Qt.AlignmentFlag.AlignTop)
+        # 选中标记: 右上角复选框 (勾号由主题 QSS 绘制), 取代整块蓝色描边
+        self.check_box = QCheckBox()
+        self.check_box.setObjectName("plan_check")
+        self.check_box.setToolTip("选中该输出策略")
+        self.check_box.setCursor(Qt.CursorShape.PointingHandCursor)
+        # 点击落在复选框上也交给整张卡处理, 避免出现「能勾但不切换」的死角
+        self.check_box.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.check_box.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.check_box.setChecked(False)
+        header.addWidget(self.check_box, 0, Qt.AlignmentFlag.AlignTop)
         layout.addLayout(header)
 
         self.badge_label = QLabel(
@@ -205,7 +209,8 @@ class PlanCard(QFrame):
         self.setProperty("selected", self._selected)
         set_label_kind(self.title_label, "accent" if self._selected else "strong")
         self.title_label.setText(self.target.title)
-        self.check_badge.setVisible(self._selected)
+        # 复选框只做状态展示: 交互统一由整张卡的点击处理
+        self.check_box.setChecked(self._selected)
         repolish(self)
 
     def click(self) -> None:
@@ -291,12 +296,7 @@ class OutputPlanCard(QGroupBox):
         """返回方案卡下方的基础参数表单 (惰性创建, 由页面填充)。"""
         form = getattr(self, "_param_form", None)
         if form is None:
-            form = QFormLayout()
-            form.setLabelAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.DontWrapRows)
-            form.setHorizontalSpacing(14)
-            form.setVerticalSpacing(10)
+            form = make_form_layout()
             self._param_form = form
             separator = QLabel("视频编码参数")
             separator.setObjectName("accent_label")
