@@ -84,6 +84,25 @@ def test_enabled_args_and_summary_and_embed_clear_enhancement(qapp,tmp_path,monk
     tab.release()
 
 
+def test_windows_keeps_compat_mode_and_hides_font_enhancement(qapp,tmp_path):
+    """Windows 默认快照: 字体增强不可见/不可启用, 原 AviSynth 兼容模式不变。"""
+    import src.ui.tabs.encode_tab as module
+    tab=module.EncodeTab()
+    assert tab.font_panel.isHidden() and not tab.font_panel.options().enabled
+    assert 'subtitle_fonts' not in vars(tab.build_args())
+    # 兼容模式行仍在, 可勾选, 摘要维持原有文案
+    assert not tab.compat_mode_cb.isHidden() and tab.compat_mode_cb.isEnabled()
+    ass=write_ass(tmp_path/'字幕.ass')
+    tab.input_edit.setText(str(tmp_path/'video.mp4'))
+    tab.subtitle_edit.setText(str(ass))
+    tab.compat_mode_cb.setChecked(True)
+    args=tab.build_args()
+    assert args.compat_mode is True
+    text=tab.summary_card.row_text('subtitle')
+    assert '兼容渲染' in text and '字体兼容增强' not in text
+    tab.release()
+
+
 def test_preview_has_enough_height_to_show_subtitle_image(qapp,tmp_path):
     from PIL import Image
     from src.subtitle_render import SubtitlePreview
