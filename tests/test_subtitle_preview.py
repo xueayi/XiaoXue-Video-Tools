@@ -18,7 +18,8 @@ def test_preview_at_nonzero_time_keeps_ass_clock(tmp_path,requires_libass,monkey
              '-vf',f'setpts=PTS+{start}/TB','-c:v','ffv1',str(video)]
     subprocess.run(command,check=True,capture_output=True,timeout=20)
     ass=write_ass(tmp_path/'test.ass')
-    ass.write_text(ass.read_text().replace('0:00:00.00,0:00:02.00','0:00:01.00,0:00:02.00'))
+    ass.write_text(ass.read_text(encoding='utf-8').replace('0:00:00.00,0:00:02.00','0:00:01.00,0:00:02.00'),
+                   encoding='utf-8')
     font=make_font(tmp_path/'font.ttf')
     with prepare_subtitle(str(ass),SubtitleFontOptions(True,(str(font),))) as prepared:
         before=render_subtitle_preview(str(video),500_000,prepared,tmp_path/'before.png')

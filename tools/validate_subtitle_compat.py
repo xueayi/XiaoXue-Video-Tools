@@ -74,7 +74,7 @@ def main():
     out = args.output.resolve()
     for name in ('frames', 'outputs', 'logs'):
         (out/name).mkdir(parents=True, exist_ok=True)
-    manifest = json.loads((ROOT/'tests/fixtures/subtitle_compat/262_manifest.json').read_text())
+    manifest = json.loads((ROOT/'tests/fixtures/subtitle_compat/262_manifest.json').read_text(encoding='utf-8'))
     for stem in ('ffmpeg', 'ffprobe'):
         bundled = ROOT/'build/macos-media/bin'/stem
         if bundled.is_file():
@@ -105,7 +105,7 @@ def main():
 
     def record(name, details):
         result['cases'][name] = {'status': 'pass', **details}
-        (out/'manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str))
+        (out/'manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
         print('PASS', name, flush=True)
 
     def raw(command, name, timeout=240):
@@ -166,7 +166,7 @@ def main():
                 frame = render_subtitle_preview(str(video), us, prepared, out/'frames'/f'{us}.png')
                 assert frame.report.ready
                 record(f'frame_{us}', {'actual_us': frame.actual_us, 'observed': [r.name for r in frame.report.observed]})
-            (out/'font-report.json').write_text(json.dumps(asdict(prepared.report), ensure_ascii=False, indent=2, default=str))
+            (out/'font-report.json').write_text(json.dumps(asdict(prepared.report), ensure_ascii=False, indent=2, default=str), encoding='utf-8')
         faces = scan_font_sources(sources, out/'font-imports', lambda: False)
         mi = next(f for f in faces if f.postscript_name=='MiSans-Medium')
         mapping = (FontBinding('Noto Sans SC Medium', mi),)
@@ -209,7 +209,7 @@ def main():
         result['cases']['windows_vsfilter_reference'] = {'status':'not_run','reason':'未提供 Windows VSFilter 参考帧'}
         after = {p:font_sha256(Path(p)) for p in before}
         assert before==after
-        (out/'source-checksums.json').write_text(json.dumps({'before':before,'after':after},ensure_ascii=False,indent=2))
+        (out/'source-checksums.json').write_text(json.dumps({'before':before,'after':after},ensure_ascii=False,indent=2), encoding='utf-8')
         result['ok'] = True
     except Exception as exc:
         result['ok'] = False
@@ -221,7 +221,7 @@ def main():
         deadline = time.monotonic()+5
         while tab.font_panel._queue.busy and time.monotonic()<deadline:
             app.processEvents();time.sleep(.01)
-        (out/'manifest.json').write_text(json.dumps(result,ensure_ascii=False,indent=2,default=str))
+        (out/'manifest.json').write_text(json.dumps(result,ensure_ascii=False,indent=2,default=str), encoding='utf-8')
     print(out/'manifest.json')
 
 

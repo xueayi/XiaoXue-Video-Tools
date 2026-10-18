@@ -30,7 +30,7 @@ def main():
     with (output / "frozen-preview.log").open("wb") as log:
         completed = subprocess.run([str(executable), "--media-diagnostics", str(source), "--report", str(report)],
                                    cwd=output, env=env, stdout=log, stderr=log, timeout=20)
-    assert completed.returncode == 0, (output / "frozen-preview.log").read_text(errors="replace")
+    assert completed.returncode == 0, (output / "frozen-preview.log").read_text(encoding="utf-8", errors="replace")
     result = json.loads(report.read_text(encoding="utf-8"))
     assert result["ok"], result
     with (output / "app-startup.log").open("wb") as log:
@@ -41,7 +41,7 @@ def main():
             except subprocess.TimeoutExpired:
                 result["frozen_startup"] = "passed"
             else:
-                raise AssertionError((output / "app-startup.log").read_text(errors="replace"))
+                raise AssertionError((output / "app-startup.log").read_text(encoding="utf-8", errors="replace"))
         finally:
             process.terminate()
             process.wait(timeout=10)

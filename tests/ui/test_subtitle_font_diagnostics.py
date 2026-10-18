@@ -15,6 +15,6 @@ def test_font_diagnostics_exercises_ui_scan_snapshot_and_cleanup(qapp,tmp_path,r
     ass=write_ass(tmp_path/'字幕.ass');font=make_font(tmp_path/'font.ttf')
     report=tmp_path/'report.json'
     assert run_font_diagnostics(str(video),str(ass),(str(font),),str(report),1_000_000)==0
-    data=json.loads(report.read_text())
+    data=json.loads(report.read_text(encoding='utf-8'))
     assert data['ok'] and data['font_report']['verified']
     assert (tmp_path/'report.png').is_file()

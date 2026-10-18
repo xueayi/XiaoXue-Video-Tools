@@ -54,12 +54,13 @@ def test_external_corpus_is_valid_when_explicitly_configured():
 def test_shifted_test_subtitle_keeps_relative_animation(tmp_path):
     from tools.validate_subtitle_compat import shift_test_subtitle
     source=write_ass(tmp_path/'original.ass')
-    source.write_text(source.read_text().replace('0:00:00.00,0:00:02.00',
-                                                 '0:00:17.77,0:00:23.64').replace('中文',r'{\t(0,50,\alpha&H00&)}中文'))
+    source.write_text(source.read_text(encoding='utf-8').replace(
+        '0:00:00.00,0:00:02.00', '0:00:17.77,0:00:23.64').replace(
+        '中文', r'{\t(0,50,\alpha&H00&)}中文'), encoding='utf-8')
     before=source.read_bytes()
     output=tmp_path/'shifted.ass';shift_test_subtitle(source,output,16)
-    assert '0:00:01.77,0:00:07.64' in output.read_text()
-    assert r'\t(0,50,\alpha&H00&)' in output.read_text()
+    assert '0:00:01.77,0:00:07.64' in output.read_text(encoding='utf-8')
+    assert r'\t(0,50,\alpha&H00&)' in output.read_text(encoding='utf-8')
     assert source.read_bytes()==before
 
 
@@ -76,9 +77,10 @@ def test_two_fonts_and_reordered_clips_keep_source_subtitle_frame(tmp_path, requ
     medium = make_font(tmp_path/'medium.ttf')
     black = make_font(tmp_path/'black.ttf', 'Demo Black', 900)
     ass = write_ass(tmp_path/'test.ass')
-    ass.write_text(ass.read_text().replace('[Events]',
-                   'Style: Title,Demo Black,30,0,0,&H000000FF,8\n[Events]') +
-                   r'Dialogue: 0:00:01.00,0:00:02.00,Title,{\fad(1000,0)}标题' + '\n')
+    ass.write_text(ass.read_text(encoding='utf-8').replace(
+        '[Events]', 'Style: Title,Demo Black,30,0,0,&H000000FF,8\n[Events]') +
+        r'Dialogue: 0:00:01.00,0:00:02.00,Title,{\fad(1000,0)}标题' + '\n',
+        encoding='utf-8')
     with prepare_subtitle(str(ass), SubtitleFontOptions(True, (str(medium), str(black)))) as prepared:
         snapshot = render_subtitle_preview(str(video), 1_500_000, prepared, tmp_path/'source.png')
         assert snapshot.report.verified

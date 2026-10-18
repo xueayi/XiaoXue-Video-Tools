@@ -177,8 +177,8 @@ def main():
         completed = subprocess.run([str(app_path / 'Contents/MacOS/XiaoXueToolbox'),
                                     '--media-diagnostics', str(source), '--report', str(preview_report)],
                                    cwd='/', env=env, stdout=log, stderr=log, timeout=20)
-    assert completed.returncode == 0, (output / 'frozen-preview.log').read_text()
-    report['frozen_preview'] = json.loads(preview_report.read_text())
+    assert completed.returncode == 0, (output / 'frozen-preview.log').read_text(encoding='utf-8', errors='replace')
+    report['frozen_preview'] = json.loads(preview_report.read_text(encoding='utf-8'))
     assert report['frozen_preview']['ok']
     smoke_font = output / '独立测试字体.ttf'
     make_smoke_font(smoke_font)
@@ -201,7 +201,7 @@ Dialogue: 0:00:00.00,0:00:02.00,Default,AAA
                                     '--font-source', str(smoke_font), '--time', '1',
                                     '--report', str(font_report)],
                                    cwd='/', env=env, stdout=log, stderr=log, timeout=80)
-    assert completed.returncode == 0, (output / 'frozen-fonts.log').read_text()
+    assert completed.returncode == 0, (output / 'frozen-fonts.log').read_text(encoding='utf-8', errors='replace')
     report['frozen_fonts'] = json.loads(font_report.read_text(encoding='utf-8'))
     assert report['frozen_fonts']['font_report']['verified']
     with (output / 'app-startup.log').open('w') as log:
@@ -209,7 +209,7 @@ Dialogue: 0:00:00.00,0:00:02.00,Default,AAA
                                    cwd='/', env=env, stdout=log, stderr=log)
         try:
             time.sleep(3)
-            assert process.poll() is None, (output / 'app-startup.log').read_text()
+            assert process.poll() is None, (output / 'app-startup.log').read_text(encoding='utf-8', errors='replace')
             report['frozen_startup'] = 'passed (offscreen, restricted PATH, cwd=/)'
         finally:
             process.terminate()

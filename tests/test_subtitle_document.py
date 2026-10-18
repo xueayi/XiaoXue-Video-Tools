@@ -42,19 +42,19 @@ def test_empty_mapping_reuses_original(tmp_path):
 
 def test_animated_font_change_is_explicitly_unsupported(tmp_path):
     source = tmp_path / 'animated.ass'
-    source.write_text(FIXTURE.read_text().replace(r'\t(0,500,\alpha&H00&)', r'\t(0,500,\fnOther)'))
+    source.write_text(FIXTURE.read_text(encoding='utf-8').replace(r'\t(0,500,\alpha&H00&)', r'\t(0,500,\fnOther)'), encoding='utf-8')
     with pytest.raises(ValueError, match='字体.*变换|变换.*字体'):
         analyze_subtitle(source)
 
 
 def test_missing_style_is_not_silently_treated_as_default(tmp_path):
     source = tmp_path / 'missing.ass'
-    source.write_text(FIXTURE.read_text().replace(',Main,{', ',Unknown,{'))
+    source.write_text(FIXTURE.read_text(encoding='utf-8').replace(',Main,{', ',Unknown,{'), encoding='utf-8')
     with pytest.raises(ValueError, match='样式'):
         analyze_subtitle(source)
 
 
 def test_font_request_from_style_bold_is_not_lost(tmp_path):
     source = tmp_path / 'bold.ass'
-    source.write_text(FIXTURE.read_text().replace('Main,0,0', 'Main,-1,0'))
+    source.write_text(FIXTURE.read_text(encoding='utf-8').replace('Main,0,0', 'Main,-1,0'), encoding='utf-8')
     assert FontRequest('Noto Sans SC Medium', -1, False) in analyze_subtitle(source).requests
