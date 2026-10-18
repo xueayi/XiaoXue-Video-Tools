@@ -111,23 +111,30 @@ class EncodeParams:
         if self.subtitle_path and not os.path.exists(self.subtitle_path):
             return False, f"字幕文件不存在: {self.subtitle_path}"
 
+        from .capabilities.container import (
+            EMBEDDED_SUBTITLE_FORMATS,
+            supports_embedded_subtitles,
+        )
+
+        formats = " / ".join(ext.upper() for ext in EMBEDDED_SUBTITLE_FORMATS)
+        extension = os.path.splitext(self.output_path)[1]
+        container_supports_subs = supports_embedded_subtitles(extension)
+
         # 复制视频流模式: 画面不重新编码, 只能内封不能烧录
         if (self.encoder == "copy" and self.subtitle_path
                 and self.subtitle_mode == "burn"):
-            return False, ("「复制视频流」模式不会重新编码画面，无法烧录字幕；"
-                          "可把字幕处理方式改为「内封」或取消字幕文件")
+            if container_supports_subs:
+                return False, ("「复制视频流」模式不会重新编码画面，无法烧录字幕；"
+                              "可把字幕处理方式改为「内封」或取消字幕文件")
+            return False, (f"「复制视频流」无法烧录字幕，而当前输出格式"
+                           f"（{extension or '未知格式'}）也不支持字幕流；"
+                           f"请改用 {formats} 输出或取消字幕文件")
 
         # 内封外挂字幕: 需要容器支持独立字幕流
-        if self.subtitle_path and self.subtitle_mode == "embed":
-            from .capabilities.container import (
-                EMBEDDED_SUBTITLE_FORMATS,
-                supports_embedded_subtitles,
-            )
-            extension = os.path.splitext(self.output_path)[1]
-            if not supports_embedded_subtitles(extension):
-                formats = " / ".join(ext.upper() for ext in EMBEDDED_SUBTITLE_FORMATS)
-                return False, (f"内封外挂字幕需要 {formats} 输出格式，"
-                               f"当前为 {extension or '未知格式'}；请改用内嵌烧录或更换输出格式")
+        if (self.subtitle_path and self.subtitle_mode == "embed"
+                and not container_supports_subs):
+            return False, (f"内封外挂字幕需要 {formats} 输出格式，"
+                           f"当前为 {extension or '未知格式'}；请改用内嵌烧录或更换输出格式")
 
         if self.clip_plan is not None:
             try:

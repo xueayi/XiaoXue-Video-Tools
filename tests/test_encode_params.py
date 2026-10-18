@@ -962,6 +962,16 @@ class TestSubtitleProcessingMode:
         ok, message = embed.validate()
         assert ok, message
 
+    def test_copy_video_mp4_explains_both_limits(self, tmp_path):
+        """复制视频流 + MP4 + 字幕文件: 烧录与内封都不可行, 提示要同时说清。"""
+        params = self._params(
+            tmp_path, encoder="copy", subtitle_mode="burn",
+            output_path=str(tmp_path / "out.mp4"))
+        ok, message = params.validate()
+        assert ok is False
+        assert "「复制视频流」" in message and "不支持字幕流" in message
+        assert "MKV" in message
+
     def test_clip_mode_rejects_embed(self, tmp_path):
         video = tmp_path / "in.mp4"
         video.write_bytes(b"x")

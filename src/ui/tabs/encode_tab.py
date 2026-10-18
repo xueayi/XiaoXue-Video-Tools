@@ -521,7 +521,8 @@ class EncodeTab(BaseTab):
         不再像旧版那样直接清空。
         """
         if (copy_mode and self.subtitle_edit.text().strip()
-                and SUBTITLE_MODES.get(self.subtitle_mode_combo.currentText()) == "burn"):
+                and SUBTITLE_MODES.get(self.subtitle_mode_combo.currentText()) == "burn"
+                and supports_embedded_subtitles(self.current_output_extension())):
             self.subtitle_mode_combo.setCurrentText("内封（转为软字幕流）")
         # 兼容模式的可用性只取决于处理方式, 统一交回 _on_subtitle_mode_changed
         self._on_subtitle_mode_changed(self.subtitle_mode_combo.currentText())
