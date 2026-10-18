@@ -1,26 +1,39 @@
 name: Build and Release
 
+# 正式版 (vX.Y.Z, 不含 alpha/beta/rc) 的双平台构建与发布:
+#   windows  job → Windows x64 冻结包
+#   macos    job → macOS arm64 .app 冻结包 (uv 托管 Python 3.12.12)
+#   release  job → 两个平台都成功后, 统一创建 Release 并写入两份 SHA256
+# 预发布 (alpha/beta/rc) 走 build-beta.yml, 两者互不干扰。
+
 on:
   push:
     tags:
       - 'v[0-9]*'  # 匹配 v 开头的版本号
-  workflow_dispatch:  # 支持手动触发
+  workflow_dispatch:  # 支持手动触发 (只构建, 不发布)
 
-# 添加权限声明，允许创建 Release
 permissions:
-  contents: write
+  contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  XIAOXUE_NO_UPDATE_CHECK: '1'
+  PYTHONIOENCODING: utf-8
 
 jobs:
-  build:
+  windows:
     # 排除 beta/alpha/rc 版本 (这些由 build-beta.yml 处理)
     if: ${{ !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-rc') }}
     runs-on: windows-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -53,158 +66,127 @@ jobs:
           Copy-Item "ffmpeg_temp\$dirName\bin\ffprobe.exe" -Destination "bin\"
           Remove-Item -Recurse -Force "ffmpeg_temp"
           Remove-Item "ffmpeg.zip"
-      
+
       - name: Inject version to src/_version.py
         run: |
           $version = "${{ github.ref_name }}"
-          if (-not $version -or $version -eq "") { 
-            $version = "dev" 
+          if (-not $version -or $version -eq "") {
+            $version = "dev"
           } else {
             $version = $version -replace '^v', ''
           }
           Write-Host "Injecting version: $version"
-          
+
           $content = Get-Content "src/_version.py" -Raw -Encoding UTF8
           $content = $content -replace '__version__:\s*str\s*=\s*.*', "__version__: str = `"$version`""
           Set-Content "src/_version.py" -Value $content -Encoding UTF8 -NoNewline
-          
+
           Get-Content "src/_version.py" | Select-String -Pattern '__version__'
-      
+
       - name: Build with PyInstaller
         run: |
           pyinstaller XiaoXueToolbox.spec --noconfirm
-      
-      - name: Get version
-        id: version
-        run: |
-          $version = "${{ github.ref_name }}"
-          if (-not $version) { $version = "dev" }
-          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-      
+
       - name: Create release package
         run: |
-          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip"
-      
+          Compress-Archive -Path "dist\小雪工具箱\*" -DestinationPath "XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip"
+          Get-Item "XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip" | Select-Object Name, Length
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: XiaoXue-Video-Tools-${{ steps.version.outputs.VERSION }}
-          path: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
+          name: release-windows
+          path: XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip
+          if-no-files-found: error
           retention-days: 30
-      
-      - name: Extract changelog for this version
-        if: startsWith(github.ref, 'refs/tags/')
-        id: changelog
-        shell: python
-        run: |
-          import re, os
-          tag = os.environ.get("GITHUB_REF_NAME", "").lstrip("v")
-          text = open("CHANGELOG.md", encoding="utf-8").read()
-          # Match the section for this version (or latest if tag not found)
-          pattern = r'(## \[' + re.escape(tag) + r'\].*?)(?=\n## \[|\Z)'
-          m = re.search(pattern, text, re.DOTALL)
-          if not m:
-              # Fallback: grab the first version section
-              m = re.search(r'(## \[\d+\.\d+\.\d+\].*?)(?=\n## \[|\Z)', text, re.DOTALL)
-          body = m.group(1).strip() if m else "详见 CHANGELOG.md"
-          # Write to GITHUB_OUTPUT (multiline)
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
-              f.write("BODY<<CHANGELOG_EOF\n")
-              f.write(body + "\n")
-              f.write("CHANGELOG_EOF\n")
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  macos:
+    if: ${{ !contains(github.ref_name, '-beta') && !contains(github.ref_name, '-alpha') && !contains(github.ref_name, '-rc') }}
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 与 build-beta / Tests 一致: 用 uv 托管的 framework Python 3.12.12,
+      # setup-python 的 macOS 构建不是 framework build, PyQt6 会直接 abort。
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
-          files: XiaoXueToolbox_${{ steps.version.outputs.VERSION }}_Windows_x64.zip
-          generate_release_notes: false
-          draft: false
-          prerelease: false
-          name: "小雪工具箱 ${{ github.ref_name }}"
-          body: |
-            ## 小雪工具箱 ${{ github.ref_name }}
-            
-            ### 版本选择
-            
-            | 版本 | 说明 |
-            |------|------|
-            | `XiaoXueToolbox_${{ github.ref_name }}_Windows_x64.zip` | 标准版，包含全部基础功能 |
-            
-            ### 下载说明
-            - 解压后运行 `小雪工具箱.exe` 即可
-            - 可将程序解压到任意**非中文路径**目录 (兼容模式字幕渲染的要求)
-            - 内置静态 FFmpeg，包含全部基础功能
-            
-            ---
-            
-            ${{ steps.changelog.outputs.BODY }}
-            
-            详细更新日志请查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+          version: '0.11.7'
 
-  # 矩阵完成后: 计算全部 zip 的 SHA256, 幂等地嵌入 Release 正文
-  # (替代独立 .sha256 资产, 保持发行页整洁; 更新器从正文解析校验和)
-  release-finalize:
-    needs: build
+      - name: Prepare compatible arm64 Python
+        run: |
+          uv python install 3.12.12
+          uv venv --python 3.12.12 build/macos-venv
+          echo "$PWD/build/macos-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: uv pip install --python build/macos-venv/bin/python -r requirements-build-macos.txt -r requirements-dev.txt
+
+      - name: Prepare pinned media and version
+        run: |
+          python tools/prepare_macos_media.py
+          python - <<'PY'
+          import os
+          tag = os.environ['GITHUB_REF_NAME']
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write(f'XIAOXUE_BUILD_VERSION={tag.lstrip("v")}\n')
+          PY
+
+      # 双平台门禁: 正式版发布前同样要跑全量测试 (含真实媒体用例)
+      - name: Test including real media
+        run: python -m pytest -ra
+
+      - name: Build app and verify signature
+        env:
+          XIAOXUE_BUILD_PYTHON: python
+        run: tools/build_macos.sh
+
+      - name: Smoke test bundled media and frozen startup
+        run: python tools/smoke_macos.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: dist/packages/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  # 两个平台都成功后统一发布: 任一平台失败都不会留下半个 Release
+  release:
+    needs: [windows, macos]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: XiaoXue-Video-Tools-*
+          pattern: release-*
           merge-multiple: true
+          path: release-assets
 
-      - name: Embed SHA256 into release body
-        shell: python
+      - name: Prepare exact changelog and both SHA256 checksums
+        run: |
+          python tools/release_notes.py --tag "${GITHUB_REF_NAME}" \
+            --repository "${GITHUB_REPOSITORY}" --assets release-assets
+          cat release-notes.md
+
+      - name: Publish both platforms as one release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          import hashlib
-          import json
-          import os
-          from urllib import request
-
-          tag = os.environ["GITHUB_REF_NAME"]
-          repo = os.environ["GITHUB_REPOSITORY"]
-          base = f"https://api.github.com/repos/{repo}"
-          headers = {"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
-                     "Accept": "application/vnd.github+json"}
-
-          def api(url, payload=None):
-              data = json.dumps(payload).encode() if payload else None
-              req = request.Request(url, headers=headers, data=data,
-                                    method="PATCH" if payload else "GET")
-              with request.urlopen(req) as resp:
-                  return json.load(resp)
-
-          hashes = {}
-          for name in sorted(os.listdir(".")):
-              if name.endswith(".zip"):
-                  h = hashlib.sha256()
-                  with open(name, "rb") as f:
-                      for chunk in iter(lambda: f.read(1 << 20), b""):
-                          h.update(chunk)
-                  hashes[name] = h.hexdigest()
-          if not hashes:
-              raise SystemExit("no zip artifacts found")
-
-          release = api(f"{base}/releases/tags/{tag}")
-          lines = (release.get("body") or "").splitlines()
-          out, skip = [], False
-          for line in lines:
-              if line.strip() == "### SHA256 校验和":
-                  skip = True
-                  continue
-              if skip and line.startswith(("### ", "## ")):
-                  skip = False
-              if not skip:
-                  out.append(line)
-
-          nl = chr(10)
-          section = nl * 2 + "### SHA256 校验和" + nl + nl + "```" + nl
-          section += nl.join(f"{h}  {n}" for n, h in hashes.items())
-          section += nl + "```" + nl
-          new_body = nl.join(out).rstrip() + nl + section
-          api(f"{base}/releases/{release['id']}", {"body": new_body})
-          print("embedded", len(hashes), "checksums into release body")
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" release-assets/*.zip --clobber
+            gh release edit "$tag" --title "小雪工具箱 $tag" --notes-file release-notes.md
+          else
+            gh release create "$tag" release-assets/*.zip --verify-tag \
+              --title "小雪工具箱 $tag" --notes-file release-notes.md
+          fi

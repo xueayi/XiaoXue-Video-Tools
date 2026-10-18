@@ -184,7 +184,7 @@ build/macos-venv/bin/python tools/smoke_macos.py
 
 产物为 `dist/小雪工具箱.app` 和 `dist/packages/XiaoXueToolbox_v2.3.0-alpha.5_macOS_arm64.zip`，可解压后拖入「应用程序」。应用内置固定 SHA256 校验的 arm64 FFmpeg/ffprobe（包括 libass），无需安装 Homebrew 或配置 PATH。配置、缓存和日志保存在用户 `~/Library` 中。
 
-构建配置见 `XiaoXueToolbox-macOS.spec`，媒体来源及校验和见 `build-resources/macos-media.json`。`Build macOS Alpha`用于独立构建/PR检查；推送`release/v版本号`分支或alpha/beta/rc标签会触发`Build Pre-release`，在Windows和Mac上测试、构建并验证冻结包，两者成功后确认或创建标签，再统一创建Pre-release。需要正式签名时可设置 `XIAOXUE_CODESIGN_IDENTITY`；默认包仅做ad-hoc签名，尚未完成Developer ID公证。
+构建配置见 `XiaoXueToolbox-macOS.spec`，媒体来源及校验和见 `build-resources/macos-media.json`。`Build macOS Alpha` 用于独立构建/PR 检查；推送 `vX.Y.Z` 标签会触发 `Build and Release`，Windows 与 macOS 分别测试、构建并验证冻结包，两者成功后统一创建正式 Release 并附两份 SHA256；推送 `release/v版本号` 分支或 alpha/beta/rc 标签走 `Build Pre-release`，同一版本线只保留最新一个预发布。需要正式签名时可设置 `XIAOXUE_CODESIGN_IDENTITY`；默认包仅做ad-hoc签名，尚未完成Developer ID公证。
 
 ## 许可证
 

@@ -105,6 +105,8 @@
 
 ### 工程与测试
 
+- 正式版构建 `Build and Release` 补齐 macOS 任务: Windows 与 macOS 分别测试、构建并烟测, 两个平台都成功后才创建 Release, 正文同时附两份安装包 SHA256; 任一平台失败不会留下半个 Release
+- 分支收敛: macOS 支持全部并回 `main`(平台差异在运行期探测, 无 mac 专属代码), 不再维护 `feat/macos-alpha` 长期分支; 预发布仍由 `release/v版本号` 分支或预发布标签触发, 测试门禁只对 `main` 生效
 - 工程门禁: CI Python 统一 3.12; `.github/workflows/test.yml` 在 main 与 feat/macos-alpha 的 push/PR 上跑离屏全量测试; 构建侧 FFmpeg 固定为不可变快照 + SHA256 校验; 删除未使用依赖(`six`/`colored`), 拆分 `requirements-dev.txt`, 新增 `pyproject.toml`(`requires-python>=3.12`)
 - macOS 测试任务改用与构建一致的 uv 托管 CPython 3.12.12: setup-python 的 macOS 构建不是 framework build, PyQt6 在离屏 `QApplication` 初始化时会直接 abort(退出码 134), 表现为 pytest 跑几秒即整体崩溃
 - 测试失败时把 pytest 日志尾部转成 GitHub 注解, 原生崩溃不再只剩一行退出码
