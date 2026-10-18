@@ -23,6 +23,6 @@ PY
 "$build_python" -m PyInstaller XiaoXueToolbox-macOS.spec --noconfirm
 codesign --verify --deep --strict 'dist/小雪工具箱.app'
 mkdir -p dist/packages
-version="${XIAOXUE_BUILD_VERSION:-2.3.0-alpha.2}"
+version="${XIAOXUE_BUILD_VERSION:-2.3.0-alpha.3}"
 ditto -c -k --keepParent 'dist/小雪工具箱.app' "dist/packages/XiaoXueToolbox_v${version}_macOS_arm64.zip"
 shasum -a 256 "dist/packages/XiaoXueToolbox_v${version}_macOS_arm64.zip"
