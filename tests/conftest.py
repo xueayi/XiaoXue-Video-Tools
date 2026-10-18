@@ -90,3 +90,20 @@ def png_file(tmp_path):
     p = tmp_path / "pic.png"
     Image.new("RGB", (32, 32), (200, 100, 100)).save(p)
     return str(p)
+
+
+@pytest.fixture(scope="session")
+def media_binaries():
+    """真实媒体验证可选依赖。"""
+    import shutil
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    paths = []
+    for name in ("ffmpeg", "ffprobe"):
+        candidates = [root / "build/macos-media/bin" / name, root / "bin" / (name + ".exe")]
+        found = next((str(p) for p in candidates if p.is_file() and os.access(p, os.X_OK)), None)
+        found = found or shutil.which(name)
+        if not found:
+            pytest.skip("真实媒体验证需要 ffmpeg 和 ffprobe")
+        paths.append(found)
+    return tuple(paths)

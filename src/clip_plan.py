@@ -63,7 +63,7 @@ def _seconds(us: int) -> str:
 
 
 def build_clip_filters(plan: ClipPlan, video_filters: list[str],
-                       audio_indices: tuple[int, ...]) -> tuple[str, list[str]]:
+                       audio_indices: tuple[int, ...], video_only: bool = False) -> tuple[str, list[str]]:
     plan.validate()
     count = len(plan.clips)
     nodes = []
@@ -75,7 +75,6 @@ def build_clip_filters(plan: ClipPlan, video_filters: list[str],
     for i, clip in enumerate(plan.clips):
         nodes.append(f"[cv{i}]trim=start={_seconds(clip.in_us)}:end={_seconds(clip.out_us)},"
                      f"setpts=PTS-STARTPTS[sv{i}]")
-    nodes.append("".join(f"[sv{i}]" for i in range(count)) + f"concat=n={count}:v=1:a=0[clip_v]")
     maps = ["-map", "[clip_v]"]
     for track, source in enumerate(audio_indices):
         # 补齐源音轨开头和末尾的静音，避免短音轨导致下一段声音提前。
@@ -84,11 +83,16 @@ def build_clip_filters(plan: ClipPlan, video_filters: list[str],
         for i, clip in enumerate(plan.clips):
             nodes.append(f"[ca{track}_{i}]atrim=start={_seconds(clip.in_us)}:end={_seconds(clip.out_us)},"
                          f"asetpts=PTS-STARTPTS[sa{track}_{i}]")
-        nodes.append("".join(f"[sa{track}_{i}]" for i in range(count))
-                     + f"concat=n={count}:v=0:a=1[clip_a{track}]")
-        maps.extend(["-map", f"[clip_a{track}]"])
-        maps.extend([f"-map_metadata:s:a:{track}", f"0:s:a:{source}"])
-    if not audio_indices:
+        if not video_only:
+            maps.extend(["-map", f"[clip_a{track}]"])
+            maps.extend([f"-map_metadata:s:a:{track}", f"0:s:a:{source}"])
+    inputs = "".join(f"[sv{i}]" + "".join(f"[sa{track}_{i}]" for track in range(len(audio_indices)))
+                     for i in range(count))
+    outputs = "[clip_v]" + "".join(f"[clip_a{track}]" for track in range(len(audio_indices)))
+    nodes.append(inputs + f"concat=n={count}:v=1:a={len(audio_indices)}" + outputs)
+    if video_only:
+        nodes.extend(f"[clip_a{track}]anullsink" for track in range(len(audio_indices)))
+    if not audio_indices or video_only:
         maps.append("-an")
     maps.append("-sn")
     return ";".join(nodes), maps

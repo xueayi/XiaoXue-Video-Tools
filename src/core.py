@@ -93,6 +93,7 @@ def build_encode_command(
     subtitle_tracks_custom: str = "",
     clip_plan: Optional[ClipPlan] = None,
     clip_audio_indices: tuple[int, ...] = (),
+    clip_video_only: bool = False,
 ) -> List[str]:
     """
     构建视频编码 FFmpeg 命令。
@@ -162,7 +163,7 @@ def build_encode_command(
         vf_filters.append(f"scale={w}:{h}")
 
     if clip_plan is not None:
-        graph, maps = build_clip_filters(clip_plan, vf_filters, clip_audio_indices)
+        graph, maps = build_clip_filters(clip_plan, vf_filters, clip_audio_indices, clip_video_only)
         cmd.extend(["-filter_complex", graph] + maps)
         if audio_encoder == "copy":
             audio_encoder = "aac"
@@ -666,9 +667,10 @@ def build_2pass_commands(
                       resolution=resolution, fps=fps, audio_encoder=audio_encoder,
                       audio_bitrate=audio_bitrate, subtitle_path=subtitle_path,
                       extra_args=extra_args, clip_plan=clip_plan)
-        first = build_encode_command(**common, clip_audio_indices=(), audio_tracks="none")
+        first = build_encode_command(**common, clip_audio_indices=clip_audio_indices,
+                                     audio_tracks="none", clip_video_only=True)
         second = build_encode_command(**common, clip_audio_indices=clip_audio_indices)
-        # 第一遍只分析同一视频时间线，不建立音频输出。
+        # 两遍使用同一音视频拼接时间线；第一遍音频接入空滤镜，不输出音轨。
         first = first[:-1] + ["-pass", "1", "-f", "null", "NUL" if os.name == "nt" else "/dev/null"]
         second = second[:-1] + ["-pass", "2"] + second[-1:]
         for flag, size in (("-progress", 2), ("-nostats", 1), ("-stats_period", 2)):

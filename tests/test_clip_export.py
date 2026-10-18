@@ -64,7 +64,8 @@ def test_two_pass_first_pass_has_video_only_but_same_video_intervals():
     first, second = build_2pass_commands("source.mp4", "out.mp4", clip_plan=plan(),
                                         clip_audio_indices=(0,), bitrate="300k")
     g1, g2 = (cmd[cmd.index("-filter_complex") + 1] for cmd in (first, second))
-    assert "atrim" not in g1 and "atrim" in g2
+    assert "anullsink" in g1 and "anullsink" not in g2
+    assert "-an" in first and "[clip_a0]" not in first
     assert "trim=start=1.000000:end=1.500000" in g1
     assert "trim=start=1.000000:end=1.500000" in g2
     assert first[first.index("-pass") + 1] == "1"

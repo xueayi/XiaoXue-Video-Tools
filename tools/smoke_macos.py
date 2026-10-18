@@ -89,6 +89,32 @@ def main():
         assert probe['streams'][0]['codec_name'] == expected
         assert float(probe['format']['duration']) >= 1.9
         report['scenarios'][name] = probe
+    # UI片段快照 -> executor -> 包内FFmpeg；两种编码器各导出两个0.5秒片段。
+    editor = tab.clip_editor
+    editor.enable_cb.setChecked(True)
+    for start, end in [('00:00:00.250', '00:00:00.750'), ('00:00:01.000', '00:00:01.500')]:
+        editor.in_edit.setText(start)
+        editor.out_edit.setText(end)
+        editor.add_btn.click()
+    tab.subtitle_edit.clear()
+    for name, encoder, mode in [
+        ('clips_apple', 'H.264 (Apple VideoToolbox)', 'CRF/CQ (恒定质量)'),
+        ('clips_cpu_twopass', 'H.264 (CPU - libx264)', '2-Pass VBR (两遍编码)'),
+    ]:
+        tab.encoder_combo.setCurrentText(encoder)
+        tab.rate_control_combo.setCurrentText(mode)
+        tab.output_edit.setText(str(output / f'{name}.mp4'))
+        tab.prepare_execution()
+        namespace = tab.build_args()
+        namespace.debug_mode = False
+        result = execute_encode(namespace)
+        assert result.is_ok, result
+        probe = json.loads(raw([ffprobe, '-v', 'error', '-show_entries',
+                               'stream=codec_name,nb_frames:format=duration', '-of', 'json', namespace.output]))
+        assert 0.95 <= float(probe['format']['duration']) <= 1.10
+        assert int(probe['streams'][0]['nb_frames']) == 24
+        report['scenarios'][name] = probe
+    editor.enable_cb.setChecked(False)
     # 保留一帧，供字体渲染人工核对。
     raw([ffmpeg, '-hide_banner', '-loglevel', 'error', '-y', '-ss', '1', '-i',
          str(output / 'subtitle.mp4'), '-frames:v', '1', str(output / 'subtitle.png')])
@@ -118,11 +144,20 @@ def main():
         else:
             raise AssertionError(f'取消后进程仍在运行: {pid}')
         report['cancel'][runner_type.__name__] = 'passed'
+    tab.release()
     tab.close()
     # 直接运行冻结入口，PATH 无 Homebrew，不依赖构建环境中的 python。
     env = dict(os.environ, PATH='/usr/bin:/bin:/usr/sbin:/sbin')
     env.pop('XIAOXUE_FFMPEG', None)
     env.pop('XIAOXUE_FFPROBE', None)
+    preview_report = output / 'frozen-preview.json'
+    with (output / 'frozen-preview.log').open('w') as log:
+        completed = subprocess.run([str(app_path / 'Contents/MacOS/XiaoXueToolbox'),
+                                    '--media-diagnostics', str(source), '--report', str(preview_report)],
+                                   cwd='/', env=env, stdout=log, stderr=log, timeout=20)
+    assert completed.returncode == 0, (output / 'frozen-preview.log').read_text()
+    report['frozen_preview'] = json.loads(preview_report.read_text())
+    assert report['frozen_preview']['ok']
     with (output / 'app-startup.log').open('w') as log:
         process = subprocess.Popen([str(app_path / 'Contents/MacOS/XiaoXueToolbox')],
                                    cwd='/', env=env, stdout=log, stderr=log)

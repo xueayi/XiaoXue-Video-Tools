@@ -26,6 +26,14 @@ colorama_init()
 
 def main():
     """主入口函数，启动 PyQt6 图形界面。"""
+    if "--media-diagnostics" in sys.argv:
+        import argparse
+        from src.media_diagnostics import run_preview_diagnostics
+        parser = argparse.ArgumentParser(description="原片播放与定位诊断")
+        parser.add_argument("--media-diagnostics", required=True, metavar="VIDEO")
+        parser.add_argument("--report", required=True, metavar="JSON")
+        args = parser.parse_args()
+        sys.exit(run_preview_diagnostics(args.media_diagnostics, args.report))
     from PyQt6.QtWidgets import QApplication
     from src import updater
     from src.ui.theme import apply_theme, get_theme

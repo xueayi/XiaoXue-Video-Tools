@@ -12,6 +12,8 @@ class PreviewPanel(QWidget):
         super().__init__(parent)
         self._frame_us = None
         self._range_end_us = None
+        self._pending_seek_us = None
+        self._play_when_seekable = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.video = QVideoWidget()
@@ -37,7 +39,8 @@ class PreviewPanel(QWidget):
         self.player.setVideoOutput(self.video)
         self.player.positionChanged.connect(self._position_changed)
         self.player.durationChanged.connect(self._duration_changed)
-        self.player.seekableChanged.connect(self.slider.setEnabled)
+        self.player.seekableChanged.connect(self._seekable_changed)
+        self.player.mediaStatusChanged.connect(self._media_status_changed)
         self.player.errorOccurred.connect(self._error)
         self.player.playbackStateChanged.connect(self._state_changed)
         self.video.videoSink().videoFrameChanged.connect(self._on_frame)
@@ -63,15 +66,21 @@ class PreviewPanel(QWidget):
     def seek(self, us):
         self._seek_timer.stop()
         self._frame_us = None
-        if self.player.isSeekable():
+        if self._ready_to_seek():
             self.player.setPosition(max(0, us // 1000))
+        else:
+            self._pending_seek_us = us
 
     def play_range(self, start_us, end_us):
         self._range_end_us = end_us
         self.seek(start_us)
-        self.player.play()
+        if self._ready_to_seek():
+            self.player.play()
+        else:
+            self._play_when_seekable = True
 
     def pause(self):
+        self._play_when_seekable = False
         self.player.pause()
         self._seek_timer.stop()
 
@@ -81,7 +90,33 @@ class PreviewPanel(QWidget):
         self.player.setSource(QUrl())
         self._frame_us = None
         self._range_end_us = None
+        self._pending_seek_us = None
+        self._play_when_seekable = False
         self.slider.setEnabled(False)
+
+    def _seekable_changed(self, seekable):
+        self.slider.setEnabled(seekable)
+        self._apply_pending_seek()
+
+    def _ready_to_seek(self):
+        return self.player.isSeekable() and self.player.mediaStatus() not in (
+            QMediaPlayer.MediaStatus.LoadingMedia, QMediaPlayer.MediaStatus.NoMedia,
+            QMediaPlayer.MediaStatus.InvalidMedia)
+
+    def _media_status_changed(self, status):
+        if status == QMediaPlayer.MediaStatus.LoadedMedia:
+            # seekableChanged 可先于 LoadedMedia；后端完成加载后再定位和播放。
+            QTimer.singleShot(0, self._apply_pending_seek)
+
+    def _apply_pending_seek(self):
+        if not self._ready_to_seek():
+            return
+        if self._pending_seek_us is not None:
+            pending, self._pending_seek_us = self._pending_seek_us, None
+            self.seek(pending)
+        if self._play_when_seekable:
+            self._play_when_seekable = False
+            self.player.play()
 
     def _toggle_play(self):
         self._range_end_us = None

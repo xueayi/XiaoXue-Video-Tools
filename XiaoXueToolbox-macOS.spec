@@ -20,7 +20,8 @@ a = Analysis(
     datas=[(str(root / 'image'), 'image'), (str(root / 'icon.ico'), '.'),
            (str(root / 'LICENSE'), 'licenses'), (str(root / 'build-resources/THIRD_PARTY.md'), 'licenses'),
            (str(media / 'licenses'), 'licenses')] + collect_data_files('qtawesome'),
-    hiddenimports=['PyQt6.QtWidgets', 'PyQt6.QtCore', 'PyQt6.QtGui', 'qtawesome'],
+    hiddenimports=['PyQt6.QtWidgets', 'PyQt6.QtCore', 'PyQt6.QtGui',
+                   'PyQt6.QtMultimedia', 'PyQt6.QtMultimediaWidgets', 'qtawesome'],
     excludes=['pytest'], runtime_hooks=[str(hook)], noarchive=False, optimize=0,
 )
 pyz = PYZ(a.pure)
