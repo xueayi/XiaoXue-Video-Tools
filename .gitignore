@@ -64,3 +64,6 @@ desktop.ini
 
 # personal
 bug_report.md
+
+# 内部实施计划 (superpowers), 只保留在本地工作区
+docs/superpowers/
