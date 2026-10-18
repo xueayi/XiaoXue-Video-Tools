@@ -892,7 +892,7 @@ class EncodeTab(BaseTab):
         self._last_probe_info = info
         self._populate_tracks(info)
         self.input_media_card.render(info)
-        self.clip_editor.set_duration_us(round(info.duration_sec * 1_000_000))
+        self.clip_editor.set_duration_us(round(info.clip_duration_sec * 1_000_000), authoritative=True)
         self._refresh_summary()
 
     def _reset_track_panel(self):

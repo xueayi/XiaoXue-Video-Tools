@@ -11,6 +11,7 @@ class PreviewPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._frame_us = None
+        self._timeline_duration_ms = None
         self._range_end_us = None
         self._pending_seek_us = None
         self._play_when_seekable = False
@@ -54,6 +55,7 @@ class PreviewPanel(QWidget):
 
     def set_input(self, path):
         self.release()
+        self._timeline_duration_ms = None
         self.status.setText("原片预览；字幕、缩放和压缩效果以导出为准")
         self.player.setSource(QUrl.fromLocalFile(path) if path else QUrl())
 
@@ -128,15 +130,23 @@ class PreviewPanel(QWidget):
     def _position_changed(self, ms):
         if not self.slider.isSliderDown():
             self.slider.setValue(ms)
-        self.time_label.setText(f"{ms / 1000:.3f}s / {self.player.duration() / 1000:.3f}s")
+        duration = self._timeline_duration_ms if self._timeline_duration_ms is not None else self.player.duration()
+        self.time_label.setText(f"{ms / 1000:.3f}s / {duration / 1000:.3f}s")
         if self._range_end_us is not None and ms * 1000 >= self._range_end_us:
             self.pause()
             self._range_end_us = None
 
     def _duration_changed(self, ms):
+        if self._timeline_duration_ms is not None:
+            ms = self._timeline_duration_ms
         self.slider.setRange(0, min(ms, 2_147_483_647))
         if ms > 0:
             self.duration_ready.emit(ms * 1000)
+
+    def set_timeline_duration(self, us):
+        self._timeline_duration_ms = us // 1000 if us is not None else None
+        self._duration_changed(self.player.duration())
+        self._position_changed(self.player.position())
 
     def _state_changed(self, state):
         self.play_btn.setText("暂停" if state == QMediaPlayer.PlaybackState.PlayingState else "播放")

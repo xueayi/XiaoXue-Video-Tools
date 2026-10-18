@@ -31,6 +31,7 @@ class ClipEditor(QGroupBox):
         super().__init__("视频片段截取", parent)
         self._input_path = ""
         self._duration_us = None
+        self._duration_from_probe = False
         self.preview = None
         self._precise_marks = {}
         layout = QVBoxLayout(self)
@@ -119,6 +120,7 @@ class ClipEditor(QGroupBox):
         had_clips = self.table.rowCount() > 0
         self._input_path = path
         self._duration_us = None
+        self._duration_from_probe = False
         self._precise_marks.clear()
         self.table.setRowCount(0)
         self.in_edit.setText("00:00:00.000")
@@ -129,8 +131,13 @@ class ClipEditor(QGroupBox):
         if had_clips:
             self.status.setText("已更换输入视频，旧片段已清空，请重新添加。")
 
-    def set_duration_us(self, us):
+    def set_duration_us(self, us, authoritative=False):
+        if self._duration_from_probe and not authoritative:
+            return
         self._duration_us = us if us > 0 else None
+        self._duration_from_probe = authoritative and us > 0
+        if self.preview and authoritative:
+            self.preview.set_timeline_duration(self._duration_us)
         self._update()
 
     def _time_value(self, item):
@@ -245,6 +252,8 @@ class ClipEditor(QGroupBox):
             self.preview_box.addWidget(self.preview)
             self.preview.duration_ready.connect(self.set_duration_us)
             self.preview.set_input(self._input_path)
+            if self._duration_from_probe:
+                self.preview.set_timeline_duration(self._duration_us)
         if self.preview:
             self.preview.setVisible(expanded)
             if not expanded:

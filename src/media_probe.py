@@ -83,6 +83,11 @@ class DetailedMediaInfo:
     subtitle_streams: List[StreamInfo] = field(default_factory=list)
     chapters: List[Dict[str, Any]] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    video_end_sec: float = 0.0  # 相对容器起点的视频有效结束时间
+
+    @property
+    def clip_duration_sec(self) -> float:
+        return self.video_end_sec if self.video_end_sec > 0 else self.duration_sec
 
     def __post_init__(self):
         self.filename = os.path.basename(self.path)
@@ -198,6 +203,21 @@ def _parse_detailed_output(file_path: str, data: Dict[str, Any]) -> DetailedMedi
             stream_info.width = int(stream.get("width", 0))
             stream_info.height = int(stream.get("height", 0))
             stream_info.pix_fmt = stream.get("pix_fmt", "")
+            if video_idx == 0:
+                # MP4/TS的stream.duration是长度；MKV的DURATION标签是结束PTS。
+                # 不对所有格式统一减format.start_time。
+                try:
+                    origin = float(fmt.get("start_time", 0))
+                    start = float(stream.get("start_time", origin))
+                    duration = float(stream.get("duration", 0))
+                    if duration > 0:
+                        info.video_end_sec = max(0.0, start - origin + duration)
+                    elif "matroska" in info.format_name or "webm" in info.format_name:
+                        value = tags.get("DURATION", "")
+                        h, m, s = value.split(":")
+                        info.video_end_sec = max(0.0, int(h) * 3600 + int(m) * 60 + float(s) - origin)
+                except (ValueError, TypeError):
+                    pass  # 缺少可靠字段时由执行前逐段解码检查兜底。
 
             # 帧率解析
             fps_str = stream.get("r_frame_rate", "0/1")

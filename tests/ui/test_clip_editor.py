@@ -118,6 +118,14 @@ def test_marked_microseconds_survive_display_rounding(qapp):
     assert e.plan().clips[0].in_us == 1_166_667
 
 
+def test_probe_duration_overrides_container_player_duration(qapp):
+    e = editor(qapp)
+    e.set_duration_us(3_000_000, authoritative=True)
+    e.set_duration_us(13_000_000)
+    add(e, "00:00:11.000", "00:00:12.000")
+    assert not e.plan().clips
+
+
 def test_stale_probe_cannot_overwrite_current_input(qapp, tmp_path, monkeypatch):
     from src.ui.tabs import encode_tab as module
     from src.media_probe import DetailedMediaInfo

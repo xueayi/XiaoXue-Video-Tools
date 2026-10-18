@@ -35,6 +35,7 @@ from ..encode_params import (
 )
 from ..media_probe import probe_detailed
 from ..clip_plan import select_audio_indices
+from ..clip_validation import validate_clip_frames
 from ..task.report import TaskReport
 from ..task.result import TaskResult
 from .common import print_task_header
@@ -74,7 +75,8 @@ def execute_encode(args) -> TaskResult:
         try:
             if not info or info.errors or not info.video_streams or info.duration_sec <= 0:
                 raise ValueError("片段模式无法确定视频时长，请检查文件和 FFprobe")
-            params.clip_plan.validate(round(info.duration_sec * 1_000_000))
+            params.clip_plan.validate(round(info.clip_duration_sec * 1_000_000))
+            validate_clip_frames(params.clip_plan)
             clip_kwargs = dict(clip_plan=params.clip_plan, clip_audio_indices=select_audio_indices(
                 params.audio_tracks, params.audio_tracks_custom, len(info.audio_streams)))
         except ValueError as exc:
@@ -176,6 +178,13 @@ def execute_encode(args) -> TaskResult:
         )
         return_code = run_ffmpeg_command(cmd, dry_run=params.dry_run)
     
+    if return_code == 0 and not params.dry_run and params.clip_plan is not None:
+        output_info = probe_detailed(params.output_path)
+        if not output_info or output_info.errors or not output_info.video_streams:
+            return TaskResult.failed("片段导出未生成有效视频流，请检查输入和时间范围",
+                                     outputs=(params.output_path,) if os.path.isfile(params.output_path) else (),
+                                     details={"reason": "clip_output_validation"})
+
     # 压制后分发: dry_run 没有真实产物, 不做分发; 分发失败降级为 warnings
     warnings: tuple = ()
     if not params.dry_run:

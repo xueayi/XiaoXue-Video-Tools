@@ -378,6 +378,7 @@ def run_ffmpeg_streaming(
     on_progress=None,
     on_log=None,
     env=None,
+    timeout=None,
 ) -> CompletedProcess:
     """
     经当前 TaskContext 的 ProcessRunner 执行外部命令（流式回调 + 可取消）。
@@ -440,7 +441,8 @@ def run_ffmpeg_streaming(
         context.register(runner)
     try:
         completed = run_process(
-            cmd, runner=runner, stdin_pipe=True, env=env)
+            cmd, runner=runner, stdin_pipe=True, env=env,
+            **({"timeout": timeout} if timeout is not None else {}))
     finally:
         if context is not None:
             context.unregister(runner)

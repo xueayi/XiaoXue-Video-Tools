@@ -333,6 +333,7 @@ def run(
     stdin_pipe: bool = True,
     env: Optional[dict] = None,
     cwd: Optional[str] = None,
+    timeout: Optional[float] = None,
 ) -> CompletedProcess:
     """阻塞式执行命令，返回 :class:`CompletedProcess`。
 
@@ -345,4 +346,4 @@ def run(
     if on_stderr is not None:
         active.on_stderr = on_stderr
     active.start(cmd, cwd=cwd, env=env, stdin_pipe=stdin_pipe)
-    return active.wait()
+    return active.wait(timeout=timeout) if timeout is not None else active.wait()
