@@ -12,7 +12,7 @@
 - 三角颜色取 palette 的文本色 (禁用态自动用 palette 的 disabled 组)。
 """
 
-from PyQt6.QtCore import QEvent, QPointF, Qt
+from PyQt6.QtCore import QEvent, QPointF, QRect, Qt
 from PyQt6.QtGui import QPainter, QPalette, QPolygonF
 from PyQt6.QtWidgets import (
     QAbstractScrollArea,
@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QSpinBox,
     QStyle,
     QStyleOptionComboBox,
+    QStyleOptionSpinBox,
     QStylePainter,
 )
 
@@ -168,7 +169,75 @@ class WheelGuardComboBox(_WheelForwardMixin, QComboBox):
         painter.end()
 
 
-class WheelGuardSpinBox(_WheelForwardMixin, QSpinBox):
+class _SpinArrowMixin(_WheelForwardMixin):
+    """滚轮守卫 + 自绘上下三角 (与下拉框箭头同一画法)。
+
+    背景: 用 QSS 的 ``border-left/right + border-*: solid`` 拼三角形是 Web CSS
+    技巧, Qt 只按矩形描边处理, 于是上下箭头渲染成两个没有斜边的小方块。
+    因此按钮区与悬停底色仍交给 QSS, 三角在 ``paintEvent`` 里用 QPolygonF 自绘。
+    """
+
+    #: 三角宽/高 (px)
+    ARROW_WIDTH = 8.0
+    ARROW_HEIGHT = 5.0
+    #: 没有 QSS 几何时的兜底按钮宽度 (与 QSS 的 up-button 宽度一致)
+    FALLBACK_BUTTON_WIDTH = 20
+
+    def _button_rect(self, up: bool) -> QRect:
+        """上/下按钮的矩形 (QSS 生效时按样式几何, 否则按右侧 20px 列对半)。"""
+        option = QStyleOptionSpinBox()
+        self.initStyleOption(option)
+        sub = (QStyle.SubControl.SC_SpinBoxUp if up
+               else QStyle.SubControl.SC_SpinBoxDown)
+        rect = self.style().subControlRect(
+            QStyle.ComplexControl.CC_SpinBox, option, sub, self)
+        if rect.isEmpty():
+            half = max(self.height() // 2, 1)
+            rect = QRect(self.width() - self.FALLBACK_BUTTON_WIDTH,
+                         0 if up else half, self.FALLBACK_BUTTON_WIDTH, half)
+        return rect
+
+    def arrow_polygon(self, up: bool = True) -> QPolygonF:
+        """上下三角 (控件坐标), 以按钮矩形中心为基准。"""
+        rect = self._button_rect(up)
+        center_x = rect.x() + rect.width() / 2.0
+        center_y = rect.y() + rect.height() / 2.0
+        half_w = self.ARROW_WIDTH / 2.0
+        half_h = self.ARROW_HEIGHT / 2.0
+        if up:
+            points = [
+                QPointF(center_x - half_w, center_y + half_h),
+                QPointF(center_x + half_w, center_y + half_h),
+                QPointF(center_x, center_y - half_h),
+            ]
+        else:
+            points = [
+                QPointF(center_x - half_w, center_y - half_h),
+                QPointF(center_x + half_w, center_y - half_h),
+                QPointF(center_x, center_y + half_h),
+            ]
+        return QPolygonF(points)
+
+    def arrow_color(self):
+        """三角颜色: 正常态取 palette 文本色, 禁用态取 disabled 文本色。"""
+        palette = self.palette()
+        group = (QPalette.ColorGroup.Normal if self.isEnabled()
+                 else QPalette.ColorGroup.Disabled)
+        return palette.color(group, QPalette.ColorRole.Text)
+
+    def paintEvent(self, event):
+        """先按样式的 QSS 画框体与文本, 再自绘上下三角。"""
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self.arrow_color())
+        for up in (True, False):
+            painter.drawPolygon(self.arrow_polygon(up))
+        painter.end()
+
+
+class WheelGuardSpinBox(_SpinArrowMixin, QSpinBox):
     """滚轮不误改数值的整数微调框 (滚动页面时数值保持不变)。"""
 
     def wheelEvent(self, event):
@@ -176,7 +245,7 @@ class WheelGuardSpinBox(_WheelForwardMixin, QSpinBox):
         event.accept()
 
 
-class WheelGuardDoubleSpinBox(_WheelForwardMixin, QDoubleSpinBox):
+class WheelGuardDoubleSpinBox(_SpinArrowMixin, QDoubleSpinBox):
     """滚轮不误改数值的浮点微调框。"""
 
     def wheelEvent(self, event):

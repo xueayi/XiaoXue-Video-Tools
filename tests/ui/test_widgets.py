@@ -181,3 +181,65 @@ def test_paint_smoke(combo, qapp):
     pixmap = combo.grab()
     assert not pixmap.isNull()
     combo.hide()
+
+
+# ----------------------------------------------------------------
+# 微调框: 自绘上下三角 (QSS 的 border 三角在 Qt 里会画成方块)
+# ----------------------------------------------------------------
+
+@pytest.fixture
+def spin(qapp):
+    from src.ui.widgets import WheelGuardSpinBox
+
+    widget = WheelGuardSpinBox()
+    widget.setRange(0, 100)
+    widget.resize(160, 40)
+    widget.show()
+    qapp.processEvents()
+    yield widget
+    widget.hide()
+    widget.deleteLater()
+
+
+def test_spin_arrows_point_outward_inside_buttons(spin):
+    up = spin.arrow_polygon(True)
+    down = spin.arrow_polygon(False)
+    assert up.count() == 3 and down.count() == 3
+
+    up_rect = spin._button_rect(True)
+    down_rect = spin._button_rect(False)
+    for rect, polygon in ((up_rect, up), (down_rect, down)):
+        assert not rect.isEmpty()
+        for point in polygon:
+            assert rect.left() <= point.x() <= rect.right()
+            assert rect.top() <= point.y() <= rect.bottom()
+
+    # 上三角尖端朝上 (第 3 个点在上方), 下三角尖端朝下
+    assert up.at(2).y() < up.at(0).y()
+    assert down.at(2).y() > down.at(0).y()
+    # 下按钮在上按钮下方
+    assert down_rect.top() >= up_rect.bottom()
+
+
+def test_spin_arrow_color_follows_palette_and_disabled_state(spin):
+    from PyQt6.QtWidgets import QApplication
+
+    theme.apply_theme(QApplication.instance(), "light")
+    spin.setEnabled(True)
+    normal = spin.arrow_color()
+    spin.setEnabled(False)
+    disabled = spin.arrow_color()
+    theme.apply_theme(QApplication.instance(), "light")
+
+    assert normal.isValid() and disabled.isValid()
+    assert normal.name() != disabled.name()
+
+
+def test_spin_paint_smoke_and_qss_has_no_border_triangle(spin):
+    pixmap = spin.grab()
+    assert not pixmap.isNull()
+    # 三角形改由控件自绘, QSS 里不能再留 Web CSS 的 border 三角写法
+    for name in ("light", "dark"):
+        qss = theme.get_stylesheet(name)
+        assert "border-left: 4px solid transparent" not in qss
+        assert "QSpinBox::up-arrow" in qss

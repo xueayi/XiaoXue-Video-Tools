@@ -380,7 +380,7 @@ QGroupBox QLabel {
 /* ================================================================
    输入控件  —— Fluent TextBox 风格 (底部重点线)
    ================================================================ */
-QLineEdit, QSpinBox, QComboBox, QPlainTextEdit {
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {
     padding: 6px 10px;
     border: 1px solid $input_border;
     border-bottom: 2px solid $input_border_bottom;
@@ -391,12 +391,14 @@ QLineEdit, QSpinBox, QComboBox, QPlainTextEdit {
     selection-background-color: $menu_selected;
     selection-color: $text_primary;
 }
-QLineEdit:focus, QSpinBox:focus, QComboBox:focus, QPlainTextEdit:focus {
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+QComboBox:focus, QPlainTextEdit:focus {
     border-color: $input_border;
     border-bottom: 2px solid $input_border_focus;
     background-color: $input_bg_focus;
 }
-QLineEdit:disabled, QSpinBox:disabled, QComboBox:disabled, QPlainTextEdit:disabled {
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled,
+QComboBox:disabled, QPlainTextEdit:disabled {
     background-color: $input_disabled_bg;
     color: $input_disabled_text;
     border-color: $input_disabled_border;
@@ -433,34 +435,26 @@ QComboBox QAbstractItemView {
     outline: none;
 }
 
-/* 数字微调框按钮 */
-QSpinBox::up-button, QSpinBox::down-button {
+/* 数字微调框按钮: 只保留按钮区与悬停底色, 上下三角由控件自绘
+   (QSS 的 border 三角形在 Qt 里会被画成小方块, 与下拉箭头同一问题) */
+QSpinBox::up-button, QSpinBox::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
     subcontrol-origin: border;
     border: none;
     width: 20px;
     background: transparent;
 }
-QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
     background-color: $hover_overlay;
     border-radius: 4px;
 }
-QSpinBox::up-arrow {
+QSpinBox::up-arrow, QSpinBox::down-arrow,
+QDoubleSpinBox::up-arrow, QDoubleSpinBox::down-arrow {
+    image: none;
     width: 0;
     height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-bottom: 5px solid $text_secondary;
-}
-QSpinBox::down-arrow {
-    width: 0;
-    height: 0;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
-    border-top: 5px solid $text_secondary;
-}
-QSpinBox::up-arrow:hover, QSpinBox::down-arrow:hover {
-    border-bottom-color: $accent;
-    border-top-color: $accent;
+    border: none;
 }
 
 /* ================================================================
