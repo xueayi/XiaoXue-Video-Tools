@@ -4,7 +4,7 @@
 覆盖:
 - 布局顺序 / 高级设置默认折叠
 - 输出方案 5 卡与既有预设、ENCODERS 反查的映射
-- 输入媒体卡 8 字段与错误态 (monkeypatch probe_detailed)
+- 常规选项卡 8 字段与错误态 (monkeypatch probe_detailed)
 - 执行摘要与 resolve_encoder_params 逐项一致 (含自动输出路径)
 - build_args 键集不变 / 预设模式锁定被覆盖的控件
 """
@@ -94,12 +94,12 @@ def test_layout_order_matches_ia(tab):
     assert widgets[0] is tab.input_media_card
     index = {widget: position for position, widget in enumerate(widgets)}
 
-    # A 输入媒体 < B 视频输出策略 < C 音频输出策略 < D 字幕策略
+    # A 常规选项 < B 字幕策略 < C 视频输出策略 < D 音频输出策略
     # < E 压制后分发 < F 片段截取 < G 高级折叠头 < H 执行摘要(页尾)
-    assert index[tab.input_media_card] < index[tab.output_plan_card]
+    assert index[tab.input_media_card] < index[tab.subtitle_group]
+    assert index[tab.subtitle_group] < index[tab.output_plan_card]
     assert index[tab.output_plan_card] < index[tab.audio_group]
-    assert index[tab.audio_group] < index[tab.subtitle_group]
-    assert index[tab.subtitle_group] < index[tab.transfer_group]
+    assert index[tab.audio_group] < index[tab.transfer_group]
     assert index[tab.transfer_group] < index[tab.clip_editor]
     assert index[tab.clip_editor] < index[tab.advanced_header]
     assert index[tab.advanced_header] < index[tab.summary_card]
@@ -115,27 +115,36 @@ def test_transfer_group_hint_removed(tab):
     assert not any("NAS/云端" in text for text in texts)
 
 
-def test_input_media_then_video_strategy(tab):
-    """视频输出策略紧跟在输入媒体卡之后 (A 输入媒体 → B 视频输出策略)。"""
+def test_general_options_then_subtitle_strategy(tab):
+    """高频输入在最前，字幕策略紧随其后 (A 常规选项 → B 字幕策略 → C 视频输出策略)。"""
     widgets = _top_level_widgets(tab)
     assert widgets[0] is tab.input_media_card
-    assert widgets[1] is tab.output_plan_card
+    assert widgets[1] is tab.subtitle_group
+    assert widgets[2] is tab.output_plan_card
+    # 常规选项里集中了三个高频输入
+    card = tab.input_media_card
+    assert card.title() == "常规选项"
+    for widget in (tab.input_edit, tab.subtitle_edit, tab.output_edit):
+        assert card.isAncestorOf(widget)
 
 
 def test_three_strategy_groups_own_their_controls(tab):
     """视频/音频/字幕三块策略各自包含对应控件。"""
     assert tab.output_plan_card.title() == "视频输出策略"
     assert tab.output_plan_card.isAncestorOf(tab.output_format_combo)
-    assert tab.output_plan_card.isAncestorOf(tab.output_edit)
     assert tab.output_plan_card.isAncestorOf(tab.resolution_edit)
+    # 输出路径已上移到「常规选项」
+    assert not tab.output_plan_card.isAncestorOf(tab.output_edit)
 
     assert tab.audio_group.isAncestorOf(tab.audio_encoder_combo)
     assert tab.audio_group.isAncestorOf(tab.audio_bitrate_combo)
     assert tab.audio_group.isAncestorOf(tab.audio_tracks_combo)
 
-    assert tab.subtitle_group.isAncestorOf(tab.subtitle_edit)
+    assert tab.subtitle_group.isAncestorOf(tab.subtitle_mode_combo)
     assert tab.subtitle_group.isAncestorOf(tab.compat_mode_cb)
     assert tab.subtitle_group.isAncestorOf(tab.subtitle_tracks_combo)
+    # 字幕文件选择器在「常规选项」，处理方式在「字幕策略」
+    assert not tab.subtitle_group.isAncestorOf(tab.subtitle_edit)
 
 
 def test_advanced_group_collapsed_by_default(tab):
@@ -521,7 +530,7 @@ def test_summary_subtitle_burn_and_keep(tab, tmp_path):
     card = tab.summary_card
     assert card.last_params == expected
     text = card.row_text("subtitle")
-    assert "烧录" in text and "sub.srt" in text
+    assert "内嵌" in text and "sub.srt" in text
     assert "AviSynth+VSFilter" in text
     assert "0,1" in text
 
@@ -536,8 +545,49 @@ def test_summary_subtitle_burn_and_keep(tab, tmp_path):
     # 取消烧录与兼容模式后实时刷新
     tab.subtitle_edit.setText("")
     tab.compat_mode_cb.setChecked(False)
-    assert "不烧录" in card.row_text("subtitle")
+    assert "不处理外挂字幕" in card.row_text("subtitle")
     assert "AviSynth+VSFilter" not in card.row_text("subtitle")
+
+
+def test_subtitle_mode_offers_embed_only_for_subtitle_containers(tab):
+    """内封只对 MKV / MOV 开放; MP4 下该项禁用并回退到内嵌。"""
+    combo = tab.subtitle_mode_combo
+    assert combo.currentText() == "内嵌（烧录进画面）"
+    embed_row = next(
+        row for row in range(combo.count()) if "内封" in combo.itemText(row))
+
+    tab.output_format_combo.setCurrentText("MP4")
+    model = combo.model()
+    assert model.item(embed_row).isEnabled() is False
+
+    tab.output_format_combo.setCurrentText("MKV")
+    assert model.item(embed_row).isEnabled() is True
+    combo.setCurrentText(combo.itemText(embed_row))
+    assert tab.build_args().subtitle_mode == "内封（转为软字幕流）"
+
+    # 兼容模式只在内嵌烧录时可用
+    assert tab.compat_mode_cb.isEnabled() is False
+    combo.setCurrentText("内嵌（烧录进画面）")
+    assert tab.compat_mode_cb.isEnabled() is True
+
+
+def test_summary_shows_embed_mode(tab, tmp_path):
+    _set_missing_input(tab, tmp_path)
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+    tab.output_format_combo.setCurrentText("MKV")
+    tab.subtitle_edit.setText(str(subtitle))
+    tab.subtitle_mode_combo.setCurrentText("内封（转为软字幕流）")
+
+    text = tab.summary_card.row_text("subtitle")
+    assert "内封" in text and "sub.srt" in text
+    assert tab.summary_card.last_params.subtitle_mode == "embed"
+
+    # 不处理: 文件保留但不参与输出
+    tab.subtitle_mode_combo.setCurrentText("不处理")
+    assert "不处理外挂字幕" in tab.summary_card.row_text("subtitle")
+    assert tab.summary_card.last_params.subtitle_mode == "none"
+    assert tab.summary_card.last_params.subtitle_path  # 路径仍记录, 便于改回
 
 
 def test_summary_tracks_output_format_and_path_live(tab, tmp_path):
@@ -614,6 +664,7 @@ EXPECTED_BUILD_ARGS_KEYS = {
     "video_bitrate", "output_format", "output_format_custom", "resolution",
     "fps", "audio_encoder", "audio_bitrate", "audio_tracks",
     "audio_tracks_custom", "subtitle_tracks", "subtitle_tracks_custom",
+    "subtitle_mode",
     "post_transfer_mode", "post_transfer_dir", "extra_args", "debug_mode",
 }
 
@@ -632,7 +683,7 @@ def test_existing_control_attributes_preserved(tab):
         "rate_control_combo", "output_format_combo",
         "output_format_custom_edit", "resolution_edit", "fps_spin",
         "audio_tracks_combo", "audio_tracks_custom_edit",
-        "subtitle_edit", "subtitle_tracks_combo",
+        "subtitle_edit", "subtitle_mode_combo", "subtitle_tracks_combo",
         "subtitle_tracks_custom_edit", "compat_mode_cb",
         "post_transfer_mode_combo", "post_transfer_dir_edit",
         "extra_args_edit", "debug_mode_cb", "_track_status",

@@ -918,3 +918,95 @@ class TestHardwareSpeedPresetDefaults:
         params = self._resolve(
             encoder="H.264 (NVIDIA NVENC)", nvenc_preset="使用预设默认")
         assert params.speed_preset == "p4"
+
+
+class TestSubtitleProcessingMode:
+    """外挂字幕处理方式: 内嵌烧录 / 内封软字幕流 / 不处理。"""
+
+    def _params(self, tmp_path, **overrides):
+        video = tmp_path / "in.mp4"
+        video.write_bytes(b"x")
+        subtitle = tmp_path / "s.srt"
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+        values = dict(
+            input_path=str(video),
+            output_path=str(tmp_path / "out.mkv"),
+            subtitle_path=str(subtitle),
+            subtitle_mode="embed",
+        )
+        values.update(overrides)
+        return EncodeParams(**values)
+
+    def test_embed_allowed_for_mkv(self, tmp_path):
+        ok, message = self._params(tmp_path).validate()
+        assert ok, message
+
+    def test_embed_rejected_for_mp4(self, tmp_path):
+        params = self._params(tmp_path, output_path=str(tmp_path / "out.mp4"))
+        ok, message = params.validate()
+        assert ok is False
+        assert "内封" in message and "MKV" in message
+
+    def test_burn_still_allowed_for_mp4(self, tmp_path):
+        params = self._params(
+            tmp_path, output_path=str(tmp_path / "out.mp4"), subtitle_mode="burn")
+        ok, message = params.validate()
+        assert ok, message
+
+    def test_copy_video_allows_embed_but_rejects_burn(self, tmp_path):
+        burn = self._params(tmp_path, encoder="copy", subtitle_mode="burn")
+        ok, message = burn.validate()
+        assert ok is False and "烧录" in message
+
+        embed = self._params(tmp_path, encoder="copy", subtitle_mode="embed")
+        ok, message = embed.validate()
+        assert ok, message
+
+    def test_clip_mode_rejects_embed(self, tmp_path):
+        video = tmp_path / "in.mp4"
+        video.write_bytes(b"x")
+
+        class _Plan:
+            input_path = str(video)
+
+            def validate(self, *_args, **_kwargs):
+                return None
+
+        params = self._params(tmp_path, clip_plan=_Plan())
+        ok, message = params.validate()
+        assert ok is False
+        assert "片段模式暂不支持内封外挂字幕" in message
+
+    def test_compat_mode_ignored_when_embedding(self, tmp_path):
+        """内封不是烧录: 即便勾了兼容模式也不走 AviSynth 渲染。"""
+        params = self._params(tmp_path, compat_mode=True)
+        assert params.get_encode_mode() is EncodeMode.NORMAL
+
+
+class TestSubtitleModeResolution:
+    """标签 -> 内部值映射, 以及没有文件时归一为「不处理」。"""
+
+    def _resolve(self, **overrides):
+        from tests.conftest import MockArgs
+
+        args = MockArgs(input="", preset="自定义 (Custom)", **overrides)
+        return resolve_encoder_params(
+            args=args,
+            quality_presets=QUALITY_PRESETS,
+            encoders=ENCODERS,
+            audio_encoders=AUDIO_ENCODERS,
+            rate_control_modes=RATE_CONTROL_MODES,
+            generate_output_path_func=generate_output_path,
+        )
+
+    def test_embed_label_maps_to_embed(self):
+        params = self._resolve(subtitle="s.srt", subtitle_mode="内封（转为软字幕流）")
+        assert params.subtitle_mode == "embed"
+
+    def test_burn_label_maps_to_burn(self):
+        params = self._resolve(subtitle="s.srt", subtitle_mode="内嵌（烧录进画面）")
+        assert params.subtitle_mode == "burn"
+
+    def test_no_subtitle_file_forces_none(self):
+        params = self._resolve(subtitle="", subtitle_mode="内封（转为软字幕流）")
+        assert params.subtitle_mode == "none"

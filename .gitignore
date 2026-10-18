@@ -61,3 +61,6 @@ desktop.ini
 
 # 便携模式缓存目录 (PlatformPaths: install_dir/_cache)
 /_cache/
+
+# personal
+bug_report.md

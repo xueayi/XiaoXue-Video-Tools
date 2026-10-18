@@ -45,6 +45,7 @@ class MockArgs:
     
     # 字幕与兼容模式
     subtitle: str = ""
+    subtitle_mode: str = "内嵌（烧录进画面）"
     compat_mode: bool = False
     
     # 高级选项

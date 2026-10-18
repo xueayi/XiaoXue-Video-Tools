@@ -85,6 +85,7 @@ def build_encode_command(
     audio_encoder: str = "aac",
     audio_bitrate: str = "192k",
     subtitle_path: Optional[str] = None,
+    subtitle_mode: str = "burn",
     extra_args: Optional[str] = None,
     rc_mode: Optional[str] = None,
     audio_tracks: str = "0",
@@ -122,12 +123,26 @@ def build_encode_command(
         FFmpeg 命令列表。
     """
     ffmpeg = get_ffmpeg_path()
+    burn_subtitle = bool(subtitle_path) and subtitle_mode == "burn"
+    embed_subtitle = bool(subtitle_path) and subtitle_mode == "embed"
+
     cmd = [ffmpeg, "-y", "-i", input_path]
+    if embed_subtitle:
+        # 内封: 外挂字幕作为第二个输入, 稍后 map 成独立软字幕流
+        cmd.extend(["-i", subtitle_path])
 
     if clip_plan is None:
         cmd.extend(["-map", "0:v:0"])
         cmd.extend(_build_stream_map_args("a", audio_tracks, audio_tracks_custom))
-        cmd.extend(_build_stream_map_args("s", subtitle_tracks, subtitle_tracks_custom))
+        if embed_subtitle:
+            # 内封时不能写 -sn (会关掉所有字幕输出), 只按选择映射源字幕流
+            if subtitle_tracks != "none":
+                cmd.extend(_build_stream_map_args(
+                    "s", subtitle_tracks, subtitle_tracks_custom))
+            cmd.extend(["-map", "1:0"])
+        else:
+            cmd.extend(_build_stream_map_args(
+                "s", subtitle_tracks, subtitle_tracks_custom))
 
     # 如果使用预设, 加载预设参数
     if preset_name and preset_name in QUALITY_PRESETS and preset_name != "自定义 (Custom)":
@@ -155,7 +170,7 @@ def build_encode_command(
 
     # 视频滤镜链
     vf_filters = []
-    if subtitle_path:
+    if burn_subtitle:
         escaped_sub = escape_path_for_ffmpeg(subtitle_path)
         vf_filters.append(f"subtitles='{escaped_sub}'")
     if resolution and isinstance(resolution, str) and "x" in resolution:
@@ -165,6 +180,8 @@ def build_encode_command(
     if clip_plan is not None:
         graph, maps = build_clip_filters(clip_plan, vf_filters, clip_audio_indices, clip_video_only)
         cmd.extend(["-filter_complex", graph] + maps)
+        if embed_subtitle:
+            cmd.extend(["-map", "1:0"])
         if audio_encoder == "copy":
             audio_encoder = "aac"
     elif vf_filters:
@@ -225,8 +242,11 @@ def build_encode_command(
         if audio_encoder != "copy":
             cmd.extend(["-b:a", audio_bitrate])
 
-    # 字幕编码 (内封字幕直接复制)
-    if subtitle_tracks != "none" and "-sn" not in cmd:
+    # 字幕编码: 源字幕流直接复制; 内封外挂字幕在 MOV 里需要转 mov_text
+    if embed_subtitle:
+        codec = "mov_text" if output_path.lower().endswith(".mov") else "copy"
+        cmd.extend(["-c:s", codec])
+    elif subtitle_tracks != "none" and "-sn" not in cmd:
         cmd.extend(["-c:s", "copy"])
 
     # 额外参数
@@ -635,6 +655,7 @@ def build_2pass_commands(
     audio_encoder: str = "aac",
     audio_bitrate: str = "192k",
     subtitle_path: Optional[str] = None,
+    subtitle_mode: str = "burn",
     extra_args: Optional[str] = None,
     audio_tracks: str = "0",
     audio_tracks_custom: str = "",
@@ -701,9 +722,12 @@ def build_2pass_commands(
     is_amf = "amf" in actual_encoder
     is_cpu = actual_encoder in ("libx264", "libx265")
 
+    burn_subtitle = bool(subtitle_path) and subtitle_mode == "burn"
+    embed_subtitle = bool(subtitle_path) and subtitle_mode == "embed"
+
     # 视频滤镜链
     vf_filters = []
-    if subtitle_path:
+    if burn_subtitle:
         escaped_sub = escape_path_for_ffmpeg(subtitle_path)
         vf_filters.append(f"subtitles='{escaped_sub}'")
     if resolution and isinstance(resolution, str) and "x" in resolution:
@@ -712,6 +736,8 @@ def build_2pass_commands(
 
     # 构建基础命令部分
     base_cmd = [ffmpeg, "-y", "-i", input_path]
+    if embed_subtitle:
+        base_cmd.extend(["-i", subtitle_path])
     
     if vf_filters:
         base_cmd.extend(["-vf", ",".join(vf_filters)])
@@ -764,8 +790,14 @@ def build_2pass_commands(
     pass2_cmd.extend(["-map", "0:v:0"])
     audio_map_args = _build_stream_map_args("a", audio_tracks, audio_tracks_custom)
     pass2_cmd.extend(audio_map_args)
-    subtitle_map_args = _build_stream_map_args("s", subtitle_tracks, subtitle_tracks_custom)
-    pass2_cmd.extend(subtitle_map_args)
+    if embed_subtitle:
+        if subtitle_tracks != "none":
+            pass2_cmd.extend(_build_stream_map_args(
+                "s", subtitle_tracks, subtitle_tracks_custom))
+        pass2_cmd.extend(["-map", "1:0"])
+    else:
+        pass2_cmd.extend(_build_stream_map_args(
+            "s", subtitle_tracks, subtitle_tracks_custom))
 
     # 音频设置
     if audio_tracks != "none" and "-an" not in pass2_cmd:
@@ -774,7 +806,10 @@ def build_2pass_commands(
             pass2_cmd.extend(["-b:a", audio_bitrate])
 
     # 字幕编码
-    if subtitle_tracks != "none" and "-sn" not in pass2_cmd:
+    if embed_subtitle:
+        codec = "mov_text" if output_path.lower().endswith(".mov") else "copy"
+        pass2_cmd.extend(["-c:s", codec])
+    elif subtitle_tracks != "none" and "-sn" not in pass2_cmd:
         pass2_cmd.extend(["-c:s", "copy"])
 
     pass2_cmd.append(output_path)

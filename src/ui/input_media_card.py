@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""输入媒体卡 —— 拖拽/选择输入视频，并以卡片形式展示探测到的媒体信息。
+"""常规选项卡 —— 输入视频 / 字幕文件 / 输出路径 + 探测到的媒体信息。
 
 探测本身仍由页面 (EncodeTab._do_probe) 在 UI 线程调用 ``probe_detailed`` 完成，
 本模块只负责渲染 ``DetailedMediaInfo``，不发起任何阻塞调用。
@@ -34,7 +34,7 @@ SUCCESS_PREFIX = "已探测"
 ERROR_PREFIX = "探测失败"
 
 # 卡片标题
-TITLE = "输入媒体"
+TITLE = "常规选项"
 
 # 信息网格每行展示的字段数量
 _FIELDS_PER_ROW = 4
@@ -84,7 +84,7 @@ def _codec_text(video_stream) -> str:
 
 
 class InputMediaCard(QGroupBox):
-    """输入媒体卡：文件选择行 + 8 项媒体信息 + 探测状态。"""
+    """常规选项卡：高频输入行 + 8 项媒体信息 + 探测状态。"""
 
     def __init__(self, parent=None):
         super().__init__(TITLE, parent)

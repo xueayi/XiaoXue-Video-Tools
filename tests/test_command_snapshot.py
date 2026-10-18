@@ -44,6 +44,7 @@ def make_args(tmp_path, **overrides):
         audio_encoder="复制 (不重新编码)",
         audio_bitrate="192k",
         subtitle="",
+        subtitle_mode="内嵌（烧录进画面）",
         compat_mode=False,
         extra_args="",
         debug_mode=False,
@@ -233,6 +234,76 @@ def test_subtitle_burn_filter(tmp_path, monkeypatch):
     assert "subtitles=" in vf
     assert "-c:s" in cmd and _flag_value(cmd, "-c:s") == "copy"
     assert "0:s?" in cmd
+
+
+def test_subtitle_embed_maps_external_track_as_soft_stream(tmp_path, monkeypatch):
+    """内封: 外挂字幕作为第二个输入 map 成软字幕流, 不再走 subtitles 滤镜。"""
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+    args = make_args(
+        tmp_path,
+        subtitle=str(subtitle),
+        subtitle_mode="内封（转为软字幕流）",
+        output_format="MKV",
+    )
+    captured = _capture_normal_command(monkeypatch, args)
+    assert captured["subtitle_mode"] == "embed"
+
+    cmd = core.build_encode_command(**captured)
+    # 不烧录: 没有 subtitles 滤镜
+    assert "-vf" not in cmd or "subtitles=" not in _flag_value(cmd, "-vf")
+    # 两个输入 + 映射外挂字幕流
+    assert cmd.count("-i") == 2
+    assert _flag_value(cmd, "-i") == captured["input_path"]
+    assert "1:0" in cmd
+    assert "-sn" not in cmd
+    assert _flag_value(cmd, "-c:s") == "copy"
+
+
+def test_subtitle_embed_mov_uses_mov_text(tmp_path, monkeypatch):
+    """MOV 容器里软字幕需要 mov_text, 不能直接 copy。"""
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+    args = make_args(
+        tmp_path,
+        subtitle=str(subtitle),
+        subtitle_mode="内封（转为软字幕流）",
+        output_format="MOV",
+    )
+    captured = _capture_normal_command(monkeypatch, args)
+    cmd = core.build_encode_command(**captured)
+    assert _flag_value(cmd, "-c:s") == "mov_text"
+
+
+def test_subtitle_embed_keeps_selected_source_tracks(tmp_path, monkeypatch):
+    """内封外挂字幕时仍可按选择保留源字幕流, 但不能再写 -sn。"""
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+    args = make_args(
+        tmp_path,
+        subtitle=str(subtitle),
+        subtitle_mode="内封（转为软字幕流）",
+        subtitle_tracks="全部保留",
+        output_format="MKV",
+    )
+    captured = _capture_normal_command(monkeypatch, args)
+    cmd = core.build_encode_command(**captured)
+    assert "0:s?" in cmd
+    assert "1:0" in cmd
+    assert "-sn" not in cmd
+
+
+def test_subtitle_none_mode_ignores_external_file(tmp_path, monkeypatch):
+    """不处理: 选了文件也不烧录、不内封。"""
+    subtitle = tmp_path / "sub.srt"
+    subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n", encoding="utf-8")
+    args = make_args(tmp_path, subtitle=str(subtitle), subtitle_mode="不处理")
+    captured = _capture_normal_command(monkeypatch, args)
+    assert captured["subtitle_mode"] == "none"
+    cmd = core.build_encode_command(**captured)
+    assert cmd.count("-i") == 1
+    assert "1:0" not in cmd
+    assert "subtitles=" not in " ".join(cmd)
 
 
 def test_stream_mapping_modes(tmp_path, monkeypatch):

@@ -57,6 +57,8 @@ class EncodeParams:
     
     # 字幕参数
     subtitle_path: Optional[str] = None
+    #: 外挂字幕处理方式: burn=内嵌烧录 / embed=内封软字幕流 / none=不处理
+    subtitle_mode: str = "burn"
     compat_mode: bool = False
     
     # 其他参数
@@ -85,7 +87,8 @@ class EncodeParams:
         Returns:
             编码模式枚举值
         """
-        if self.compat_mode and self.subtitle_path:
+        if (self.compat_mode and self.subtitle_path
+                and self.subtitle_mode == "burn"):
             return EncodeMode.COMPAT
         elif (self.is_custom and self.rc_mode == "2pass" and self.bitrate
               and self.encoder in TWO_PASS_ENCODERS):
@@ -108,9 +111,23 @@ class EncodeParams:
         if self.subtitle_path and not os.path.exists(self.subtitle_path):
             return False, f"字幕文件不存在: {self.subtitle_path}"
 
-        # 复制视频流模式: 画面不重新编码, 无法烧录字幕
-        if self.encoder == "copy" and self.subtitle_path:
-            return False, "「复制视频流」模式不会重新编码画面，无法烧录字幕；请改用编码预设或取消字幕文件"
+        # 复制视频流模式: 画面不重新编码, 只能内封不能烧录
+        if (self.encoder == "copy" and self.subtitle_path
+                and self.subtitle_mode == "burn"):
+            return False, ("「复制视频流」模式不会重新编码画面，无法烧录字幕；"
+                          "可把字幕处理方式改为「内封」或取消字幕文件")
+
+        # 内封外挂字幕: 需要容器支持独立字幕流
+        if self.subtitle_path and self.subtitle_mode == "embed":
+            from .capabilities.container import (
+                EMBEDDED_SUBTITLE_FORMATS,
+                supports_embedded_subtitles,
+            )
+            extension = os.path.splitext(self.output_path)[1]
+            if not supports_embedded_subtitles(extension):
+                formats = " / ".join(ext.upper() for ext in EMBEDDED_SUBTITLE_FORMATS)
+                return False, (f"内封外挂字幕需要 {formats} 输出格式，"
+                               f"当前为 {extension or '未知格式'}；请改用内嵌烧录或更换输出格式")
 
         if self.clip_plan is not None:
             try:
@@ -121,6 +138,8 @@ class EncodeParams:
                     raise ValueError("片段模式暂不支持 AviSynth 兼容模式，请关闭兼容模式")
                 if self.subtitle_tracks != "none":
                     raise ValueError("片段模式暂不支持保留软字幕流，请选择不保留字幕；可使用外挂字幕烧录")
+                if self.subtitle_path and self.subtitle_mode == "embed":
+                    raise ValueError("片段模式暂不支持内封外挂字幕，请改为内嵌烧录或关闭片段")
                 clip_extra_args(self.extra_args)
             except ValueError as exc:
                 return False, str(exc)
@@ -252,6 +271,14 @@ def resolve_encoder_params(
     audio_tracks_val = AUDIO_TRACK_OPTIONS.get(audio_track_key, "0")
     audio_tracks_custom_val = getattr(args, 'audio_tracks_custom', '')
     
+    from .presets import SUBTITLE_MODES
+
+    subtitle_mode_key = getattr(args, 'subtitle_mode', '内嵌（烧录进画面）')
+    subtitle_mode = SUBTITLE_MODES.get(subtitle_mode_key, "burn")
+    if not getattr(args, 'subtitle', ''):
+        # 没有选择外挂字幕文件时, 处理方式没有意义, 统一按"不处理"记录
+        subtitle_mode = "none"
+
     subtitle_track_key = getattr(args, 'subtitle_tracks', '不保留字幕')
     subtitle_tracks_val = SUBTITLE_TRACK_OPTIONS.get(subtitle_track_key, "none")
     subtitle_tracks_custom_val = getattr(args, 'subtitle_tracks_custom', '')
@@ -273,6 +300,7 @@ def resolve_encoder_params(
         audio_encoder=audio_encoder,
         audio_bitrate=audio_bitrate,
         subtitle_path=args.subtitle if args.subtitle else None,
+        subtitle_mode=subtitle_mode,
         compat_mode=getattr(args, 'compat_mode', False),
         extra_args=args.extra_args if args.extra_args else None,
         dry_run=getattr(args, 'debug_mode', False),
@@ -316,6 +344,14 @@ def print_encode_info(params: EncodeParams, quality_presets: Dict[str, Any]) -> 
         print(f"  音频: 直接复制", flush=True)
     else:
         print(f"  音频: {params.audio_encoder} / {params.audio_bitrate}", flush=True)
+
+    # 字幕: 外挂文件处理方式与源字幕流保留分开说明
+    if params.subtitle_path:
+        label = {"embed": "内封(软字幕流)",
+                 "burn": "内嵌(烧录进画面)"}.get(params.subtitle_mode, "不处理")
+        print(f"  字幕: {label} {os.path.basename(params.subtitle_path)}", flush=True)
+    if params.subtitle_tracks != "none":
+        print(f"  保留源字幕流: {params.subtitle_tracks}", flush=True)
     
     # 打印编码模式
     mode = params.get_encode_mode()

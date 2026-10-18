@@ -77,14 +77,18 @@ _SUBTITLE_KEEP_LABELS = {
 
 
 def format_subtitle_summary(params) -> str:
-    """字幕行：烧录 / 保留（两个独立概念）。"""
+    """字幕行：外挂字幕处理方式 + 源字幕流保留（两个独立概念）。"""
     parts = []
-    if params.subtitle_path:
-        parts.append(f"烧录 {os.path.basename(params.subtitle_path)}")
+    name = os.path.basename(params.subtitle_path or "")
+    mode = getattr(params, "subtitle_mode", "burn")
+    if params.subtitle_path and mode == "embed":
+        parts.append(f"内封 {name}（软字幕流，播放器可开关）")
+    elif params.subtitle_path and mode == "burn":
+        parts.append(f"内嵌 {name}（烧录进画面）")
         if params.compat_mode:
             parts.append("兼容渲染 (AviSynth+VSFilter)")
     else:
-        parts.append("不烧录")
+        parts.append("不处理外挂字幕")
     if params.subtitle_tracks == "custom":
         custom = (params.subtitle_tracks_custom or "").strip() or "未填写编号"
         parts.append(f"保留自定义字幕轨道 ({custom})")

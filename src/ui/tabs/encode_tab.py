@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """视频压制标签页。
 
-信息架构 (PR-04)：
-    A. 输入媒体卡   —— 拖拽/选择输入，展示 8 项媒体信息
-    B. 输出方案卡   —— 5 张目标卡映射现有质量预设 + "更多预设" (全部预设)
-    C. 常用设置     —— 画质镜像 / 输出格式 / 分辨率 / 输出路径 / 音频 / 字幕
-    D. 轨道选择     —— 探测到的音频/字幕轨道勾选 (保留既有能力)
+信息架构：
+    A. 常规选项     —— 输入视频 / 字幕文件 / 输出路径 (高频输入) + 8 项媒体信息
+    B. 字幕策略     —— 外挂字幕处理方式 (内嵌烧录 / 内封软字幕 / 不处理)
+                       + 兼容模式 + 保留源字幕流
+    C. 视频输出策略 —— 5 张目标卡映射现有质量预设 + "更多预设" + 输出格式/分辨率
+    D. 音频输出策略 —— 音频编码/码率 + 音轨选择 (逐轨勾选挂在分组内)
     E. 压制后分发   —— 成品自动复制/移动 (文档未提, 保留功能)
-    F. 高级设置     —— 默认折叠: encoder/RC/CRF/码率/fps/流编号/extra_args/debug
-    G. 执行摘要     —— 页尾卡片, 与 executor 同源 (resolve_encoder_params) 实时预览
+    F. 片段截取     —— 当前视频内多段裁剪拼接
+    G. 高级设置     —— 默认折叠: encoder/RC/CRF/码率/fps/流编号/extra_args/debug
+    H. 执行摘要     —— 页尾卡片, 与 executor 同源 (resolve_encoder_params) 实时预览
 
 硬约束：所有控件属性名、``build_args()`` 键集与 command 保持不变。
 """
@@ -45,7 +47,7 @@ from ...presets import (
     APPLE_H264_PRESET, APPLE_HEVC_PRESET, CPU_PRESETS, NVENC_PRESETS,
     AUDIO_ENCODERS, AUDIO_BITRATES, RATE_CONTROL_MODES,
     VIDEO_BITRATES, AUDIO_TRACK_OPTIONS, SUBTITLE_TRACK_OPTIONS,
-    POST_TRANSFER_MODES, ENCODE_OUTPUT_FORMATS,
+    SUBTITLE_MODES, POST_TRANSFER_MODES, ENCODE_OUTPUT_FORMATS,
 )
 from ...media_probe import probe_detailed, LANGUAGE_NAMES
 from ...platform.capabilities import platform_capabilities
@@ -89,7 +91,7 @@ class EncodeTab(BaseTab):
         self.encoder_capabilities = build_encoder_capabilities(None)
 
         # ================================================================
-        # A. 输入媒体卡
+        # A. 常规选项（高频：输入视频 / 字幕文件 / 输出路径）
         # ================================================================
         self.input_media_card = InputMediaCard()
         self._main_layout.addWidget(self.input_media_card)
@@ -98,15 +100,68 @@ class EncodeTab(BaseTab):
             "视频文件 (*.mp4 *.mov *.avi *.mkv);;所有文件 (*.*)",
             "选择要处理的视频文件（支持拖拽，或点击「浏览」替换）",
         )
+        self.subtitle_edit = self.add_file_chooser(
+            self.input_media_card.form, "字幕文件 (可选)",
+            "字幕文件 (*.srt *.ass *.ssa);;所有文件 (*.*)",
+            "选择外挂字幕文件；处理方式（内嵌烧录 / 内封软字幕）在下方「字幕策略」中选择",
+        )
+        self.output_edit = self.add_file_saver(
+            self.input_media_card.form, "输出路径 (可选)",
+            "MP4 文件 (*.mp4);;MKV 文件 (*.mkv);;所有文件 (*.*)",
+            "留空则自动生成: 原文件名_编码器简称.格式\n"
+            "如 我的视频.mp4 + libx264 -> 我的视频_x264.mp4",
+        )
 
         # ================================================================
-        # B. 视频输出策略（方案卡 + 视频编码基础参数）
+        # B. 字幕策略（紧随输入，常用配置）
+        # ================================================================
+        subtitles = self.add_group(
+            "字幕策略",
+            "外挂字幕文件在「常规选项」中选择；这里决定内嵌还是内封，以及是否保留源字幕流。",
+        )
+        self.subtitle_group = subtitles.parentWidget()
+        # 兼容模式行所在分组 (AviSynth 门禁按平台能力收起该行)
+        self.common_group = self.subtitle_group
+
+        self.subtitle_mode_combo = self.add_combo(
+            subtitles, "字幕处理方式",
+            list(SUBTITLE_MODES.keys()), "内嵌（烧录进画面）",
+            "内嵌：把外挂字幕烧进画面（硬字幕，播放器无法关闭）\n"
+            "内封：把外挂字幕作为独立软字幕流写入容器（播放器可开关，仅 MKV / MOV）\n"
+            "不处理：忽略所选外挂字幕文件",
+        )
+        self.compat_mode_cb = self.add_checkbox(
+            subtitles, "兼容模式 (字幕)", False, COMPAT_MODE_TOOLTIP,
+        )
+
+        self._add_section_label(subtitles, "源视频字幕流（软字幕）")
+        self.subtitle_tracks_combo = self.add_combo(
+            subtitles, "保留字幕流",
+            list(SUBTITLE_TRACK_OPTIONS.keys()), "不保留字幕",
+            "保留源视频容器里已有的字幕轨（播放器可开关/切换）",
+        )
+        self._subtitle_default_tooltip = self.subtitle_tracks_combo.toolTip()
+        self._sub_track_box = QWidget()
+        self._sub_track_box.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._sub_track_host = QVBoxLayout(self._sub_track_box)
+        self._sub_track_host.setContentsMargins(0, 0, 0, 0)
+        self._sub_track_host.setSpacing(6)
+        subtitles.addRow(self._sub_track_box)
+        self.add_hint(
+            subtitles,
+            embedded_subtitle_note(),
+            "info",
+        )
+
+        # ================================================================
+        # C. 视频输出策略（方案卡 + 视频编码基础参数）
         # ================================================================
         self.output_plan_card = OutputPlanCard(current=DEFAULT_PRESET)
         self._main_layout.addWidget(self.output_plan_card)
         # 复用卡内的预设下拉作为唯一 preset_combo
         self.preset_combo = self.output_plan_card.preset_combo
-        # 方案卡下方追加视频基础参数 (输出格式 / 分辨率 / 输出路径 ...)
+        # 方案卡下方追加视频基础参数 (输出格式 / 分辨率 ...)
         common = self.output_plan_card.param_form()
         self.video_group = self.output_plan_card
 
@@ -125,7 +180,7 @@ class EncodeTab(BaseTab):
         self.output_format_combo = self.add_combo(
             common, "输出格式",
             list(ENCODE_OUTPUT_FORMATS.keys()), "MP4",
-            "选择输出容器格式",
+            "选择输出容器格式（内封外挂字幕需 MKV / MOV）",
         )
         self.output_format_custom_edit = self.add_text_input(
             common, "自定义格式", "",
@@ -135,19 +190,13 @@ class EncodeTab(BaseTab):
             common, "分辨率", "",
             "如 1920x1080，留空保持原分辨率 (预设模式下由预设决定)",
         )
-        self.output_edit = self.add_file_saver(
-            common, "输出路径 (可选)",
-            "MP4 文件 (*.mp4);;MKV 文件 (*.mkv);;所有文件 (*.*)",
-            "留空则自动生成: 原文件名_编码器简称.格式\n"
-            "如 我的视频.mp4 + libx264 -> 我的视频_x264.mp4",
-        )
 
         self._preset_lock_hint = self.add_hint(
             common, PRESET_LOCK_HINT, "info"
         )
 
         # ================================================================
-        # C. 音频输出策略
+        # D. 音频输出策略
         # ================================================================
         audio = self.add_group(
             "音频输出策略",
@@ -178,47 +227,6 @@ class EncodeTab(BaseTab):
             audio,
             "注意: MP4 格式不支持多音轨，需保留多轨请输出 MKV 格式",
             "warning",
-        )
-
-        # ================================================================
-        # D. 字幕策略
-        # ================================================================
-        subtitles = self.add_group(
-            "字幕策略",
-            "外挂字幕烧录（硬字幕）与内封字幕流（软字幕）互相独立，可同时使用。",
-        )
-        self.subtitle_group = subtitles.parentWidget()
-        # 兼容模式行所在分组 (AviSynth 门禁按平台能力收起该行)
-        self.common_group = self.subtitle_group
-
-        self._add_section_label(subtitles, "字幕烧录（硬字幕）")
-        self.subtitle_edit = self.add_file_chooser(
-            subtitles, "字幕文件 (可选)",
-            "字幕文件 (*.srt *.ass *.ssa);;所有文件 (*.*)",
-            "选择要烧录的字幕文件 (留空则不烧录)；烧录后字幕会直接画进画面",
-        )
-        self.compat_mode_cb = self.add_checkbox(
-            subtitles, "兼容模式 (字幕)", False, COMPAT_MODE_TOOLTIP,
-        )
-
-        self._add_section_label(subtitles, "内封字幕流（软字幕）")
-        self.subtitle_tracks_combo = self.add_combo(
-            subtitles, "保留字幕流",
-            list(SUBTITLE_TRACK_OPTIONS.keys()), "不保留字幕",
-            "保留源视频容器里已有的字幕轨（播放器可开关/切换）",
-        )
-        self._subtitle_default_tooltip = self.subtitle_tracks_combo.toolTip()
-        self._sub_track_box = QWidget()
-        self._sub_track_box.setSizePolicy(
-            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
-        self._sub_track_host = QVBoxLayout(self._sub_track_box)
-        self._sub_track_host.setContentsMargins(0, 0, 0, 0)
-        self._sub_track_host.setSpacing(6)
-        subtitles.addRow(self._sub_track_box)
-        self.add_hint(
-            subtitles,
-            embedded_subtitle_note(),
-            "info",
         )
 
         # ================================================================
@@ -350,6 +358,7 @@ class EncodeTab(BaseTab):
         self.output_format_combo.currentTextChanged.connect(self._on_output_format_changed)
         self.audio_tracks_combo.currentTextChanged.connect(self._on_audio_tracks_changed)
         self.subtitle_tracks_combo.currentTextChanged.connect(self._on_subtitle_tracks_changed)
+        self.subtitle_mode_combo.currentTextChanged.connect(self._on_subtitle_mode_changed)
         self.post_transfer_mode_combo.currentTextChanged.connect(self._on_transfer_changed)
         self.input_edit.textChanged.connect(self._on_input_changed)
         # 内封字幕流可用性依赖输出扩展名（自定义/与输入相同也要跟着刷新）
@@ -367,6 +376,7 @@ class EncodeTab(BaseTab):
         self._on_output_format_changed(self.output_format_combo.currentText())
         self._on_audio_tracks_changed(self.audio_tracks_combo.currentText())
         self._on_subtitle_tracks_changed(self.subtitle_tracks_combo.currentText())
+        self._on_subtitle_mode_changed(self.subtitle_mode_combo.currentText())
         self._on_transfer_changed(self.post_transfer_mode_combo.currentText())
         self._update_quality_mirror()
         self._refresh_summary()
@@ -773,6 +783,9 @@ class EncodeTab(BaseTab):
         self.subtitle_tracks_custom_edit.setEnabled(
             supported and "自定义" in self.subtitle_tracks_combo.currentText())
 
+        # 内封外挂字幕同样依赖容器能力: 不支持时禁用该选项并回退到内嵌
+        self._sync_embed_option_availability(supported)
+
         # 自动检测的轨道面板：字幕勾选与容器同步禁用/清空
         for checkbox, _index in self._sub_checks:
             if supported:
@@ -785,6 +798,33 @@ class EncodeTab(BaseTab):
             track_container.setEnabled(supported)
 
         self._refresh_summary()
+
+    def _sync_embed_option_availability(self, supported: bool) -> None:
+        """输出容器不支持字幕流时禁用「内封」选项, 并把当前值回退到内嵌。"""
+        combo = self.subtitle_mode_combo
+        model = combo.model()
+        for row in range(combo.count()):
+            if SUBTITLE_MODES.get(combo.itemText(row)) != "embed":
+                continue
+            item = model.item(row) if model is not None and hasattr(model, "item") else None
+            if item is not None:
+                item.setEnabled(supported)
+                item.setToolTip(
+                    "" if supported else
+                    "当前输出格式不支持内封字幕流，请改为 "
+                    + " / ".join(ext.upper() for ext in EMBEDDED_SUBTITLE_FORMATS))
+            if not supported and combo.currentIndex() == row:
+                combo.setCurrentText("内嵌（烧录进画面）")
+
+    def _on_subtitle_mode_changed(self, text):
+        """字幕处理方式变化: 兼容模式仅在内嵌烧录时可用。"""
+        mode = SUBTITLE_MODES.get(text, "burn")
+        burn = mode == "burn"
+        self.compat_mode_cb.setEnabled(burn)
+        if not burn and self.compat_mode_cb.isChecked():
+            self.compat_mode_cb.setChecked(False)
+        if hasattr(self, "summary_card"):
+            self._refresh_summary()
 
     def _on_audio_tracks_changed(self, text):
         self.audio_tracks_custom_edit.setEnabled("自定义" in text)
@@ -1188,6 +1228,7 @@ class EncodeTab(BaseTab):
             input=self.input_edit.text(),
             output=self.output_edit.text(),
             subtitle=self.subtitle_edit.text(),
+            subtitle_mode=self.subtitle_mode_combo.currentText(),
             compat_mode=self.compat_mode_cb.isChecked(),
             preset=self.preset_combo.currentText(),
             encoder=self.encoder_combo.currentText(),

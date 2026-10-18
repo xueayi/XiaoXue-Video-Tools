@@ -188,6 +188,16 @@ SUBTITLE_TRACK_OPTIONS = {
     "自定义选择 (填写编号)": "custom",
 }
 
+# 外挂字幕文件的处理方式:
+#   burn  = 内嵌, 烧录进画面 (硬字幕, 播放器不可关闭)
+#   embed = 内封, 作为独立软字幕流写入容器 (播放器可开关, 仅 MKV/MOV)
+#   none  = 只保留源视频已有的字幕流, 忽略所选外挂字幕文件
+SUBTITLE_MODES = {
+    "内嵌（烧录进画面）": "burn",
+    "内封（转为软字幕流）": "embed",
+    "不处理": "none",
+}
+
 # 封装转换预设 (Remux)
 REMUX_PRESETS = {
     "MP4": {
