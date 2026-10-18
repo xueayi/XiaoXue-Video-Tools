@@ -8,6 +8,7 @@ colorama==0.4.6
 chardet==7.6.0
 requests==2.34.2
 qtawesome==1.4.2
+fonttools==4.67.0
 PyInstaller==6.22.3
 pyinstaller-hooks-contrib==2026.8
 altgraph==0.17.5
