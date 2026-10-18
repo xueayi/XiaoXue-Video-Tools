@@ -33,6 +33,8 @@ from ..encode_params import (
     resolve_encoder_params,
     print_encode_info,
 )
+from ..media_probe import probe_detailed
+from ..clip_plan import select_audio_indices
 from ..task.report import TaskReport
 from ..task.result import TaskResult
 from .common import print_task_header
@@ -65,6 +67,18 @@ def execute_encode(args) -> TaskResult:
     if not is_valid:
         print(f"{Fore.RED}[错误] {error_msg}{Style.RESET_ALL}", flush=True)
         return TaskResult.failed(error_msg, details={"reason": "validation"})
+
+    clip_kwargs = {}
+    if params.clip_plan is not None:
+        info = probe_detailed(params.input_path)
+        try:
+            if not info or info.errors or not info.video_streams or info.duration_sec <= 0:
+                raise ValueError("片段模式无法确定视频时长，请检查文件和 FFprobe")
+            params.clip_plan.validate(round(info.duration_sec * 1_000_000))
+            clip_kwargs = dict(clip_plan=params.clip_plan, clip_audio_indices=select_audio_indices(
+                params.audio_tracks, params.audio_tracks_custom, len(info.audio_streams)))
+        except ValueError as exc:
+            return TaskResult.failed(str(exc), details={"reason": "clip_validation"})
     
     # 打印编码信息
     print_encode_info(params, QUALITY_PRESETS)
@@ -132,6 +146,7 @@ def execute_encode(args) -> TaskResult:
             audio_tracks_custom=params.audio_tracks_custom,
             subtitle_tracks=params.subtitle_tracks,
             subtitle_tracks_custom=params.subtitle_tracks_custom,
+            **clip_kwargs,
         )
         return_code = run_2pass_encode(pass1_cmd, pass2_cmd, dry_run=params.dry_run)
     
@@ -157,6 +172,7 @@ def execute_encode(args) -> TaskResult:
             audio_tracks_custom=params.audio_tracks_custom,
             subtitle_tracks=params.subtitle_tracks,
             subtitle_tracks_custom=params.subtitle_tracks_custom,
+            **clip_kwargs,
         )
         return_code = run_ffmpeg_command(cmd, dry_run=params.dry_run)
     

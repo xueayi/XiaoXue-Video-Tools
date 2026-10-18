@@ -19,6 +19,7 @@ from .process import (
     run as run_process,
 )
 from .task.context import TaskCancelled, current_task
+from .clip_plan import ClipPlan, build_clip_filters, clip_extra_args
 
 # 初始化 Logger
 import logging
@@ -90,6 +91,8 @@ def build_encode_command(
     audio_tracks_custom: str = "",
     subtitle_tracks: str = "none",
     subtitle_tracks_custom: str = "",
+    clip_plan: Optional[ClipPlan] = None,
+    clip_audio_indices: tuple[int, ...] = (),
 ) -> List[str]:
     """
     构建视频编码 FFmpeg 命令。
@@ -120,16 +123,10 @@ def build_encode_command(
     ffmpeg = get_ffmpeg_path()
     cmd = [ffmpeg, "-y", "-i", input_path]
 
-    # 显式映射视频流 (始终保留第一条)
-    cmd.extend(["-map", "0:v:0"])
-
-    # 映射音频流 (根据用户选择)
-    audio_map_args = _build_stream_map_args("a", audio_tracks, audio_tracks_custom)
-    cmd.extend(audio_map_args)
-
-    # 映射字幕流 (根据用户选择)
-    subtitle_map_args = _build_stream_map_args("s", subtitle_tracks, subtitle_tracks_custom)
-    cmd.extend(subtitle_map_args)
+    if clip_plan is None:
+        cmd.extend(["-map", "0:v:0"])
+        cmd.extend(_build_stream_map_args("a", audio_tracks, audio_tracks_custom))
+        cmd.extend(_build_stream_map_args("s", subtitle_tracks, subtitle_tracks_custom))
 
     # 如果使用预设, 加载预设参数
     if preset_name and preset_name in QUALITY_PRESETS and preset_name != "自定义 (Custom)":
@@ -164,7 +161,12 @@ def build_encode_command(
         w, h = resolution.split("x")
         vf_filters.append(f"scale={w}:{h}")
 
-    if vf_filters:
+    if clip_plan is not None:
+        graph, maps = build_clip_filters(clip_plan, vf_filters, clip_audio_indices)
+        cmd.extend(["-filter_complex", graph] + maps)
+        if audio_encoder == "copy":
+            audio_encoder = "aac"
+    elif vf_filters:
         cmd.extend(["-vf", ",".join(vf_filters)])
 
     # 视频编码器
@@ -228,7 +230,7 @@ def build_encode_command(
 
     # 额外参数
     if extra_args:
-        cmd.extend(extra_args.split())
+        cmd.extend(clip_extra_args(extra_args) if clip_plan is not None else extra_args.split())
 
     cmd.append(output_path)
     # M2.4: 结构化进度写入 stdout (-progress pipe:1), 供 UI 解析 percent/ETA
@@ -635,6 +637,8 @@ def build_2pass_commands(
     audio_tracks_custom: str = "",
     subtitle_tracks: str = "none",
     subtitle_tracks_custom: str = "",
+    clip_plan: Optional[ClipPlan] = None,
+    clip_audio_indices: tuple[int, ...] = (),
 ) -> Tuple[List[str], List[str]]:
     """
     构建真正的两遍编码 FFmpeg 命令。
@@ -656,6 +660,23 @@ def build_2pass_commands(
     Returns:
         (pass1_cmd, pass2_cmd) 两遍编码的命令列表。
     """
+    if clip_plan is not None:
+        common = dict(input_path=input_path, output_path=output_path, preset_name=preset_name,
+                      encoder=encoder, bitrate=bitrate, speed_preset=speed_preset,
+                      resolution=resolution, fps=fps, audio_encoder=audio_encoder,
+                      audio_bitrate=audio_bitrate, subtitle_path=subtitle_path,
+                      extra_args=extra_args, clip_plan=clip_plan)
+        first = build_encode_command(**common, clip_audio_indices=(), audio_tracks="none")
+        second = build_encode_command(**common, clip_audio_indices=clip_audio_indices)
+        # 第一遍只分析同一视频时间线，不建立音频输出。
+        first = first[:-1] + ["-pass", "1", "-f", "null", "NUL" if os.name == "nt" else "/dev/null"]
+        second = second[:-1] + ["-pass", "2"] + second[-1:]
+        for flag, size in (("-progress", 2), ("-nostats", 1), ("-stats_period", 2)):
+            if flag in first:
+                index = first.index(flag)
+                del first[index:index + size]
+        return first, second
+
     ffmpeg = get_ffmpeg_path()
 
     # 如果使用预设, 加载预设参数

@@ -164,6 +164,13 @@ class TaskRunner(QThread):
         if self._duration_probed:
             return None
         self._duration_probed = True
+        plan = getattr(self.args, "clip_plan", None)
+        if plan is not None:
+            try:
+                plan.validate()
+            except ValueError:
+                return None
+            return plan.total_duration_us / 1_000_000
         input_path = resolve_input_path(self.args)
         if not input_path or not os.path.isfile(input_path):
             return None

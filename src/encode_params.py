@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any
 from enum import Enum
 
 from colorama import Fore, Style
+from .clip_plan import ClipPlan, clip_extra_args
 
 from .capabilities.encoder import (
     default_speed_preset,
@@ -71,6 +72,7 @@ class EncodeParams:
     audio_tracks_custom: str = ""       # 自定义音轨编号 (逗号分隔)
     subtitle_tracks: str = "none"       # 字幕选择模式
     subtitle_tracks_custom: str = ""    # 自定义字幕编号 (逗号分隔)
+    clip_plan: Optional[ClipPlan] = None
     
     def get_encode_mode(self) -> EncodeMode:
         """
@@ -105,6 +107,19 @@ class EncodeParams:
         # 验证字幕文件存在 (如果指定了)
         if self.subtitle_path and not os.path.exists(self.subtitle_path):
             return False, f"字幕文件不存在: {self.subtitle_path}"
+
+        if self.clip_plan is not None:
+            try:
+                self.clip_plan.validate()
+                if os.path.abspath(self.clip_plan.input_path) != os.path.abspath(self.input_path):
+                    raise ValueError("片段计划与当前输入视频不一致，请重新设置片段")
+                if self.compat_mode:
+                    raise ValueError("片段模式暂不支持 AviSynth 兼容模式，请关闭兼容模式")
+                if self.subtitle_tracks != "none":
+                    raise ValueError("片段模式暂不支持保留软字幕流，请选择不保留字幕；可使用外挂字幕烧录")
+                clip_extra_args(self.extra_args)
+            except ValueError as exc:
+                return False, str(exc)
         
         capability = encoder_capability(self.encoder)
         if capability is None:
@@ -235,6 +250,9 @@ def resolve_encoder_params(
     subtitle_track_key = getattr(args, 'subtitle_tracks', '不保留字幕')
     subtitle_tracks_val = SUBTITLE_TRACK_OPTIONS.get(subtitle_track_key, "none")
     subtitle_tracks_custom_val = getattr(args, 'subtitle_tracks_custom', '')
+    clip_plan = getattr(args, 'clip_plan', None)
+    if clip_plan is not None and audio_encoder == "copy":
+        audio_encoder = "aac"
 
     # 构建参数对象
     return EncodeParams(
@@ -259,6 +277,7 @@ def resolve_encoder_params(
         audio_tracks_custom=audio_tracks_custom_val,
         subtitle_tracks=subtitle_tracks_val,
         subtitle_tracks_custom=subtitle_tracks_custom_val,
+        clip_plan=clip_plan,
     )
 
 
@@ -286,6 +305,8 @@ def print_encode_info(params: EncodeParams, quality_presets: Dict[str, Any]) -> 
             print(f"  视频码率: {params.bitrate}", flush=True)
 
     # 音频参数 (与最终 FFmpeg 命令同源, 便于日志核对)
+    if params.clip_plan is not None:
+        print(f"  片段: {len(params.clip_plan.clips)} 段 / {params.clip_plan.total_duration_us / 1_000_000:.3f} 秒；按列表顺序导出", flush=True)
     if params.audio_encoder == "copy":
         print(f"  音频: 直接复制", flush=True)
     else:
