@@ -97,7 +97,7 @@ def test_no_audio_and_two_pass_have_expected_frames(media, tmp_path):
     assert abs((pts[-1] + 1 / SOURCE_FPS) - 1.0) < 0.01
 
 
-def test_hard_subtitle_follows_source_time(media, tmp_path):
+def test_hard_subtitle_follows_source_time(media, requires_libass, tmp_path):
     source, ffmpeg, _ = media
     subtitle = tmp_path / "字幕.srt"
     subtitle.write_text("1\n00:00:00,000 --> 00:00:00,500\nHELLO\n", encoding="utf-8")

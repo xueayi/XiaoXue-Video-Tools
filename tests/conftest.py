@@ -107,3 +107,23 @@ def media_binaries():
             pytest.skip("真实媒体验证需要 ffmpeg 和 ffprobe")
         paths.append(found)
     return tuple(paths)
+
+
+@pytest.fixture(scope="session")
+def requires_libass(media_binaries):
+    """硬字幕用例前置: 当前 FFmpeg 必须编译了 libass。
+
+    系统包管理器装的 FFmpeg 常常不带 libass(Homebrew 默认构建就没有),
+    此时 ``subtitles`` 滤镜不可用。跳过而不是失败, 避免把环境缺失误判成回归;
+    带内置 FFmpeg 的构建(冻结包 / CI 的 macos-media)仍会真正跑这条用例。
+    """
+    import subprocess
+
+    ffmpeg, _ = media_binaries
+    listing = subprocess.run([ffmpeg, "-hide_banner", "-filters"],
+                             capture_output=True, text=True, timeout=60).stdout
+    available = {parts[1] for parts in
+                 (line.split() for line in listing.splitlines()) if len(parts) > 1}
+    if "subtitles" not in available:
+        pytest.skip("当前 FFmpeg 未编译 libass (缺少 subtitles 滤镜)")
+    return ffmpeg
