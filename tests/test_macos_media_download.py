@@ -35,3 +35,27 @@ def test_extract_refuses_paths_outside_archive_root(tmp_path):
     with pytest.raises(ValueError, match='ffmpeg'):
         extract_verified_archive(archive, sha, 'ffmpeg', tmp_path / 'bin' / 'ffmpeg')
     assert not (tmp_path / 'ffmpeg').exists()
+
+
+@pytest.mark.parametrize('valid', [True, False])
+def test_download_identifies_application_and_checks_before_replacing(tmp_path, monkeypatch, valid):
+    from io import BytesIO
+    from tools import prepare_macos_media as media
+    content = b'verified archive'
+    archive = tmp_path / 'ffmpeg.zip'
+    archive.write_bytes(b'old cache')
+
+    def server(request, timeout):
+        # 下载源拒绝默认Python客户端；明确标识本项目的请求可正常下载。
+        assert request.get_header('User-agent').startswith('XiaoXueToolbox')
+        return BytesIO(content)
+
+    monkeypatch.setattr(media, 'urlopen', server)
+    expected = hashlib.sha256(content).hexdigest() if valid else '0' * 64
+    if valid:
+        media.download_verified_archive('https://example.test/ffmpeg.zip', expected, archive)
+        assert archive.read_bytes() == content
+    else:
+        with pytest.raises(ValueError, match='SHA256'):
+            media.download_verified_archive('https://example.test/ffmpeg.zip', expected, archive)
+        assert archive.read_bytes() == b'old cache'

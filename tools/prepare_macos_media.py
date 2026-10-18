@@ -7,10 +7,19 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def download_verified_archive(url, expected_sha256, archive):
+    request = Request(url, headers={'User-Agent': 'XiaoXueToolbox-media-builder/1.0'})
+    with urlopen(request, timeout=180) as response:
+        content = response.read()
+    if hashlib.sha256(content).hexdigest() != expected_sha256:
+        raise ValueError(f'{Path(archive).name} SHA256 校验失败')
+    Path(archive).write_bytes(content)
 
 
 def extract_verified_archive(archive, expected_sha256, name, destination):
@@ -58,12 +67,7 @@ def main():
     for name, artifact in manifest['artifacts'].items():
         archive = cache / f'{name}.zip'
         if not archive.exists() or hashlib.sha256(archive.read_bytes()).hexdigest() != artifact['sha256']:
-            with urlopen(artifact['url'], timeout=180) as response:
-                content = response.read()
-            # 下载到缓存前也校验，断网或内容错误不破坏既有缓存。
-            if hashlib.sha256(content).hexdigest() != artifact['sha256']:
-                raise ValueError(f'{name} SHA256 校验失败')
-            archive.write_bytes(content)
+            download_verified_archive(artifact['url'], artifact['sha256'], archive)
         binary = args.output / 'bin' / name
         extract_verified_archive(archive, artifact['sha256'], name, binary)
         print(validate_binary(binary))

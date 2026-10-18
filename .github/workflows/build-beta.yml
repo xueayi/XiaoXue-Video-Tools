@@ -3,12 +3,13 @@ name: Build Pre-release
 on:
   push:
     tags: ['v*-alpha*', 'v*-beta*', 'v*-rc*']
+    branches: ['release/**']
   workflow_dispatch:
     inputs:
       version:
         description: '预发布版本号'
         required: true
-        default: 'v2.3.0-alpha.3'
+        default: 'v2.3.0-alpha.4'
 
 permissions:
   contents: read
@@ -51,9 +52,11 @@ jobs:
         shell: python
         run: |
           import os, pathlib, re
-          tag = os.environ['RELEASE_VERSION']
+          tag = os.environ['RELEASE_VERSION'].removeprefix('release/')
           if not re.fullmatch(r'v\d+\.\d+\.\d+-(?:alpha|beta|rc)(?:\.[0-9A-Za-z-]+)*', tag):
               raise SystemExit('无效的预发布版本号')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'RELEASE_VERSION={tag}\n')
           path = pathlib.Path('src/_version.py')
           path.write_text(re.sub(r'__version__:\s*str\s*=.*', f'__version__: str = {tag[1:]!r}', path.read_text(encoding='utf-8')), encoding='utf-8')
       - name: Build
@@ -96,11 +99,11 @@ jobs:
           python tools/prepare_macos_media.py
           python - <<'PY'
           import os, re
-          tag = os.environ['RELEASE_VERSION']
+          tag = os.environ['RELEASE_VERSION'].removeprefix('release/')
           if not re.fullmatch(r'v\d+\.\d+\.\d+-(?:alpha|beta|rc)(?:\.[0-9A-Za-z-]+)*', tag):
               raise SystemExit('无效的预发布版本号')
           with open(os.environ['GITHUB_ENV'], 'a') as f:
-              f.write(f'XIAOXUE_BUILD_VERSION={tag[1:]}\n')
+              f.write(f'XIAOXUE_BUILD_VERSION={tag[1:]}\nRELEASE_VERSION={tag}\n')
           PY
       - name: Test including real media
         run: python -m pytest -ra
@@ -124,7 +127,7 @@ jobs:
 
   publish:
     needs: [windows, macos]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -139,11 +142,17 @@ jobs:
           merge-multiple: true
           path: release-assets
       - name: Prepare exact changelog and both SHA256 checksums
-        run: python tools/release_notes.py --tag "$GITHUB_REF_NAME" --repository "$GITHUB_REPOSITORY" --assets release-assets
+        run: python tools/release_notes.py --tag "${RELEASE_VERSION#release/}" --repository "$GITHUB_REPOSITORY" --assets release-assets
       - name: Publish both platforms as one Pre-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" release-assets/*.zip \
+          tag="${RELEASE_VERSION#release/}"
+          if existing=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha 2>/dev/null); then
+            test "$existing" = "$GITHUB_SHA" || { echo '既有标签指向其它提交，停止发布'; exit 1; }
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$GITHUB_SHA"
+          fi
+          gh release create "$tag" release-assets/*.zip \
             --verify-tag --prerelease --latest=false \
-            --title "小雪工具箱 $GITHUB_REF_NAME（预发布）" --notes-file release-notes.md
+            --title "小雪工具箱 $tag（预发布）" --notes-file release-notes.md
