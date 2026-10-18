@@ -1,12 +1,12 @@
 name: Tests
 
-# PR 测试门禁: main 分支的 push / pull_request 时运行。
+# 测试门禁: main 与 feat/macos-alpha 的 push / pull_request 时运行。
 # 只在分支上触发 —— tag 构建由 build.yml / build-beta.yml 负责, 三者互不冲突。
 on:
   push:
-    branches: [main]
+    branches: [main, feat/macos-alpha]
   pull_request:
-    branches: [main]
+    branches: [main, feat/macos-alpha]
   workflow_dispatch:  # 支持手动触发
 
 permissions:

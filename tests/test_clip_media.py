@@ -6,6 +6,9 @@ import pytest
 from src.clip_plan import ClipPlan, ClipSpec
 from src.core import build_encode_command, build_2pass_commands, run_2pass_encode
 
+#: 测试素材帧率 (fixture 用 lavfi ``r=24`` 生成)
+SOURCE_FPS = 24
+
 
 def run(cmd):
     result = subprocess.run(cmd, capture_output=True, timeout=45)
@@ -30,6 +33,26 @@ def media(tmp_path, media_binaries, monkeypatch):
 
 def probe(path, ffprobe):
     return json.loads(run([ffprobe, "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)]))
+
+
+def frame_pts(path, ffprobe, stream="v"):
+    """取视频帧 PTS 列表 (秒)。
+
+    片段滤镜链输出的是 VFR 流, 容器/流 ``duration`` 字段由封装器按末帧推断,
+    在不同 ffmpeg 构建上可能少算一帧; 判定内容长度一律以帧时间戳为准。
+    """
+    raw = run([ffprobe, "-v", "error", "-select_streams", stream,
+               "-show_entries", "frame=pts_time", "-of", "csv=p=0", str(path)])
+    pts = []
+    for line in raw.decode(errors="replace").splitlines():
+        text = line.strip().rstrip(",")
+        if not text:
+            continue
+        try:
+            pts.append(float(text.split(",")[0]))
+        except ValueError:
+            continue
+    return sorted(pts)
 
 
 def frame(path, ffmpeg, seconds):
@@ -65,7 +88,13 @@ def test_no_audio_and_two_pass_have_expected_frames(media, tmp_path):
     streams = probe(output, ffprobe)["streams"]
     assert len(streams) == 1
     assert int(streams[0]["nb_frames"]) == 24
-    assert abs(float(streams[0]["duration"]) - 1) < 0.01
+    # 内容长度以帧时间戳跨度为准: 末帧 PTS + 1 帧 = 1.0s。
+    # 容器的 stream.duration 由 mov 封装器按末帧推断, 某些 ffmpeg 构建会少算一帧,
+    # 因此不用它来判定片段长度。
+    pts = frame_pts(output, ffprobe)
+    assert len(pts) == 24
+    assert abs(pts[0]) < 0.005
+    assert abs((pts[-1] + 1 / SOURCE_FPS) - 1.0) < 0.01
 
 
 def test_hard_subtitle_follows_source_time(media, tmp_path):
@@ -96,9 +125,23 @@ def test_many_non_frame_aligned_clips_do_not_accumulate_audio_drift(media, tmp_p
 def test_non_aligned_two_pass_uses_identical_video_timeline(media, tmp_path):
     source, ffmpeg, ffprobe = media
     output = tmp_path / "边界两遍.mp4"
+    single = tmp_path / "边界单遍.mp4"
     plan = ClipPlan(str(source), (ClipSpec(10_000, 110_000),) * 12)
     first, second = build_2pass_commands(str(source), str(output), clip_plan=plan,
                                          clip_audio_indices=(1,), bitrate="300k", speed_preset="ultrafast")
     assert run_2pass_encode(first, second) == 0
+    # 对照: 同样的片段计划走单遍编码, 两遍必须产出完全一致的时间线
+    run(build_encode_command(str(source), str(single), clip_plan=plan, clip_audio_indices=(1,),
+                             speed_preset="ultrafast"))
+    two_pass_pts = frame_pts(output, ffprobe)
+    single_pts = frame_pts(single, ffprobe)
+    assert len(two_pass_pts) == len(single_pts)
+    assert max(abs(a - b) for a, b in zip(two_pass_pts, single_pts)) < 0.001
+
+    # 音视频收尾差: 视频按帧网格保持每段长度 (实测每段 41ms + 59ms = 100ms,
+    # 段内长度精确), 音频按样本精确裁切; 仅最后一段的“保持帧”不会被写入容器,
+    # 因此尾端允许 1 视频帧 + 1 个 AAC 帧 (1024 样本) + 余量 (实测约 0.058s)。
     streams = probe(output, ffprobe)["streams"]
-    assert abs(float(streams[0]["duration"]) - float(streams[1]["duration"])) < 0.05
+    video_end = two_pass_pts[-1] + 1 / SOURCE_FPS
+    audio_duration = float(streams[1]["duration"])
+    assert abs(audio_duration - video_end) <= 1 / SOURCE_FPS + 1024 / 44100 + 0.01
