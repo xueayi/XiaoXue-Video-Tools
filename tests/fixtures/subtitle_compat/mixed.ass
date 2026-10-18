@@ -1,0 +1,16 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 2160
+PlayResY: 1080
+YCbCr Matrix: None
+
+[V4+ Styles]
+Format: Fontname, Name, Bold, Italic
+Style: Noto Sans SC Medium,Main,0,0
+Style: Noto Serif CJK SC Black,Title,0,0
+Style: NotInstalled,Unused,0,0
+
+[Events]
+Format: Layer, Start, End, Style, Text
+Dialogue: 0,0:00:01.00,0:00:04.00,Main,{\t(0,500,\alpha&H00&)\fad(50,500)\move(1,2,3,4)\clip(1,2,3,4)\iclip(5,6,7,8)}正文,\N标题{\fnMiSans Medium\b700\i1}甲{\rTitle}乙{\r}丙{\p1}m 0 0 l 1 1{\p0}丁
+Dialogue: 0,0:00:04.00,0:00:05.00,Title,标题
