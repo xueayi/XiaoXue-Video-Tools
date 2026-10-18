@@ -26,6 +26,18 @@ colorama_init()
 
 def main():
     """主入口函数，启动 PyQt6 图形界面。"""
+    if "--subtitle-diagnostics" in sys.argv:
+        import argparse
+        from src.subtitle_diagnostics import run_font_diagnostics
+        parser = argparse.ArgumentParser(description="字幕字体与效果快照诊断")
+        parser.add_argument("--subtitle-diagnostics", required=True, metavar="VIDEO")
+        parser.add_argument("--subtitle", required=True, metavar="ASS")
+        parser.add_argument("--font-source", action="append", required=True, metavar="PATH")
+        parser.add_argument("--time", type=float, default=19.0, metavar="SECONDS")
+        parser.add_argument("--report", required=True, metavar="JSON")
+        args = parser.parse_args()
+        sys.exit(run_font_diagnostics(args.subtitle_diagnostics, args.subtitle,
+                                      tuple(args.font_source), args.report, round(args.time * 1_000_000)))
     if "--media-diagnostics" in sys.argv:
         import argparse
         from src.media_diagnostics import run_preview_diagnostics

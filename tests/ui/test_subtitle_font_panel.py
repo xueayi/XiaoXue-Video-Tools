@@ -82,3 +82,15 @@ def test_enabled_args_and_summary_and_embed_clear_enhancement(qapp,tmp_path,monk
     tab.subtitle_mode_combo.setCurrentText('内封（转为软字幕流）')
     assert not hasattr(tab.build_args(),'subtitle_fonts')
     tab.release()
+
+
+def test_preview_has_enough_height_to_show_subtitle_image(qapp,tmp_path):
+    from PIL import Image
+    from src.subtitle_render import SubtitlePreview
+    path=tmp_path/'frame.png';Image.new('RGB',(2160,1080),'white').save(path)
+    panel=SubtitleFontPanel();panel.setChecked(True);panel.resize(800,450);panel.show()
+    preview=SubtitlePreview(path,FontReport(ready=True),19_000_000)
+    panel.accept_result(panel.generation,{'kind':'preview','preview':preview,'report':preview.report})
+    qapp.processEvents()
+    assert panel.image.height()>=250
+    panel.release();panel.close()

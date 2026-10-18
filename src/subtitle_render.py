@@ -130,7 +130,8 @@ class FontSelectionCollector:
         base = self.prepared.report
         ready = base.ready and not any(i.code in ('fallback', 'missing_glyph') for i in self.issues)
         verified = ready and not self.issues and bool(base.matches) and all(r in self.observed for r, _ in base.matches)
-        return FontReport(base.matches, tuple(self.issues), ready, verified)
+        return FontReport(base.matches, tuple(self.issues), ready, verified,
+                          tuple(r for r, _ in base.matches if r in self.observed))
 
 
 def render_subtitle_preview(input_path: str, source_us: int, prepared: PreparedSubtitle,

@@ -189,8 +189,10 @@ class SubtitleFontPanel(QGroupBox):
             message = '字体文件检查通过；实际匹配以快照或导出报告为准。'
         else:
             pixmap = QPixmap(str(result['preview'].path))
-            self.image.setPixmap(pixmap.scaled(760, 300, Qt.AspectRatioMode.KeepAspectRatio,
-                                                Qt.TransformationMode.SmoothTransformation))
+            thumbnail = pixmap.scaled(760, 300, Qt.AspectRatioMode.KeepAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
+            self.image.setPixmap(thumbnail)
+            self.image.setMinimumHeight(thumbnail.height())
             message = '字幕效果快照 ' + format_clip_time(result['preview'].actual_us)
             message += ' · 本帧字体匹配已核对' if self.report.verified else ' · 本帧未出现全部字幕字体'
         self.status.setText('；'.join(i.message for i in self.report.issues) or message)

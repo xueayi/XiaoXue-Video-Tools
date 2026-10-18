@@ -51,6 +51,7 @@ class FontReport:
     issues: tuple[FontIssue, ...] = ()
     ready: bool = False
     verified: bool = False
+    observed: tuple[FontRequest, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -172,6 +173,13 @@ def resolve_fonts(analysis: SubtitleAnalysis, faces: tuple[FontFace, ...],
     for request, points in analysis.codepoints:
         name = _normal(request.name)
         selected = explicit.get(name)
+        if selected:
+            selected = next((f for f in faces if (f.sha256, f.index) ==
+                             (selected.sha256, selected.index)), None)
+            if selected is None:
+                issues.append(FontIssue('source_unavailable', request.name,
+                                        f'所选字体已不在当前来源中，请重新检查：{request.name}'))
+                continue
         candidates = [selected] if selected else [f for f in faces if name in {_normal(n) for n in f.names}]
         if not candidates:
             issues.append(FontIssue('missing', request.name, f'未找到字体：{request.name}'))

@@ -1,0 +1,134 @@
+{
+  "video": "262_缩混.mp4",
+  "video_bytes": 475060341,
+  "subtitle": "262_缩混.ass",
+  "subtitle_sha256": "f81528ff9c91b65def18e6a2226468141d2c2234213a4be5860e2a7059001cc3",
+  "width": 2160,
+  "height": 1080,
+  "fps": 60,
+  "duration": 368.033333,
+  "frames_us": [
+    16020000,
+    16250000,
+    16520000,
+    17770000,
+    18000000,
+    19000000,
+    23640000,
+    25000000,
+    28400000
+  ],
+  "fonts": [
+    {
+      "source": "/Volumes/192.168.6.27/local_share/mac兼容性测试文件/09_NotoSerifCJKsc.zip",
+      "member": "OTF/SimplifiedChinese/NotoSerifCJKsc-Black.otf",
+      "bytes": 24004884,
+      "sha256": "0f856ec0ba328cf9660e217fab96157c804d657d7731dd109c37c3979bf27489",
+      "names": {
+        "1": [
+          "Noto Serif CJK SC Black"
+        ],
+        "2": [
+          "Regular"
+        ],
+        "4": [
+          "Noto Serif CJK SC Black"
+        ],
+        "6": [
+          "NotoSerifCJKsc-Black"
+        ],
+        "16": [
+          "Noto Serif CJK SC"
+        ],
+        "17": [
+          "Black"
+        ]
+      },
+      "weight": 900,
+      "variable": false,
+      "name": "NotoSerifCJKsc-Black.otf"
+    },
+    {
+      "source": "/Volumes/192.168.6.27/local_share/mac兼容性测试文件/09_NotoSerifCJKsc.zip",
+      "member": "OTF/SimplifiedChinese/NotoSerifCJKsc-Regular.otf",
+      "bytes": 24429984,
+      "sha256": "18e4072f01dad3965a72ae8afee7d6dac447c4eb6d454e0084ed5c9c1fc0091f",
+      "names": {
+        "1": [
+          "Noto Serif CJK SC"
+        ],
+        "2": [
+          "Regular"
+        ],
+        "4": [
+          "Noto Serif CJK SC"
+        ],
+        "6": [
+          "NotoSerifCJKsc-Regular"
+        ]
+      },
+      "weight": 400,
+      "variable": false,
+      "name": "NotoSerifCJKsc-Regular.otf"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/SubsetOTF/SC/NotoSansSC-Medium.otf",
+      "repository_commit": "f8d157532fbfaeda587e826d4cd5b21a49186f7c",
+      "bytes": 8345436,
+      "sha256": "7633f5a016d4dd95e685a69633d818aabc4644c4b08e26bd35b1b30c45ed5dda",
+      "names": {
+        "1": [
+          "Noto Sans SC Medium"
+        ],
+        "2": [
+          "Regular"
+        ],
+        "4": [
+          "Noto Sans SC Medium"
+        ],
+        "6": [
+          "NotoSansSC-Medium"
+        ],
+        "16": [
+          "Noto Sans SC"
+        ],
+        "17": [
+          "Medium"
+        ]
+      },
+      "weight": 500,
+      "variable": false,
+      "name": "NotoSansSC-Medium.otf"
+    },
+    {
+      "source": "/Volumes/192.168.6.27/local_share/mac兼容性测试文件/MiSans/MiSans 开发下载字重/MiSans-Medium.ttf",
+      "bytes": 7876052,
+      "sha256": "93528275ee67039c1daeb2ef700625bcf72abab2d3f97e1b6afae6273b579fc1",
+      "names": {
+        "1": [
+          "MiSans",
+          "MiSans Medium"
+        ],
+        "2": [
+          "Medium",
+          "Regular"
+        ],
+        "4": [
+          "MiSans Medium"
+        ],
+        "6": [
+          "MiSans-Medium"
+        ],
+        "16": [
+          "MiSans"
+        ],
+        "17": [
+          "Medium"
+        ]
+      },
+      "weight": 500,
+      "variable": false,
+      "name": "MiSans-Medium.ttf"
+    }
+  ]
+}

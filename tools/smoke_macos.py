@@ -13,6 +13,28 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
+def make_smoke_font(path):
+    """生成独立测试字体，冻结烟测不依赖系统已安装字体。"""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.ttGlyphPen import TTGlyphPen
+    builder = FontBuilder(1000, isTTF=True)
+    order = ['.notdef', 'A']
+    builder.setupGlyphOrder(order)
+    builder.setupCharacterMap({65: 'A'})
+    pen = TTGlyphPen(None)
+    pen.moveTo((50, 0)); pen.lineTo((250, 700)); pen.lineTo((450, 0)); pen.closePath()
+    glyph = pen.glyph()
+    builder.setupGlyf({name: glyph for name in order})
+    builder.setupHorizontalMetrics({name: (600, 50) for name in order})
+    builder.setupHorizontalHeader(ascent=800, descent=-200)
+    builder.setupNameTable({'familyName': 'XiaoXue Smoke Medium', 'styleName': 'Regular',
+                            'fullName': 'XiaoXue Smoke Medium', 'psName': 'XiaoXueSmoke-Medium'})
+    builder.setupOS2(sTypoAscender=800, sTypoDescender=-200, usWinAscent=800,
+                     usWinDescent=200, usWeightClass=500)
+    builder.setupPost()
+    builder.save(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app', type=Path, default=ROOT / 'dist/小雪工具箱.app')
@@ -158,6 +180,30 @@ def main():
     assert completed.returncode == 0, (output / 'frozen-preview.log').read_text()
     report['frozen_preview'] = json.loads(preview_report.read_text())
     assert report['frozen_preview']['ok']
+    smoke_font = output / '独立测试字体.ttf'
+    make_smoke_font(smoke_font)
+    ass = output / '字体烟测.ass'
+    ass.write_text('''[Script Info]
+ScriptType: v4.00+
+PlayResX: 640
+PlayResY: 360
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,Bold,Italic,PrimaryColour,Alignment
+Style: Default,XiaoXue Smoke Medium,40,0,0,&H00FFFFFF,2
+[Events]
+Format: Start,End,Style,Text
+Dialogue: 0:00:00.00,0:00:02.00,Default,AAA
+''', encoding='utf-8')
+    font_report = output / 'frozen-fonts.json'
+    with (output / 'frozen-fonts.log').open('w') as log:
+        completed = subprocess.run([str(app_path / 'Contents/MacOS/XiaoXueToolbox'),
+                                    '--subtitle-diagnostics', str(source), '--subtitle', str(ass),
+                                    '--font-source', str(smoke_font), '--time', '1',
+                                    '--report', str(font_report)],
+                                   cwd='/', env=env, stdout=log, stderr=log, timeout=80)
+    assert completed.returncode == 0, (output / 'frozen-fonts.log').read_text()
+    report['frozen_fonts'] = json.loads(font_report.read_text(encoding='utf-8'))
+    assert report['frozen_fonts']['font_report']['verified']
     with (output / 'app-startup.log').open('w') as log:
         process = subprocess.Popen([str(app_path / 'Contents/MacOS/XiaoXueToolbox')],
                                    cwd='/', env=env, stdout=log, stderr=log)

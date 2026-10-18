@@ -89,3 +89,12 @@ def test_misans_is_only_selected_when_user_maps_it(tmp_path):
     report = resolve_fonts(analysis('Noto Sans SC Medium'), faces,
                            (FontBinding('Noto Sans SC Medium', faces[0]),))
     assert report.ready and report.matches[0][1].postscript_name == 'MiSans-Medium'
+
+
+def test_explicit_binding_must_still_belong_to_current_sources(tmp_path):
+    font = make_font(tmp_path/'font.ttf')
+    faces = scan_font_sources((str(font),), tmp_path/'cache', lambda: False)
+    report = resolve_fonts(analysis('Old Name'), (), (FontBinding('Old Name', faces[0]),))
+    assert not report.ready
+    assert report.issues[0].code == 'source_unavailable'
+    assert not report.matches
