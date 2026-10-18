@@ -680,6 +680,9 @@ class MainWindow(QMainWindow):
         if not self._tab_supports_execution(tab):
             return
         try:
+            prepare = getattr(tab, "prepare_execution", None)
+            if callable(prepare):
+                prepare()
             args = tab.build_args()
         except Exception as e:
             self._log_panel.append_log(f"参数构建失败: {e}\n")
@@ -903,6 +906,10 @@ class MainWindow(QMainWindow):
         bottom.setMinimumHeight(minimum)
 
     def _set_running(self, running):
+        tab = self._current_tab()
+        setter = getattr(tab, "set_running", None)
+        if callable(setter):
+            setter(running)
         if running:
             self._execute_btn.setEnabled(False)
         else:
@@ -939,6 +946,10 @@ class MainWindow(QMainWindow):
         from ..gui_config import get_qsettings
         settings = get_qsettings()
         settings.setValue("ui/geometry", self.saveGeometry())
+        for tab in self._tabs:
+            release = getattr(tab, "release", None)
+            if callable(release):
+                release()
         runner = self._runner
         if runner is not None and runner.isRunning():
             cancel_and_wait = getattr(runner, "cancel_and_wait", None)

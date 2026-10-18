@@ -79,6 +79,14 @@ def _drain_deferred_deletes(qapp):
     qapp.processEvents()
 
 
+@pytest.fixture(autouse=True)
+def media_probe_dispatch_stub(monkeypatch):
+    """既有页面测试的探测替身同步回传；真实后台行为另有专项验证。"""
+    from src.ui.tabs import encode_tab
+    monkeypatch.setattr(encode_tab, "start_media_probe",
+                        lambda path, generation, callback, probe: callback((path, generation, probe(path))))
+
+
 def pump(app, ms: int):
     """跑事件循环 ms 毫秒, 让信号/动画/线程回调得到处理。"""
     import time

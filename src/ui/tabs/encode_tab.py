@@ -26,6 +26,8 @@ from ..args_builder import ArgsNamespace
 from ..execution_summary import ExecutionSummaryCard
 from ..input_media_card import InputMediaCard
 from ..output_plan_card import OutputPlanCard
+from ..clip_editor import ClipEditor
+from ..media_probe_worker import start_media_probe
 from ...capabilities.encoder import (
     build_encoder_capabilities,
     default_speed_preset,
@@ -195,6 +197,7 @@ class EncodeTab(BaseTab):
         self._audio_checks: list = []
         self._sub_checks: list = []
         self._last_probe_info = None
+        self._probe_generation = 0
         self._build_track_panel()
 
         # ================================================================
@@ -215,7 +218,13 @@ class EncodeTab(BaseTab):
         )
 
         # ================================================================
-        # F. 高级设置（默认折叠）
+        # F. 视频片段截取
+        # ================================================================
+        self.clip_editor = ClipEditor()
+        self._main_layout.addWidget(self.clip_editor)
+
+        # ================================================================
+        # G. 高级设置（默认折叠）
         # ================================================================
         advanced = self.add_collapsible_group("高级设置")
         self.advanced_layout = advanced
@@ -320,6 +329,7 @@ class EncodeTab(BaseTab):
 
         # 执行摘要实时刷新：复用全部联动信号 + 输出路径等文本输入
         self._connect_summary_signals()
+        self.clip_editor.changed.connect(self._refresh_summary)
 
         self._on_preset_changed(self.preset_combo.currentText())
         self._on_output_format_changed(self.output_format_combo.currentText())
@@ -777,7 +787,11 @@ class EncodeTab(BaseTab):
         summary = getattr(self, "summary_card", None)
         if summary is None:
             return
-        summary.update_from_args(self.build_args())
+        try:
+            summary.update_from_args(self.build_args())
+        except ValueError as exc:
+            summary.clear()
+            summary.footer_label.setText(str(exc))
 
     # ================================================================
     # 轨道自动检测
@@ -827,6 +841,7 @@ class EncodeTab(BaseTab):
         self._main_layout.addWidget(self._track_group)
 
     def _on_input_changed(self):
+        self.clip_editor.set_input(self.input_edit.text())
         self._do_probe()
 
     def _show_probe_error(self, message: str):
@@ -843,6 +858,8 @@ class EncodeTab(BaseTab):
 
     def _do_probe(self):
         path = self.input_edit.text().strip()
+        self._probe_generation += 1
+        self._reset_track_panel()
         if not path:
             self._reset_track_panel()
             self.input_media_card.reset()
@@ -854,7 +871,13 @@ class EncodeTab(BaseTab):
             self._refresh_summary()
             return
 
-        info = probe_detailed(path)
+        self._track_status.setText("正在后台检测媒体信息…")
+        start_media_probe(path, self._probe_generation, self._finish_probe, probe_detailed)
+
+    def _finish_probe(self, result):
+        path, generation, info = result
+        if generation != self._probe_generation or path != self.input_edit.text().strip():
+            return
         if info and info.errors:
             self._show_probe_error(f"检测失败: {info.errors[0]}")
             self._refresh_summary()
@@ -869,6 +892,7 @@ class EncodeTab(BaseTab):
         self._last_probe_info = info
         self._populate_tracks(info)
         self.input_media_card.render(info)
+        self.clip_editor.set_duration_us(round(info.duration_sec * 1_000_000))
         self._refresh_summary()
 
     def _reset_track_panel(self):
@@ -1039,7 +1063,7 @@ class EncodeTab(BaseTab):
         if not supports_embedded_subtitles(self.current_output_extension()):
             sub_key, sub_custom = "不保留字幕", ""
 
-        return ArgsNamespace(
+        result = ArgsNamespace(
             command=self.command_name,
             input=self.input_edit.text(),
             output=self.output_edit.text(),
@@ -1067,3 +1091,17 @@ class EncodeTab(BaseTab):
             extra_args=self.extra_args_edit.text(),
             debug_mode=self.debug_mode_cb.isChecked(),
         )
+        plan = self.clip_editor.plan()
+        if plan is not None:
+            result.clip_plan = plan
+        return result
+
+    def prepare_execution(self):
+        self.clip_editor.validate_inputs()
+
+    def set_running(self, running):
+        self.clip_editor.set_running(running)
+
+    def release(self):
+        self._probe_generation += 1
+        self.clip_editor.release()

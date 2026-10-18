@@ -28,6 +28,7 @@ SUMMARY_ROWS = (
     ("video", "视频"),
     ("audio", "音频"),
     ("subtitle", "字幕"),
+    ("clips", "片段"),
     ("format", "输出格式"),
     ("output", "输出路径"),
 )
@@ -61,7 +62,8 @@ def format_audio_summary(params) -> str:
     """音频行：copy 或 编码器 + 码率（使用解析后的真实值，不做展示名替换）。"""
     if params.audio_encoder == "copy":
         return "复制（不重新编码）"
-    return f"{params.audio_encoder} · {params.audio_bitrate}"
+    suffix = "（片段音频重新编码）" if params.clip_plan is not None else ""
+    return f"{params.audio_encoder} · {params.audio_bitrate}{suffix}"
 
 
 _SUBTITLE_KEEP_LABELS = {
@@ -172,6 +174,8 @@ class ExecutionSummaryCard(QGroupBox):
             "video": format_video_summary(params),
             "audio": format_audio_summary(params),
             "subtitle": format_subtitle_summary(params),
+            "clips": (f"{len(params.clip_plan.clips)} 段 · {params.clip_plan.total_duration_us / 1_000_000:.3f} 秒 · 按列表顺序"
+                      if params.clip_plan is not None else "整段视频"),
             "format": format_output_format_summary(params),
             "output": format_output_path_summary(params, auto_generated),
         }
@@ -179,6 +183,7 @@ class ExecutionSummaryCard(QGroupBox):
             self._rows[key].setText(text)
             set_label_kind(self._rows[key], "strong")
         self._rows["output"].setToolTip(params.output_path)
+        self.footer_label.setText(FOOTER_HINT)
         return params
 
     def clear(self) -> None:
