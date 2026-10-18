@@ -43,7 +43,7 @@ def build_notes(tag: str, changelog: str, assets: Path, repository: str) -> str:
             "- Windows 10/11 x64：下载 Windows_x64.zip，解压后运行小雪工具箱.exe。\n"
             "- macOS 13+ Apple Silicon：下载 macOS_arm64.zip，解压后将小雪工具箱.app 放入应用程序。\n"
             "- 两个平台均内置 FFmpeg/ffprobe；Mac 包为 ad-hoc 签名，尚未进行 Developer ID 公证。\n\n"
-            f"[片段功能说明]({base}/blob/{tag}/CLIP_EDITING.md) · "
+            f"[片段功能说明]({base}/wiki/Features-Clip-Editing) · "
             f"[完整更新日志]({base}/blob/{tag}/CHANGELOG.md)\n\n"
             "### SHA256 校验和\n\n```\n" + "\n".join(hashes) + "\n```\n")
 

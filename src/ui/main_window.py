@@ -340,6 +340,7 @@ class MainWindow(QMainWindow):
             ("使用手册首页", f"{_REPO_URL}/wiki/Home"),
             ("安装与环境", f"{_REPO_URL}/wiki/Installation"),
             ("视频压制", f"{_REPO_URL}/wiki/Features-Video-Encode"),
+            ("片段截取与预览", f"{_REPO_URL}/wiki/Features-Clip-Editing"),
             ("音视频工具", f"{_REPO_URL}/wiki/Features-Audio-Video-Tools"),
             ("封装与图片", f"{_REPO_URL}/wiki/Features-Remux-Image"),
             ("素材质量检测", f"{_REPO_URL}/wiki/Features-Quality-Control"),

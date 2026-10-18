@@ -20,7 +20,7 @@ def test_notes_use_exact_prerelease_and_both_checksums(tmp_path):
     checksums = parse_checksums_from_body(body)
     assert set(checksums) == set(names)
     assert checksums[names[0]] == hashlib.sha256(names[0].encode()).hexdigest()
-    assert "/blob/v2.3.0-alpha.2/CLIP_EDITING.md" in body
+    assert "/wiki/Features-Clip-Editing" in body
 
 
 def test_stable_tag_uses_same_body_without_prerelease_suffix(tmp_path):
