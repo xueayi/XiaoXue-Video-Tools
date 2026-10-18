@@ -190,3 +190,22 @@ jobs:
             gh release create "$tag" release-assets/*.zip --verify-tag \
               --title "小雪工具箱 $tag" --notes-file release-notes.md
           fi
+
+      # 正式版发布后, 同版本线的预发布已失去意义 (功能被正式版完全覆盖),
+      # 一并清理, 避免用户从 Releases 页下载到更旧的 alpha/beta 包。
+      - name: Remove superseded pre-releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          base="${tag%%-*}"
+          gh release list --limit 100 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease) | .tagName' |
+          while read -r old; do
+            case "$old" in
+              "$base"-*)
+                gh release delete "$old" --cleanup-tag --yes \
+                  || echo "::warning::旧预发布 $old 清理失败, 请手动删除"
+                ;;
+            esac
+          done
