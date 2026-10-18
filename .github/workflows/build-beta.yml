@@ -156,3 +156,25 @@ jobs:
           gh release create "$tag" release-assets/*.zip \
             --verify-tag --prerelease --latest=false \
             --title "小雪工具箱 $tag（预发布）" --notes-file release-notes.md
+
+      # 预发布是「覆盖式」的: 同一版本线只保留最新一个 Pre-release,
+      # 避免 alpha.2 / alpha.3 … 堆积在 Releases 页面, 让用户下到过期安装包。
+      # 只清理同一 vX.Y.Z 前缀的预发布, 正式版与其它版本线不受影响。
+      - name: Remove superseded pre-releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${RELEASE_VERSION#release/}"
+          base="${tag%%-*}"
+          gh release list --limit 100 --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease) | .tagName' |
+          while read -r old; do
+            case "$old" in
+              "$base"-*)
+                if [ "$old" != "$tag" ]; then
+                  gh release delete "$old" --cleanup-tag --yes \
+                    || echo "::warning::旧预发布 $old 清理失败, 请手动删除"
+                fi
+                ;;
+            esac
+          done
