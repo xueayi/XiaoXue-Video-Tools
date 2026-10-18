@@ -6,7 +6,7 @@ from PyInstaller.utils.hooks import collect_data_files
 from PIL import Image
 
 root = Path(SPECPATH)
-version = os.environ.get('XIAOXUE_BUILD_VERSION', '2.3.0-alpha.4')
+version = os.environ.get('XIAOXUE_BUILD_VERSION', '2.3.0-alpha.5')
 hook = root / 'build/macos-version.py'
 hook.parent.mkdir(parents=True, exist_ok=True)
 hook.write_text(f'import src._version; src._version.__version__ = {version!r}\n')
